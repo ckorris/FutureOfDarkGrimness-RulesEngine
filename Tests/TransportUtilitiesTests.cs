@@ -537,6 +537,26 @@ namespace FDG.Tests
             Assert.That(pos.HasValue, Is.False);
         }
 
+        // #406: cargo can board a transport held in Ambush; until it arrives neither is anywhere on the table.
+        [Test]
+        public void EmbarkedInReserveTransport_HasNoPositionAndIsNotAboardOnTable()
+        {
+            PlayerID player = NewPlayer();
+            UnitData transport = MakeTransport(player, capacity: 6);
+            ReserveRules.PlaceInReserve(transport);
+            UnitData squad = MakeUnit(player, modelCount: 2);
+            TransportUtilities.Embark(squad, transport);
+
+            Assert.That(TransportUtilities.GetEffectivePosition(squad, All(transport, squad)).HasValue, Is.False,
+                "the transport sits at origin in reserve, so the cargo has no effective position.");
+            Assert.That(TransportUtilities.IsAboardTransportOnTable(squad, All(transport, squad)), Is.False);
+
+            ReserveRules.ClearReserve(transport);
+            Place(transport, 10f, 5f);
+            Assert.That(TransportUtilities.IsAboardTransportOnTable(squad, All(transport, squad)), Is.True,
+                "once the transport arrives, its cargo is aboard a transport on the table.");
+        }
+
         // --- Destruction spillout --------------------------------------------------------------
         // Slice E is mid-combat and interactive (interrupt resolution + ask the owner to place each
         // occupant within 6" of the wreck) — that orchestration is covered by a stage integration test

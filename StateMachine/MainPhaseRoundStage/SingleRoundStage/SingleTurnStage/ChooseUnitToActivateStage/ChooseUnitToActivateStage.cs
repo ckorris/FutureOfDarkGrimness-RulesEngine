@@ -79,7 +79,7 @@ namespace FDG.Stages
                     else
                     {
                         invalidOptions.Add(new SelectionRequest<UnitData>.InvalidOption(potentialUnit, label,
-                            GetUnavailableReason(potentialUnit.GetValue())));
+                            GetUnavailableReason(potentialUnit.GetValue(), allUnits)));
                     }
                 }
             }
@@ -185,8 +185,14 @@ namespace FDG.Stages
         // later round) is not "already activated" — surface its real status, including the round-1 rule
         // that reserves can't arrive until round 2. (StartOfRoundExtraActionStage uses the same two
         // checks to decide who it offers to bring on.)
-        private string GetUnavailableReason(UnitData unit)
+        private string GetUnavailableReason(UnitData unit, List<UnitData> allUnits)
         {
+            // #406: cargo of a transport still held in Ambush waits off-table with it.
+            if (TransportUtilities.IsEmbarked(unit) && !TransportUtilities.IsAboardTransportOnTable(unit, allUnits))
+            {
+                return "Aboard a transport in reserve.";
+            }
+
             if (Rules.Dispatch.ReserveRules.IsInReserve(unit)
                 && TryGetLaterRoundDefer(unit, out RuleOperation.DeferDeployment defer))
             {

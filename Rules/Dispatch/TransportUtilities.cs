@@ -151,6 +151,19 @@ public static class TransportUtilities
     public static IEnumerable<IUnit> GetOccupants(IUnit transport, IEnumerable<IUnit> allUnits) =>
         allUnits.Where(unit => GetTransportId(unit) is UnitID id && id == transport.ID);
 
+    /// <summary>
+    /// True if <paramref name="unit"/> is embarked in a transport that is itself on the table. Cargo can
+    /// board a transport held in Ambush or not yet deployed (#406), and until that transport is placed
+    /// its cargo is out of play with it: no activation, no disembark. False when not embarked, or when
+    /// the transport is off-table or missing from <paramref name="allUnits"/>.
+    /// </summary>
+    public static bool IsAboardTransportOnTable(IUnit unit, IEnumerable<IUnit> allUnits)
+    {
+        if (GetTransportId(unit) is not UnitID transportId) return false;
+        IUnit? transport = allUnits.FirstOrDefault(u => u.ID == transportId);
+        return transport != null && transport.GetIsOnBattlefield();
+    }
+
     /// <summary> Total spaces consumed by everything currently aboard <paramref name="transport"/>. </summary>
     public static int GetOccupiedSpaces(IUnit transport, IEnumerable<IUnit> allUnits) =>
         GetOccupants(transport, allUnits).Sum(GetUnitSpaceCost);
@@ -316,8 +329,10 @@ public static class TransportUtilities
     {
         if (GetTransportId(unit) is UnitID transportId)
         {
+            // A transport held in Ambush or not yet deployed (#406) sits at origin; its cargo has no
+            // position until it is placed.
             IUnit? transport = allUnits.FirstOrDefault(u => u.ID == transportId);
-            return transport == null ? null : RepresentativePosition(transport);
+            return transport == null || !transport.GetIsOnBattlefield() ? null : RepresentativePosition(transport);
         }
 
         return RepresentativePosition(unit);

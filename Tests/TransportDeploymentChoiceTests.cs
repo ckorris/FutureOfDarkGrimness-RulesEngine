@@ -15,7 +15,9 @@ namespace FDG.Tests
     // being deployed could ride a friendly transport already on the table, the owner is offered the choice:
     //  - Embark: stamp an EmbarkedIn token, set the unit aside off-table, fire OnEmbarked (skip placement).
     //  - Deploy normally (cancel): fire OnFinish toward placement, no token.
-    //  - No eligible transport (none deployed / over capacity): no prompt at all, OnFinish as before.
+    //  - No eligible transport (none / over capacity): no prompt at all, OnFinish as before.
+    //  - #406: the transport need not be on the table - one in Ambush or not yet deployed is offered too,
+    //    and its cargo stays out of play until the transport arrives.
     [TestFixture]
     public class TransportDeploymentChoiceTests
     {
@@ -151,19 +153,106 @@ namespace FDG.Tests
             Assert.That(request.CancelLabel, Is.EqualTo(SelectionRequest<UnitData>.DEFAULT_CANCEL_LABEL));
         }
 
+        // #406: a transport that hasn't been placed yet is still a ride. The cargo is set aside now and goes
+        // wherever the transport goes - onto the table when it deploys, or into Ambush with it.
         [Test]
-        public async Task DeployAction_UndeployedTransport_NotOffered()
+        public async Task DeployAction_UndeployedTransport_IsOfferedAndLoads()
         {
             DataBinding<UnitData> transport = MakeTransport("Rhino", capacity: 6); // NOT deployed (at origin)
             DataBinding<UnitData> squad = MakeUnit("Grunts", modelCount: 2);
             MakeArmy(transport, squad);
 
-            var requester = new EmbarkChoiceRequester(pickTransport: null);
+            var requester = new EmbarkChoiceRequester(pickTransport: transport);
+            (var deployment, bool finished, bool embarked) = await RunChooseDeployAction(requester, squad);
+
+            Assert.That(requester.SelectionPromptCount, Is.EqualTo(1), "an undeployed transport is offered.");
+            Assert.That(requester.LastSelection!.ValidOptions.Single().Name, Is.EqualTo("Embark into Rhino (not yet deployed)"),
+                "the option says the transport isn't on the table yet.");
+            Assert.That(embarked, Is.True);
+            Assert.That(finished, Is.False);
+            Assert.That(TransportUtilities.GetTransportId(squad.GetValue()), Is.EqualTo(transport.GetValue().ID));
+            Assert.That(deployment.CurrentDeployingUnit, Is.Null);
+        }
+
+        // #406: the Discord report - a transport held in Ambush could not be loaded at all.
+        [Test]
+        public async Task DeployAction_TransportInAmbush_IsOfferedAndLoads()
+        {
+            DataBinding<UnitData> transport = MakeTransport("Rhino", capacity: 6);
+            ReserveRules.PlaceInReserve(transport.GetValue());
+            DataBinding<UnitData> squad = MakeUnit("Grunts", modelCount: 2);
+            MakeArmy(transport, squad);
+
+            var requester = new EmbarkChoiceRequester(pickTransport: transport);
             (_, bool finished, bool embarked) = await RunChooseDeployAction(requester, squad);
 
-            Assert.That(requester.SelectionPromptCount, Is.EqualTo(0), "a transport that isn't on the table yet can't be loaded.");
+            Assert.That(requester.LastSelection!.ValidOptions.Single().Name, Is.EqualTo("Embark into Rhino (in reserve)"));
+            Assert.That(embarked, Is.True, "a unit can board a transport waiting in Ambush.");
+            Assert.That(finished, Is.False);
+            Assert.That(TransportUtilities.GetTransportId(squad.GetValue()), Is.EqualTo(transport.GetValue().ID));
+        }
+
+        // #406: an off-table transport's room is counted the same way as a deployed one's - by its cargo.
+        [Test]
+        public async Task DeployAction_TransportInAmbush_CountsCargoAlreadyAboard()
+        {
+            DataBinding<UnitData> transport = MakeTransport("Buggy", capacity: 3);
+            ReserveRules.PlaceInReserve(transport.GetValue());
+            DataBinding<UnitData> first = MakeUnit("Grunts", modelCount: 2);
+            DataBinding<UnitData> second = MakeUnit("More Grunts", modelCount: 2);
+            MakeArmy(transport, first, second);
+            TransportUtilities.Embark(first.GetValue(), transport.GetValue());
+
+            var requester = new EmbarkChoiceRequester(pickTransport: null);
+            (_, bool finished, _) = await RunChooseDeployAction(requester, second);
+
+            Assert.That(requester.SelectionPromptCount, Is.EqualTo(0), "2 of 3 spaces are taken; a 2-model unit doesn't fit.");
             Assert.That(finished, Is.True);
-            Assert.That(embarked, Is.False);
+        }
+
+        // Now that off-table transports qualify, a deploying transport must not be offered a ride in itself.
+        [Test]
+        public async Task DeployAction_TransportIsNotOfferedItself()
+        {
+            DataBinding<UnitData> transport = MakeTransport("Buggy", capacity: 6);
+            MakeArmy(transport);
+
+            var requester = new EmbarkChoiceRequester(pickTransport: null);
+            (_, bool finished, _) = await RunChooseDeployAction(requester, transport);
+
+            Assert.That(requester.SelectionPromptCount, Is.EqualTo(0));
+            Assert.That(finished, Is.True);
+        }
+
+        // #406: cargo of a transport in Ambush is out of play with it - it can't activate (and so can't
+        // disembark) while the transport is off the table. Once the transport arrives (reserve cleared,
+        // models placed, as StartOfRoundExtraActionStage.PlaceFromReserve does), the cargo is back in the
+        // activation pool and can get out as normal.
+        [Test]
+        public void RoundPool_CargoActivatesOnlyOnceItsAmbushTransportArrives()
+        {
+            DataBinding<UnitData> transport = MakeTransport("Rhino", capacity: 6);
+            ReserveRules.PlaceInReserve(transport.GetValue());
+            DataBinding<UnitData> squad = MakeUnit("Grunts", modelCount: 2);
+            MakeArmy(transport, squad);
+            TransportUtilities.Embark(squad.GetValue(), transport.GetValue());
+            _store.Create(_team);
+            var ctx = new TriggeredMoveTestContext(_store, new EmbarkChoiceRequester(pickTransport: null));
+
+            var waiting = new SingleRoundContext(ctx, new List<ITeam> { _team });
+            Assert.That(waiting.UnactivatedUnits[_player], Does.Not.Contain(squad),
+                "the cargo waits in reserve with its transport.");
+            Assert.That(waiting.UnactivatedUnits[_player], Does.Not.Contain(transport));
+
+            ReserveRules.ClearReserve(transport.GetValue());
+            Deploy(transport);
+
+            var arrived = new SingleRoundContext(ctx, new List<ITeam> { _team });
+            Assert.That(arrived.UnactivatedUnits[_player], Does.Contain(transport));
+            Assert.That(arrived.UnactivatedUnits[_player], Does.Contain(squad),
+                "once the transport is on the table its cargo activates, so it can disembark.");
+            Assert.That(TransportUtilities.GetTransportId(squad.GetValue()), Is.EqualTo(transport.GetValue().ID),
+                "arriving doesn't unload anyone; the cargo is still aboard.");
         }
 
         [Test]

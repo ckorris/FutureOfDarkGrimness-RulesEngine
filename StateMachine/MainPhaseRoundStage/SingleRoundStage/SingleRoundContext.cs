@@ -273,6 +273,7 @@ namespace FDG.Stages
         private void SetUnactivatedUnits()
         {
             IEnumerable<ArmyData> armies = GameContext.GameDataStore().GetAllValues<ArmyData>();
+            List<IUnit> allUnits = GameContext.GameDataStore().GetAllValues<UnitData>().Cast<IUnit>().ToList();
 
             foreach (ITeam team in GameContext.TableState.Teams.Objects)
             {
@@ -285,10 +286,13 @@ namespace FDG.Stages
                         // Reserve units (Ambush) that haven't arrived are alive but off-table — they
                         // don't activate until they're placed (from a later round's start). Embarked units
                         // (#035) are also off-table, but they DO activate — to disembark on their own turn —
-                        // so they're admitted to the pool even though GetIsOnBattlefield is false.
+                        // so they're admitted to the pool even though GetIsOnBattlefield is false — but only
+                        // while their transport is on the table: cargo of a transport still in Ambush stays
+                        // out of play with it (#406).
                         playerUnits.AddRange(army.UnitBindings.Where(unit =>
                             unit.GetValue().GetIsAlive()
-                            && (unit.GetValue().GetIsOnBattlefield() || TransportUtilities.IsEmbarked(unit.GetValue()))));
+                            && (unit.GetValue().GetIsOnBattlefield()
+                                || TransportUtilities.IsAboardTransportOnTable(unit.GetValue(), allUnits))));
 
                         // #197 P17: this fresh scan already includes every living unit, so a leftover
                         // mid-round join marker grants nothing here — sweep it.

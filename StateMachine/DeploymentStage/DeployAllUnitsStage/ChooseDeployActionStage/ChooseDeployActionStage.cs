@@ -34,9 +34,10 @@ namespace FDG.Stages
 
             UnitData deployingUnit = context.CurrentDeployingUnit.GetValue();
 
-            // Transport (#035 slice B): if a friendly transport is already on the table with room for this
-            // unit, the owner may load it in now instead of placing it. The unit is set aside off-table (an
-            // EmbarkedIn token) and its placement stage is skipped — mirroring the Ambush hold flow. When no
+            // Transport (#035 slice B, #406): if a friendly transport has room for this unit, the owner may
+            // load it in now instead of placing it - whether the transport is on the table, held in Ambush,
+            // or not yet deployed. The unit is set aside off-table (an EmbarkedIn token) and its placement
+            // stage is skipped, mirroring the Ambush hold flow; it goes wherever the transport goes. When no
             // transport is eligible, there is no prompt and we deploy normally exactly as before.
             List<DataBinding<UnitData>> transports = GetEligibleTransports(deployingUnit);
             if (transports.Count > 0)
@@ -65,10 +66,12 @@ namespace FDG.Stages
         }
 
         /// <summary>
-        /// Friendly transports already on the table that <paramref name="candidate"/> could embark — full
-        /// eligibility (transport identity, same player, ride caps, remaining capacity) via
-        /// <see cref="TransportUtilities.CanUnitEmbark"/>, restricted to deployed (on-battlefield) transports
-        /// since you can only load a transport that is already down.
+        /// Friendly transports that <paramref name="candidate"/> could embark — full eligibility (transport
+        /// identity, same player, ride caps, remaining capacity) via <see cref="TransportUtilities.CanUnitEmbark"/>.
+        /// The transport's own deployment state does not matter (#406, owner: "You should always have the
+        /// ability to deploy to a transport regardless of whether the transport is deployed on the field,
+        /// deployed to ambush or something equivalent, or undeployed"). A transport in Ambush brings its
+        /// cargo when it arrives; an undeployed one carries it to wherever it is placed, or into Ambush.
         /// </summary>
         private List<DataBinding<UnitData>> GetEligibleTransports(UnitData candidate)
         {
@@ -85,13 +88,23 @@ namespace FDG.Stages
             {
                 UnitData unit = binding.GetValue();
                 if (!TransportUtilities.IsTransport(unit, GameContext.RuleEvaluator)) continue;
-                if (!unit.GetIsOnBattlefield()) continue;
+                if (unit.ID == candidate.ID) continue;
+                if (!unit.GetIsAlive()) continue;
+                // A transport riding inside another can't take on cargo of its own.
+                if (TransportUtilities.IsEmbarked(unit)) continue;
                 if (!TransportUtilities.CanUnitEmbark(candidate, unit, allUnits, GameContext.RuleEvaluator, out _)) continue;
 
                 eligible.Add(binding);
             }
 
             return eligible;
+        }
+
+        // #406: says where an off-table transport is, so loading into it isn't mistaken for a mistake.
+        private static string TransportStateSuffix(UnitData transport)
+        {
+            if (transport.GetIsOnBattlefield()) return string.Empty;
+            return ReserveRules.IsInReserve(transport) ? " (in reserve)" : " (not yet deployed)";
         }
 
         /// <summary>
@@ -110,7 +123,7 @@ namespace FDG.Stages
             foreach (DataBinding<UnitData> transport in transports)
             {
                 options.Add(new SelectionRequest<UnitData>.ValidOption(
-                    transport, $"Embark into {transport.GetValue().Name}"));
+                    transport, $"Embark into {transport.GetValue().Name}{TransportStateSuffix(transport.GetValue())}"));
             }
 
             SelectionRequest<UnitData> request = new SelectionRequest<UnitData>(unit.PlayerID,

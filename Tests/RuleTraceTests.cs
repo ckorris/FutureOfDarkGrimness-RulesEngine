@@ -72,7 +72,7 @@ namespace FDG.Tests
             _evaluator.EvaluateAll(context, RuleParticipant.Actor(attacker), RuleParticipant.Subject(defender));
 
             Assert.That(_output.DebugLines,
-                Has.Some.Match(".*Stealth.*condition And\\(DistanceGreaterThan, AllModelsHaveThisRule\\) not met.*"));
+                Has.Some.Match(".*Stealth.*condition And\\(DistanceGreaterThan, MostModelsHaveThisRule\\) not met.*"));
         }
 
         [Test]

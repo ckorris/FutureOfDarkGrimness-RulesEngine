@@ -137,8 +137,8 @@ namespace FDG.Rules.Dispatch
         /// The alias-aware display name of the rule that COULD compel <paramref name="unit"/> to attack
         /// the closest valid target (#197 Instinctive), or null when it carries no such rule - the
         /// near-universal case. The models ride along like every capability query, so the answer respects
-        /// the authored <see cref="Condition.AllModelsHaveThisRule"/> gate (a joined hero without the rule
-        /// frees the unit) rather than re-implementing it here.
+        /// the authored <see cref="Condition.MostModelsHaveThisRule"/> gate (#428: the unit is bound while most
+        /// of its models carry the rule, a joined hero counting as one model) rather than re-implementing it here.
         ///
         /// <para>This is the CAPABILITY, not the live obligation: the rule only binds "when this model is
         /// activated" AND it could attack then, which <c>ChooseActionStage</c> decides once and records as

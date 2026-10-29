@@ -23,7 +23,7 @@ namespace FDG.Tests
         private static SpecialRuleDefinition Definition() => new(RuleName,
             new[]
             {
-                new HookEntry(EHookID.Activation_OnActivationStart, new Condition.AllModelsHaveThisRule(),
+                new HookEntry(EHookID.Activation_OnActivationStart, new Condition.MostModelsHaveThisRule(),
                     new Effect.RestoreWounds(MinRoll: 5), ELifetime.UntilEndOfGame),
             },
             System.Array.Empty<ActivatedAbility>());

@@ -32,8 +32,10 @@ namespace FDG.Rules.Definitions;
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
 [JsonDerivedType(typeof(Always), "always")]
 [JsonDerivedType(typeof(UnitHasRule), "unitHasRule")]
-[JsonDerivedType(typeof(AllModelsHaveThisRule), "allModelsHaveThisRule")]
 [JsonDerivedType(typeof(MostModelsHaveThisRule), "mostModelsHaveThisRule")]
+// #428: the pre-3.6 kind still parses, as the most-models gate (see LegacyAllModelsHaveThisRule).
+[JsonDerivedType(typeof(LegacyAllModelsHaveThisRule), "allModelsHaveThisRule")]
+[JsonDerivedType(typeof(EveryModelHasThisRule), "everyModelHasThisRule")]
 [JsonDerivedType(typeof(TargetHasRule), "targetHasRule")]
 [JsonDerivedType(typeof(WeaponHasRule), "weaponHasRule")]
 [JsonDerivedType(typeof(ActionTypeIs), "actionTypeIs")]
@@ -88,109 +90,133 @@ public abstract record Condition
     }
 
     /// <summary>
-    /// True only when EVERY living model in the bearer unit carries the rule being evaluated
-    /// (<see cref="RuleInvocation.Definition"/>). Gates the unit-wide defensive/morale rules the rulebook
-    /// says apply only if the whole unit has them (Stealth, Regeneration, Fearless): a joined hero that
-    /// doesn't natively carry the rule breaks it for the unit, and a lone hero carrying it doesn't grant it
-    /// to the unit. A model "has" the rule if it's on the model's own <see cref="IModel.RuleDefinitions"/>,
-    /// or — for a native (non-joined) model — STATICALLY on the unit's <see cref="IUnit.RuleDefinitions"/>;
-    /// a joined hero (<see cref="IUnit.JoinedHeroModelId"/>) doesn't count the host's static rules, since
-    /// the merge relocated the hero's own rules onto the hero model and OPR heroes don't inherit the host
-    /// unit's rules. Unit-held GRANTS (aura / "gains rule X" tokens) count for EVERY living model, hero
-    /// included (#183): every grant in the vocabulary targets the whole current unit — auras say "this
-    /// model and its unit", buff spells pick a unit — so a hero that brings its own aura, or a buff cast on
-    /// the combined unit, must not break the gate. Matches by rule definition (these rules are
-    /// argument-less); a future (X) variant needing arg-awareness would extend this. Self-referential —
-    /// reads the firing rule's own identity, so one condition serves every all-models rule.
+    /// The ownership count both rule-ownership gates (<see cref="MostModelsHaveThisRule"/>,
+    /// <see cref="EveryModelHasThisRule"/>) read: how many models of the bearer unit are counted, and how many
+    /// of those carry the rule being evaluated (<see cref="RuleInvocation.Definition"/>).
+    /// <para>
+    /// A model "has" the rule if it's on the model's own <see cref="IModel.RuleDefinitions"/>, or - for a
+    /// native (non-joined) model - STATICALLY on the unit's <see cref="IUnit.RuleDefinitions"/>; a joined hero
+    /// (<see cref="IUnit.JoinedHeroModelId"/>) doesn't count the host's static rules, since the merge relocated
+    /// the hero's own rules onto the hero model and OPR heroes don't inherit the host unit's rules. The hero
+    /// still COUNTS as a model of the unit, which is what OPR 3.6's "most models" wording is for (#428, closing
+    /// #303): a 10-model unit with a joined hero lacking the rule is 10 of 11 and keeps it. Unit-held GRANTS
+    /// (aura / "gains rule X" tokens) count for EVERY model, hero included (#183): every grant in the
+    /// vocabulary targets the whole current unit. Matches by rule definition (these rules are argument-less);
+    /// self-referential - reads the firing rule's own identity, so one condition serves every gated rule.
+    /// </para>
+    /// <para>
+    /// Counted models are the LIVING ones, so casualties shift the count mid-game. A unit with none alive is
+    /// counted as it stood (all its models): Reinforcement's "when a unit where most models have this rule is
+    /// ... fully destroyed" is evaluated on a wiped-out unit, and the models that just died are the unit the
+    /// text describes (#428 decision; the old all-models gate passed this vacuously).
+    /// </para>
     /// </summary>
-    public sealed record AllModelsHaveThisRule : Condition
+    private static (int Counted, int Carriers) CountRuleCarriers(IUnit unit, SpecialRuleDefinition definition)
     {
-        public override bool Evaluate(RuleInvocation invocation)
+        ModelID? heroModelId = unit.JoinedHeroModelId;
+        // A static unit rule covers every NATIVE model; a grant covers every model including a joined
+        // hero (grants target the current combined unit, static rules predate the hero's arrival).
+        bool unitStatic = unit.RuleDefinitions.Any(r => r.Definition == definition);
+        bool unitGranted = RuleGrantQueries.UnitHasGrantedRule(unit, definition);
+        bool anyAlive = unit.Models.Any(m => m.GetIsAlive());
+
+        int counted = 0;
+        int carriers = 0;
+        foreach (IModel model in unit.Models)
         {
-            SpecialRuleDefinition? definition = invocation.Definition;
-            if (definition == null)
+            if (anyAlive && !model.GetIsAlive())
             {
-                return true; // no rule identity to check — not reached on the passive path, which sets it
+                continue;
             }
 
-            IUnit unit = invocation.Bearer;
-            ModelID? heroModelId = unit.JoinedHeroModelId;
-            // A static unit rule covers every NATIVE model; a grant covers every model including a joined
-            // hero (grants target the current combined unit, static rules predate the hero's arrival).
-            bool unitStatic = unit.RuleDefinitions.Any(r => r.Definition == definition);
-            bool unitGranted = RuleGrantQueries.UnitHasGrantedRule(unit, definition);
-
-            foreach (IModel model in unit.Models)
+            counted++;
+            bool isJoinedHero = heroModelId is ModelID hid && model.ID == hid;
+            if (model.RuleDefinitions.Any(r => r.Definition == definition)
+                || unitGranted
+                || (!isJoinedHero && unitStatic))
             {
-                if (!model.GetIsAlive())
-                {
-                    continue;
-                }
-
-                bool isJoinedHero = heroModelId is ModelID hid && model.ID == hid;
-                bool hasRule = model.RuleDefinitions.Any(r => r.Definition == definition)
-                    || unitGranted
-                    || (!isJoinedHero && unitStatic);
-
-                if (!hasRule)
-                {
-                    return false;
-                }
+                carriers++;
             }
-
-            return true;
         }
 
+        return (counted, carriers);
     }
 
     /// <summary>
-    /// True if MOST living models in the bearer's unit carry the firing rule - the "when a unit where most
-    /// models have this rule ..." wording (#197 P7 No Retreat), as distinct from
-    /// <see cref="AllModelsHaveThisRule"/>'s "where all models". Same ownership semantics in every other
-    /// respect (per-model rules, a joined hero's exclusion from the host's static rules, unit-held grants
-    /// counting for everyone), so the two answer the same question at different thresholds.
+    /// True if MOST living models in the bearer's unit carry the firing rule: OPR 3.6's "when a unit where
+    /// most models have this rule ..." gate, which replaced 3.5's "where all models" on every unit-wide rule
+    /// (#428: Fearless, Regeneration, Stealth, Artillery, the defensive Subject-seat family, the whole-unit
+    /// reposition/reactivation family, ...). Ownership semantics are <see cref="CountRuleCarriers"/>'s.
     /// <para>
-    /// "Most" is a strict majority of LIVING models - the same shape <see cref="TargetMajorityHasTough"/>
-    /// uses. A unit with none alive is not a majority of anything, so it answers false rather than
-    /// vacuously true; that matters here because the rules using it fire on morale, which a wiped-out unit
-    /// never takes anyway.
+    /// "Most" is a strict majority (more than half) - the same shape <see cref="TargetMajorityHasTough"/> uses.
+    /// 5 of 9 qualifies; 4 of 9 and 2 of 4 do not.
+    /// </para>
+    /// <para>
+    /// Not sealed only so <see cref="LegacyAllModelsHaveThisRule"/> can be this condition under its old JSON
+    /// kind; nothing else should derive from it.
     /// </para>
     /// </summary>
-    public sealed record MostModelsHaveThisRule : Condition
+    public record MostModelsHaveThisRule : Condition
     {
         public override bool Evaluate(RuleInvocation invocation)
         {
             SpecialRuleDefinition? definition = invocation.Definition;
             if (definition == null)
             {
-                return true; // no rule identity to check — mirrors AllModelsHaveThisRule
+                return true; // no rule identity to check - not reached on the passive path, which sets it
             }
 
-            IUnit unit = invocation.Bearer;
-            ModelID? heroModelId = unit.JoinedHeroModelId;
-            bool unitStatic = unit.RuleDefinitions.Any(r => r.Definition == definition);
-            bool unitGranted = RuleGrantQueries.UnitHasGrantedRule(unit, definition);
+            (int counted, int carriers) = CountRuleCarriers(invocation.Bearer, definition);
+            return counted > 0 && carriers * 2 > counted;
+        }
+    }
 
-            int living = 0;
-            int carriers = 0;
-            foreach (IModel model in unit.Models)
+    /// <summary>
+    /// #428 legacy alias: the pre-3.6 <c>"allModelsHaveThisRule"</c> JSON kind, which now means
+    /// <see cref="MostModelsHaveThisRule"/>. OPR 3.6 rewrote every "where all models have this rule" gate as
+    /// "where most models", and old <c>.fdgarmy</c> files (plus <c>.fdgsave</c> snapshots, and the bundled
+    /// <c>.fdgbook</c> files until #438 re-bakes them) embed their definitions with this kind. By the upgrade
+    /// plan's rule 6 old files keep loading but get 3.6 semantics, so this IS the most-models condition: it
+    /// inherits the evaluation and every <c>is MostModelsHaveThisRule</c> check (the validator's gate
+    /// requirement included) accepts it.
+    /// <para>
+    /// It exists as its own subtype so that (a) the old kind still deserializes and round-trips unchanged,
+    /// (b) <c>--trace-rules</c> names it (<c>LegacyAllModelsHaveThisRule</c>), so a trace shows which
+    /// definitions are still on the old kind, and (c) <see cref="Dispatch.RuleValidator.ValidateAuthoring"/> can
+    /// refuse it in newly authored data - write <c>mostModelsHaveThisRule</c>, or
+    /// <c>everyModelHasThisRule</c> for the two 3.6 rules that keep "all models".
+    /// </para>
+    /// <para>
+    /// Known consequence: an old army file that embeds one of those two "all models" rules (Inquisitorial
+    /// Agent; Martial Prowess is catalog-only) under this kind gets "most" for it, since the kind alone can't
+    /// tell the two apart.
+    /// </para>
+    /// </summary>
+    public sealed record LegacyAllModelsHaveThisRule : MostModelsHaveThisRule;
+
+    /// <summary>
+    /// True only when EVERY living model in the bearer unit carries the firing rule - the "if all models in
+    /// this unit have this rule" wording OPR 3.6 keeps for exactly two rules, Inquisitorial Agent and Martial
+    /// Prowess (#428). Everything else gates on <see cref="MostModelsHaveThisRule"/>; reach for this only when
+    /// the 3.6 text still says "all". Ownership semantics are <see cref="CountRuleCarriers"/>'s, so a joined
+    /// hero without the rule breaks it for the whole unit.
+    /// <para>
+    /// JSON kind <c>everyModelHasThisRule</c>, deliberately not the old <c>allModelsHaveThisRule</c>, which is
+    /// the legacy alias of the most-models gate (<see cref="LegacyAllModelsHaveThisRule"/>).
+    /// </para>
+    /// </summary>
+    public sealed record EveryModelHasThisRule : Condition
+    {
+        public override bool Evaluate(RuleInvocation invocation)
+        {
+            SpecialRuleDefinition? definition = invocation.Definition;
+            if (definition == null)
             {
-                if (!model.GetIsAlive())
-                {
-                    continue;
-                }
-
-                living++;
-                bool isJoinedHero = heroModelId is ModelID hid && model.ID == hid;
-                if (model.RuleDefinitions.Any(r => r.Definition == definition)
-                    || unitGranted
-                    || (!isJoinedHero && unitStatic))
-                {
-                    carriers++;
-                }
+                return true; // no rule identity to check - mirrors MostModelsHaveThisRule
             }
 
-            return living > 0 && carriers * 2 > living;
+            (int counted, int carriers) = CountRuleCarriers(invocation.Bearer, definition);
+            return carriers == counted;
         }
     }
 
@@ -278,11 +304,11 @@ public abstract record Condition
 
     /// <summary>
     /// True when a strict majority of the BEARER unit's living models are within <see cref="DistanceInches"/>
-    /// of any terrain piece. The Grounded family - "if a unit where all models have this rule has most of
+    /// of any terrain piece. The Grounded family - "if a unit where most models have this rule has most of
     /// them within 1in of terrain, they get +1 to defense / +1 to hit / enemies get -1 to hit" - pairs this
-    /// with <see cref="AllModelsHaveThisRule"/> under an <see cref="And"/>.
+    /// with <see cref="MostModelsHaveThisRule"/> under an <see cref="And"/>.
     ///
-    /// Reads <see cref="RuleInvocation.Bearer"/> directly (like <see cref="AllModelsHaveThisRule"/>) rather
+    /// Reads <see cref="RuleInvocation.Bearer"/> directly (like <see cref="MostModelsHaveThisRule"/>) rather
     /// than a capability context field, because the fact is about the FIRING unit and the same hook context
     /// serves both the attacker and the defender seat. The terrain LIST comes from the context
     /// (<see cref="IHasTerrain"/>, table-level and seat-independent); a context that cannot supply it carries

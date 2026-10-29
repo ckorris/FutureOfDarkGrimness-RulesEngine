@@ -78,7 +78,7 @@ namespace FDG.Tests
             // operation, so every other check passes — but the hit dice are already rolled by then, and only
             // Save deltas fold from that hook. Core Stealth, the identical shape, sits at the modifier hook.
             var rule = Passive("Lint Deaf Hook", new HookEntry(EHookID.Shooting_OnHitRollComplete,
-                new Condition.AllModelsHaveThisRule(),   // RuleValidator requires this of Subject-seat rules
+                new Condition.MostModelsHaveThisRule(),   // RuleValidator requires this of Subject-seat rules
                 new Effect.RollModifier(ERollKind.Hit, Delta: -1),
                 ELifetime.ThisAttack,
                 ERuleSeat.Subject));
@@ -96,7 +96,7 @@ namespace FDG.Tests
             // The other half of the pair: Shielded's +1 to defense, same hook and seat, and read. Pins that
             // the consumption map keys on the operation's roll kind rather than its type.
             var rule = Passive("Lint Heard Hook", new HookEntry(EHookID.Shooting_OnHitRollComplete,
-                new Condition.AllModelsHaveThisRule(),   // RuleValidator requires this of Subject-seat rules
+                new Condition.MostModelsHaveThisRule(),   // RuleValidator requires this of Subject-seat rules
                 new Effect.RollModifier(ERollKind.Save, Delta: 1),
                 ELifetime.ThisAttack,
                 ERuleSeat.Subject));

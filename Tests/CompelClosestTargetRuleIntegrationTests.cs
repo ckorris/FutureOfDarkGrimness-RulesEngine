@@ -62,11 +62,12 @@ namespace FDG.Tests
         }
 
         [Test]
-        public void Capability_JoinedModelWithoutTheRule_FreesTheUnit()
+        public void Capability_OneModelWithoutTheRule_StillCompelsTheUnit()
         {
             // The #267 convention: the compulsion binds the WHOLE unit's action, so it is authored gated on
-            // AllModelsHaveThisRule - per-model attachment with one model lacking it (a joined hero) must
-            // answer null, or one goblin's instinct would compel the hero it is escorting.
+            // rule ownership. #428: OPR 3.6 reads that as "a unit where MOST models have this rule", so a
+            // model lacking it (a joined hero, per-model attachment here) no longer frees a unit whose
+            // majority carries it - which is how the owner read Instinctive in #303.
             var ctx = new TestGameContext(_store, new FixedDiceRoller(4));
             DataBinding<UnitData> unit = MakeUnit(_us, "Mob", models: 3, atX: 10f);
             ResolvedRule rule = new ResolvedRule(RULE_NAME, Definition());
@@ -74,7 +75,20 @@ namespace FDG.Tests
                 .ForEach(m => m.AttachRuleDefinition(rule));
 
             Assert.That(CapabilityRuleQueries.MustAttackClosestSource(unit.GetValue(), ctx.RuleEvaluator),
-                Is.Null, "one model without the rule - the unit is not compelled");
+                Is.EqualTo(RULE_NAME), "two of three models carry it - most of the unit is compelled");
+        }
+
+        [Test]
+        public void Capability_OnlyAMinorityCarriesTheRule_FreesTheUnit()
+        {
+            // ...but one carrier of three is not most, so one goblin's instinct still can't compel its escort.
+            var ctx = new TestGameContext(_store, new FixedDiceRoller(4));
+            DataBinding<UnitData> unit = MakeUnit(_us, "Mob", models: 3, atX: 10f);
+            unit.GetValue().Models.Cast<ModelData>().First()
+                .AttachRuleDefinition(new ResolvedRule(RULE_NAME, Definition()));
+
+            Assert.That(CapabilityRuleQueries.MustAttackClosestSource(unit.GetValue(), ctx.RuleEvaluator),
+                Is.Null, "one carrier of three is a minority - the unit is not compelled");
         }
 
         // ── ChooseActionStage: the menu collapses while an attack is possible ────────────────────────────
@@ -330,8 +344,8 @@ namespace FDG.Tests
         private static SpecialRuleDefinition Definition() => new SpecialRuleDefinition(RULE_NAME,
             new[]
             {
-                // The compulsion: a capability answer, gated on the whole unit carrying the rule (#267).
-                new HookEntry(EHookID.Lifecycle_OnCapabilityQuery, new Condition.AllModelsHaveThisRule(),
+                // The compulsion: a capability answer, gated on most of the unit carrying the rule (#267, #428).
+                new HookEntry(EHookID.Lifecycle_OnCapabilityQuery, new Condition.MostModelsHaveThisRule(),
                     new Effect.CompelClosestTarget(), ELifetime.UntilEndOfGame),
                 // The rider: "+1 to hit rolls FOR THAT ATTACK" - the compelled attack only, so both
                 // entries gate on the obligation token as well as the combat kind. The unit's own shot

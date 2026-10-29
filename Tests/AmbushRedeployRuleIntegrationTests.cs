@@ -40,7 +40,7 @@ namespace FDG.Tests
                     new TargetSelector(RangeInches: 0f, MinCount: 1, MaxCount: 1, ETargetAffinity.Self,
                         RequireLineOfSight: false),
                     new Effect.AmbushRedeploy(),
-                    new Condition.AllModelsHaveThisRule(),
+                    new Condition.MostModelsHaveThisRule(),
                     Label: RuleName),
             });
 

@@ -5,7 +5,7 @@ namespace FDG.Rules.Definitions;
 
 /// <summary>
 /// Reads a unit's <see cref="TokenType.RuleGrant"/> tokens from inside the rule vocabulary — for the
-/// self-referential pieces (<see cref="Condition.AllModelsHaveThisRule"/>,
+/// self-referential pieces (<see cref="Condition.MostModelsHaveThisRule"/> / <see cref="Condition.EveryModelHasThisRule"/>,
 /// <see cref="ValueSource.RuleCarrierCount"/>) that ask "does this unit have the rule that is firing?"
 /// and must count aura / "gains rule X" grants alongside statically attached rules.
 ///

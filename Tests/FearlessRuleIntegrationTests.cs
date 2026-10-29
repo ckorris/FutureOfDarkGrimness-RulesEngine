@@ -3,6 +3,7 @@ using FDG.Players;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Foundation;
+using FDG.SaveLoad;
 using FDG.Stages;
 using NUnit.Framework;
 
@@ -56,6 +57,57 @@ namespace FDG.Tests
 
             Assert.That(outcome.Passed, Is.True);
             Assert.That(outcome.PassedViaReroll, Is.False, "the initial test already passed — no second chance needed.");
+        }
+
+        // #428 - OPR 3.6: "When a unit where MOST models have this rule fails a Morale Test, roll one die. On a
+        // 4+ it counts as passed instead." Per-model attachment states the count; TakeMoraleTest threads the
+        // unit's living models, so the gate sees model-held copies.
+        [TestCase(5, true, TestName = "Fearless_FiveOfNineModels_GetsTheSecondChance")]
+        [TestCase(4, false, TestName = "Fearless_FourOfNineModels_DoesNot")]
+        public async Task Fearless_NeedsMostModels(int carriers, bool passes)
+        {
+            var unit = MakeUnit(quality: 5, modelCount: 9);
+            AttachFearlessToModels(unit, carriers);
+
+            var outcome = await MoraleUtilities.TakeMoraleTest(Ctx(die: 4), unit.GetValue(), baseRollNeeded: 5);
+
+            Assert.That(outcome.Passed, Is.EqualTo(passes),
+                "'a unit where most models have this rule' - a strict majority of the living models");
+            Assert.That(outcome.PassedViaReroll, Is.EqualTo(passes));
+        }
+
+        [Test]
+        public async Task Fearless_CasualtiesShiftTheCount()
+        {
+            // 5 carriers of 9 qualifies; losing one carrier leaves 4 of 8, which is half, not most.
+            var unit = MakeUnit(quality: 5, modelCount: 9);
+            AttachFearlessToModels(unit, 5);
+            KillModels(unit, 1); // the carriers are the first five models
+
+            var outcome = await MoraleUtilities.TakeMoraleTest(Ctx(die: 4), unit.GetValue(), baseRollNeeded: 5);
+
+            Assert.That(outcome.Passed, Is.False, "4 of 8 living carriers - Fearless no longer applies");
+        }
+
+        [Test]
+        public async Task Fearless_TenModelUnit_JoinedHeroLacksIt_StillGetsTheSecondChance()
+        {
+            // Pre-3.6 the hero without Fearless broke it for all ten; the joined hero is one model of eleven.
+            UnitData host = MakeUnit(quality: 5, modelCount: 10).GetValue();
+            host.AttachRuleDefinition(new ResolvedRule("Fearless", CoreRuleCatalog.Fearless));
+            UnitData hero = MakeUnit(quality: 5).GetValue();
+            hero.AttachRuleDefinition(new ResolvedRule("Hero", CoreRuleCatalog.Hero));
+            HeroJoinResolver.Apply(new List<(UnitFileEntry, UnitData)>
+            {
+                (new UnitFileEntry { Id = "host" }, host),
+                (new UnitFileEntry { JoinsUnitId = "host" }, hero),
+            });
+            UnitData merged = _store.GetDataBinding<UnitData>(_store.Create(host)).GetValue();
+
+            var outcome = await MoraleUtilities.TakeMoraleTest(Ctx(die: 4), merged, baseRollNeeded: 5);
+
+            Assert.That(outcome.Passed, Is.True);
+            Assert.That(outcome.PassedViaReroll, Is.True, "10 of 11 models have Fearless - most of the unit");
         }
 
         [Test]
@@ -189,6 +241,15 @@ namespace FDG.Tests
 
         private static void AttachFearless(DataBinding<UnitData> unit) =>
             unit.GetValue().AttachRuleDefinition(new ResolvedRule("Fearless", CoreRuleCatalog.Fearless));
+
+        private static void AttachFearlessToModels(DataBinding<UnitData> unit, int count)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                unit.GetValue().ModelBindings[i].GetValue()
+                    .AttachRuleDefinition(new ResolvedRule("Fearless", CoreRuleCatalog.Fearless));
+            }
+        }
 
         private static void KillModels(DataBinding<UnitData> unit, int count)
         {

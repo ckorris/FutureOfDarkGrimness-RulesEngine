@@ -82,18 +82,39 @@ namespace FDG.Tests
                 "the stage threads the defender's living models.");
         }
 
-        // Host has Shielded, joined hero lacks it, grunts alive: the unit LOSES the bonus (the host-side /
-        // audit-Bug-24 direction, exercised end-to-end through the real stage).
+        // Host has Shielded, joined hero lacks it, grunts alive. Pre-3.6 the hero broke it for the unit; #428:
+        // OPR 3.6 gates on "units where MOST models have this rule", and three grunts of four living models is
+        // most, so the unit KEEPS the bonus (the host-side direction, exercised end-to-end through the stage).
         [Test]
-        public async Task HostShielded_JoinedHeroLacksIt_SuppressedForUnit()
+        public async Task HostShielded_JoinedHeroLacksIt_StillAppliesToUnit()
         {
             DataBinding<UnitData> defender = MakeMergedDefender(CoreRuleCatalog.Shielded,
                 heroHasRule: false, hostHasRule: true);
 
             RollToHitResults result = await RunHitStage(defender);
 
+            Assert.That(result.SaveModifier, Is.EqualTo(1),
+                "3 of 4 living models have Shielded - a joined hero without it no longer breaks it.");
+        }
+
+        // ...and casualties shift the count: once two grunts fall, one carrier and the hero is 1 of 2 - not
+        // most - so the hero lacking the rule does decide it now.
+        [Test]
+        public async Task HostShielded_JoinedHeroLacksIt_SuppressedOnceGruntsAreDownToOne()
+        {
+            DataBinding<UnitData> defender = MakeMergedDefender(CoreRuleCatalog.Shielded,
+                heroHasRule: false, hostHasRule: true);
+            UnitData unit = defender.GetValue();
+            ModelID heroId = unit.HeroAttachment!.HeroModelId;
+            foreach (IModel grunt in unit.Models.Where(m => m.ID != heroId).Take(2))
+            {
+                grunt.DealWounds(grunt.TotalWounds);
+            }
+
+            RollToHitResults result = await RunHitStage(defender);
+
             Assert.That(result.SaveModifier, Is.EqualTo(0),
-                "a joined hero without Shielded breaks it for the whole unit.");
+                "1 of 2 living models is not a strict majority, so the unit loses Shielded.");
         }
 
         // Both host and hero carry Shielded: every living model has it, so it fires - exactly ONCE (per-unit
@@ -131,7 +152,7 @@ namespace FDG.Tests
                 RuleParticipant.Subject(defender, models: HeroStatRules.LivingModels(defender)));
 
             Assert.That(output.DebugLines,
-                Has.Some.Match(".*Evasive.*condition AllModelsHaveThisRule not met.*"),
+                Has.Some.Match(".*Evasive.*condition MostModelsHaveThisRule not met.*"),
                 "the hero's relocated Evasive is evaluated and its gate reported - not silently dropped.");
         }
 

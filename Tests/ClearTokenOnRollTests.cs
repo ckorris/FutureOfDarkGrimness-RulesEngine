@@ -31,7 +31,7 @@ namespace FDG.Tests
             {
                 new HookEntry(EHookID.Round_OnRoundStart,
                     new Condition.And(new Condition.TokenPresent(TokenType.Shaken),
-                                      new Condition.AllModelsHaveThisRule()),
+                                      new Condition.MostModelsHaveThisRule()),
                     new Effect.ClearTokenOnRoll(TokenType.Shaken, MinRoll: minRoll),
                     ELifetime.ThisRound),
             },

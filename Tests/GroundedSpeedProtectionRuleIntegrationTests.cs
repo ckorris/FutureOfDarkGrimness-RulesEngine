@@ -30,7 +30,7 @@ namespace FDG.Tests
                 new[]
                 {
                     new HookEntry(EHookID.Movement_OnMoveActionDeclared,
-                        new Condition.And(new Condition.AllModelsHaveThisRule(),
+                        new Condition.And(new Condition.MostModelsHaveThisRule(),
                             new Condition.MostModelsWithinInchesOfTerrain(Within)),
                         new Effect.MovementBonus(EActionType.Advance, 2f), ELifetime.ThisActivation),
                 },
@@ -42,7 +42,7 @@ namespace FDG.Tests
                 new[]
                 {
                     new HookEntry(EHookID.Shooting_OnSaveRollComplete,
-                        new Condition.And(new Condition.AllModelsHaveThisRule(),
+                        new Condition.And(new Condition.MostModelsHaveThisRule(),
                             new Condition.MostModelsWithinInchesOfTerrain(Within)),
                         new Effect.IgnoreWoundOnRoll(5), ELifetime.ThisAttack,
                         ERuleSeat.Subject),

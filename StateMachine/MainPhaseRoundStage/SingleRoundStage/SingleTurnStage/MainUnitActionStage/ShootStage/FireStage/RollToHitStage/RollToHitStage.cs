@@ -100,7 +100,7 @@ namespace FDG.Stages
                 // as Subject for hit modifiers. Its Net(Save) folds into RollToHitResults.SaveModifier below
                 // alongside the attacker's whole-attack AP, so a defensive +1 and an attacker's -N net
                 // correctly. #183: passing the defender's living models surfaces a joined hero's relocated
-                // Shielded/Fortified (gated by AllModelsHaveThisRule) instead of silently dropping them.
+                // Shielded/Fortified (gated by MostModelsHaveThisRule) instead of silently dropping them.
                 RuleParticipant.Subject(defender, models: HeroStatRules.LivingModels(defender)));
 
             IReadOnlyList<RuleOperation> operations = named.Select(n => n.Op).ToList();

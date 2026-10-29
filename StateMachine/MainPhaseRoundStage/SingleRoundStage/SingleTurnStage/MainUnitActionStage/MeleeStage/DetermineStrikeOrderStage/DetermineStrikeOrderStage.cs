@@ -73,7 +73,7 @@ namespace FDG.Stages
         /// weapon-scoped Counter fires), plus once weaponless (so unit-scoped defensive
         /// rules fire even with no melee weapons). #183: the weaponless participant carries the defender's
         /// living models under AnyOwner, so a joined hero's relocated unit-scoped Counter-Attack becomes
-        /// visible (gated by AllModelsHaveThisRule); the weapon carriers stay model-less (weapon-scoped
+        /// visible (gated by MostModelsHaveThisRule); the weapon carriers stay model-less (weapon-scoped
         /// Counter rides the weapon, not a model).
         /// </summary>
         internal static RuleParticipant[] SubjectWithMeleeWeapons(IUnit defender)

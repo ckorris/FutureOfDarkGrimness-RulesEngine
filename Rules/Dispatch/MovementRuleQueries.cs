@@ -110,7 +110,7 @@ namespace FDG.Rules.Dispatch
                          new ChargeDeclaredContext(charger, target, baseChargeInches),
                          RuleParticipant.Actor(charger),
                          // #183: the charged unit's living models surface a joined hero's relocated Melee
-                         // Shrouding / Darkborn (Defensive) charge debuff, gated by AllModelsHaveThisRule.
+                         // Shrouding / Darkborn (Defensive) charge debuff, gated by MostModelsHaveThisRule.
                          RuleParticipant.Subject(target, models: HeroStatRules.LivingModels(target))))
             {
                 if (op is RuleOperation.ApplyMovementBonus move && move.ActionType == EActionType.Charge)

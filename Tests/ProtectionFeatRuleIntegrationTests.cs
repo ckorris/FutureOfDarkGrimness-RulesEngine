@@ -32,14 +32,14 @@ namespace FDG.Tests
                     new TargetSelector(RangeInches: 0f, MinCount: 1, MaxCount: 1, ETargetAffinity.Self,
                         RequireLineOfSight: false),
                     new Effect.AddRule(Guard, ELifetime.UntilNextActivation),
-                    new Condition.AllModelsHaveThisRule(),
+                    new Condition.MostModelsHaveThisRule(),
                     Label: "Protection Feat"),
             });
 
         private static SpecialRuleDefinition ProtectionFeatGuard() => new(Guard,
             new[]
             {
-                new HookEntry(EHookID.Shooting_OnSaveRollComplete, new Condition.AllModelsHaveThisRule(),
+                new HookEntry(EHookID.Shooting_OnSaveRollComplete, new Condition.MostModelsHaveThisRule(),
                     new Effect.IgnoreWoundOnRoll(MinRoll: 5), ELifetime.ThisAttack, ERuleSeat.Subject),
             },
             Array.Empty<ActivatedAbility>());

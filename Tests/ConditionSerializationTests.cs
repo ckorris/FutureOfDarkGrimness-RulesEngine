@@ -50,6 +50,41 @@ namespace FDG.Tests
             Assert.That(JsonSerializer.Deserialize<Condition>(json, RuleJson.Options), Is.EqualTo(original));
         }
 
+        // #428: the 3.6 gate and the strict holdout gate each round-trip under their own kind.
+        [Test]
+        public void RuleOwnershipGates_RoundTripUnderTheirOwnKinds()
+        {
+            string most = JsonSerializer.Serialize((Condition)new Condition.MostModelsHaveThisRule(), RuleJson.Options);
+            string every = JsonSerializer.Serialize((Condition)new Condition.EveryModelHasThisRule(), RuleJson.Options);
+
+            Assert.That(most, Does.Contain("\"kind\": \"mostModelsHaveThisRule\""));
+            Assert.That(every, Does.Contain("\"kind\": \"everyModelHasThisRule\""));
+            Assert.That(JsonSerializer.Deserialize<Condition>(most, RuleJson.Options),
+                Is.EqualTo(new Condition.MostModelsHaveThisRule()));
+            Assert.That(JsonSerializer.Deserialize<Condition>(every, RuleJson.Options),
+                Is.EqualTo(new Condition.EveryModelHasThisRule()));
+        }
+
+        // #428: pre-3.6 data (old .fdgarmy files, .fdgsave snapshots, the bundled books until #438 re-bakes
+        // them) says "allModelsHaveThisRule". It must still parse - nested too, the way Reinforcement and the
+        // Grounded family And-compose it - and it parses to the MOST-models gate (3.6 semantics), not to the
+        // strict one. It keeps its kind on the way back out, so a re-saved old file is unchanged.
+        [Test]
+        public void TheLegacyAllModelsKind_ParsesAsTheMostModelsGate_AndRoundTrips()
+        {
+            const string json = "{ \"kind\": \"and\", \"left\": { \"kind\": \"allModelsHaveThisRule\" }, " +
+                "\"right\": { \"kind\": \"always\" } }";
+
+            var parsed = (Condition.And)JsonSerializer.Deserialize<Condition>(json, RuleJson.Options)!;
+
+            Assert.That(parsed.Left, Is.InstanceOf<Condition.LegacyAllModelsHaveThisRule>());
+            Assert.That(parsed.Left, Is.InstanceOf<Condition.MostModelsHaveThisRule>(),
+                "the legacy kind IS the most-models gate, so every 'is MostModelsHaveThisRule' check accepts it");
+            Assert.That(parsed.Left, Is.Not.InstanceOf<Condition.EveryModelHasThisRule>());
+            Assert.That(JsonSerializer.Serialize((Condition)parsed, RuleJson.Options),
+                Does.Contain("\"kind\": \"allModelsHaveThisRule\""));
+        }
+
         // A no-data condition serializes to just its discriminator.
         [Test]
         public void Always_SerializesToKindOnly()

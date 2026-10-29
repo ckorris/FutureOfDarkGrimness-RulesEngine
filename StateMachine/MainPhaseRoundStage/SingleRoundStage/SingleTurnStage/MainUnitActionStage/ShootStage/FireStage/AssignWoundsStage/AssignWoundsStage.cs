@@ -52,7 +52,7 @@ namespace FDG.Stages
                     GameContext.TableState.Terrain.Objects.ToList()),
                 RuleParticipant.Actor(attacker, metaData.WeaponType),
                 // #183: the defender's living models surface a joined hero's relocated wound-ignore rules
-                // (Regeneration/Resistance/Protected), gated by AllModelsHaveThisRule - so a sole-surviving
+                // (Regeneration/Resistance/Protected), gated by MostModelsHaveThisRule - so a sole-surviving
                 // hero regenerates, and the trace shows the gate deciding while grunts live.
                 RuleParticipant.Subject(defender, models: HeroStatRules.LivingModels(defender)));
 

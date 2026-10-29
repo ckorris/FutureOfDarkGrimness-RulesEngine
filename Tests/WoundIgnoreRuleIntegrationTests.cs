@@ -2,6 +2,7 @@ using FDG.Data;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Foundation;
+using FDG.SaveLoad;
 using FDG.Stages;
 using FDG.Tests.RulesHarness;
 using NUnit.Framework;
@@ -45,6 +46,48 @@ namespace FDG.Tests
             // 3 failed saves; Regeneration rolls 3 d6 and ignores the 5+s: 2 faces × 3/6 = 1.0 ignored.
             Assert.That(_requester.Captured!.TotalWoundsToAssign, Is.EqualTo(2f).Within(0.0001f),
                 "Regeneration ignores a third of the wounds (5+ on a probabilistic d6).");
+        }
+
+        // #428 - OPR 3.6: "When a unit where MOST models have this rule takes wounds, roll one die for each.
+        // On a 5+ it is ignored." Per-model attachment states the count; the stage threads the defender's
+        // living models, so a model-held Regeneration is seen and the gate counts it.
+        [TestCase(5, 2f, TestName = "Regeneration_FiveOfNineModels_IgnoresAThirdOfWounds")]
+        [TestCase(4, 3f, TestName = "Regeneration_FourOfNineModels_IgnoresNothing")]
+        public async Task Regeneration_NeedsMostModels(int carriers, float woundsAssigned)
+        {
+            DataBinding<UnitData> attacker = MakeUnit(modelCount: 1);
+            DataBinding<UnitData> defender = MakeUnit(modelCount: 9);
+            foreach (ModelData model in defender.GetValue().Models.OfType<ModelData>().Take(carriers))
+            {
+                model.AttachRuleDefinition(new ResolvedRule("Regeneration", CoreRuleCatalog.Regeneration));
+            }
+
+            await RunStage(attacker, defender, failedSaves: 3);
+
+            Assert.That(_requester.Captured!.TotalWoundsToAssign, Is.EqualTo(woundsAssigned).Within(0.0001f),
+                "'a unit where most models have this rule' - a strict majority of the living models");
+        }
+
+        [Test]
+        public async Task Regeneration_TenModelUnit_JoinedHeroLacksIt_StillIgnoresWounds()
+        {
+            // Under the pre-3.6 all-models gate the hero switched Regeneration off for all ten; 10 of 11 is most.
+            DataBinding<UnitData> attacker = MakeUnit(modelCount: 1);
+            UnitData host = MakeUnit(modelCount: 10).GetValue();
+            host.AttachRuleDefinition(new ResolvedRule("Regeneration", CoreRuleCatalog.Regeneration));
+            UnitData hero = MakeUnit(modelCount: 1).GetValue();
+            hero.AttachRuleDefinition(new ResolvedRule("Hero", CoreRuleCatalog.Hero));
+            HeroJoinResolver.Apply(new List<(UnitFileEntry, UnitData)>
+            {
+                (new UnitFileEntry { Id = "host" }, host),
+                (new UnitFileEntry { JoinsUnitId = "host" }, hero),
+            });
+            DataBinding<UnitData> defender = _store.GetDataBinding<UnitData>(_store.Create(host));
+
+            await RunStage(attacker, defender, failedSaves: 3);
+
+            Assert.That(_requester.Captured!.TotalWoundsToAssign, Is.EqualTo(2f).Within(0.0001f),
+                "the joined hero is one model of eleven, so the unit still regenerates");
         }
 
         [Test]

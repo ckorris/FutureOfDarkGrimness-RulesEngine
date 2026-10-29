@@ -33,7 +33,7 @@ namespace FDG.Rules.Dispatch
                          new RangeModifierContext(attacker),
                          RuleParticipant.Actor(attacker, weapon),
                          // #183: the defender's living models surface a joined hero's relocated Ranged
-                         // Shrouding / Darkborn (Defensive), gated by AllModelsHaveThisRule.
+                         // Shrouding / Darkborn (Defensive), gated by MostModelsHaveThisRule.
                          RuleParticipant.Subject(defender, models: HeroStatRules.LivingModels(defender))))
             {
                 if (op is RuleOperation.ApplyRangeModifier rangeModifier)

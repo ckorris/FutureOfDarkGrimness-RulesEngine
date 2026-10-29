@@ -1159,8 +1159,9 @@ public abstract record Effect
     /// authored as ordinary <see cref="RollModifier"/> entries on the same rule, so the compulsion and
     /// the buff stay separately testable.
     ///
-    /// <para>Authored with <see cref="Condition.AllModelsHaveThisRule"/> per the #267 convention: the
-    /// compulsion binds the WHOLE unit's action, so a joined hero without the rule frees the unit.</para>
+    /// <para>Authored with <see cref="Condition.MostModelsHaveThisRule"/> per the #267 convention (#428: "most
+    /// models" since OPR 3.6): the compulsion binds the WHOLE unit's action, so it binds only while most of the
+    /// unit has the rule - a joined hero without it is one model and no longer frees the unit (#303).</para>
     /// </summary>
     public sealed record CompelClosestTarget : Effect
     {

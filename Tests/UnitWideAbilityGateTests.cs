@@ -7,8 +7,9 @@ using NUnit.Framework;
 
 namespace FDG.Tests
 {
-    // #267 — a rule that repositions or re-activates the WHOLE bearer unit must gate on
-    // AllModelsHaveThisRule, or a single joined hero carrying it hands the ability to a unit that doesn't
+    // #267 — a rule that repositions or re-activates the WHOLE bearer unit must gate on rule ownership
+    // (MostModelsHaveThisRule since #428 / OPR 3.6; EveryModelHasThisRule for the two rules whose 3.6 text
+    // keeps "all models"), or a single joined hero carrying it hands the ability to a unit that doesn't
     // have it. Teleport shipped ungated (a hero with Teleport joined to a squad without it teleported the
     // whole squad); Vanguard, Fanatic and Martial Prowess had the same shape, and RuleValidator's #183 gate
     // check never saw any of them because it only inspects PASSIVE Subject-seat defensive entries.
@@ -25,7 +26,7 @@ namespace FDG.Tests
             new TargetSelector(0f, 1, 1, ETargetAffinity.Self, false);
 
         [Test]
-        public void EveryCoreCatalogRule_ThatMovesOrReactivatesItsWholeUnit_GatesOnAllModels()
+        public void EveryCoreCatalogRule_ThatMovesOrReactivatesItsWholeUnit_GatesOnRuleOwnership()
         {
             var validator = new RuleValidator();
 
@@ -42,24 +43,33 @@ namespace FDG.Tests
             }
 
             Assert.That(offenders, Is.Empty,
-                "these rules move or re-activate the whole unit without requiring every model to have them.");
+                "these rules move or re-activate the whole unit without requiring most models to have them.");
         }
 
         // The four the audit found. Named individually so a regression says which rule broke, not just
-        // "something in the catalog".
-        [TestCase("Teleport")]
-        [TestCase("Vanguard")]
-        [TestCase("Fanatic")]
-        [TestCase("Martial Prowess")]
-        public void TheAuditedRules_CarryTheGate(string ruleName)
+        // "something in the catalog". #428: OPR 3.6 moved three of them to "most models"; Martial Prowess
+        // keeps "if all models in this unit have this rule", so it alone stays on the strict gate.
+        [TestCase("Teleport", false)]
+        [TestCase("Vanguard", false)]
+        [TestCase("Fanatic", false)]
+        [TestCase("Martial Prowess", true)]
+        public void TheAuditedRules_CarryTheGate(string ruleName, bool keepsAllModels)
         {
             SpecialRuleDefinition rule = CoreRuleCatalog.All.Single(r => r.Name == ruleName);
 
             Assert.That(rule.Activated, Is.Not.Empty, $"{ruleName} is an activated ability.");
             foreach (ActivatedAbility ability in rule.Activated)
             {
-                Assert.That(MentionsAllModels(ability.AvailableWhen), Is.True,
-                    $"{ruleName}'s ability must be offered only when every model in the unit has it.");
+                if (keepsAllModels)
+                {
+                    Assert.That(ability.AvailableWhen, Is.InstanceOf<Condition.EveryModelHasThisRule>(),
+                        $"{ruleName}'s 3.6 text still says 'if ALL models in this unit have this rule'.");
+                }
+                else
+                {
+                    Assert.That(GatesOnMostModels(ability.AvailableWhen), Is.True,
+                        $"{ruleName}'s ability must be offered only when most models in the unit have it.");
+                }
             }
         }
 
@@ -76,7 +86,7 @@ namespace FDG.Tests
             IReadOnlyList<RuleViolation> violations = new RuleValidator().ValidateAuthoring(ungated);
 
             Assert.That(violations, Is.Not.Empty);
-            Assert.That(violations[0].Describe(), Does.Contain("AllModelsHaveThisRule"));
+            Assert.That(violations[0].Describe(), Does.Contain("MostModelsHaveThisRule"));
         }
 
         [Test]
@@ -86,10 +96,47 @@ namespace FDG.Tests
                 new[]
                 {
                     new ActivatedAbility(EHookID.Activation_OnActionChoice, new Cost.OncePerActivation(),
-                        Self, new Effect.Teleport(), new Condition.AllModelsHaveThisRule()),
+                        Self, new Effect.Teleport(), new Condition.MostModelsHaveThisRule()),
                 });
 
             Assert.That(new RuleValidator().ValidateAuthoring(gated), Is.Empty);
+        }
+
+        // #428: the strict gate (Inquisitorial Agent, Martial Prowess) is a stronger requirement than most
+        // models, so it satisfies the whole-unit check too.
+        [Test]
+        public void AStrictlyGatedReactivation_IsAccepted()
+        {
+            var gated = new SpecialRuleDefinition("Test Prowess", NoPassive,
+                new[]
+                {
+                    new ActivatedAbility(EHookID.Activation_OnNextActivatorRequested, new Cost.OncePerGame(),
+                        Self, new Effect.Reactivate(), new Condition.EveryModelHasThisRule()),
+                });
+
+            Assert.That(new RuleValidator().ValidateAuthoring(gated), Is.Empty);
+        }
+
+        // #428: the old "allModelsHaveThisRule" kind still loads (old army files embed it) and still counts as
+        // the gate there - it IS the most-models condition - but newly authored data must name what it means.
+        [Test]
+        public void TheLegacyAllModelsKind_LoadsAsTheGate_ButAuthoringRefusesIt()
+        {
+            var legacy = new SpecialRuleDefinition("Test Teleport", NoPassive,
+                new[]
+                {
+                    new ActivatedAbility(EHookID.Activation_OnActionChoice, new Cost.OncePerActivation(),
+                        Self, new Effect.Teleport(), new Condition.LegacyAllModelsHaveThisRule()),
+                });
+
+            Assert.That(new RuleValidator().Validate(legacy), Is.Empty,
+                "the load gate accepts the legacy kind, or every pre-3.6 army file would refuse to open.");
+
+            IReadOnlyList<RuleViolation> authoring = new RuleValidator().ValidateAuthoring(legacy);
+            Assert.That(authoring, Has.Count.EqualTo(1),
+                "only the legacy-kind refusal - the legacy condition still satisfies the whole-unit gate.");
+            Assert.That(authoring[0].Describe(), Does.Contain("allModelsHaveThisRule")
+                .And.Contain("mostModelsHaveThisRule").And.Contain("everyModelHasThisRule"));
         }
 
         [Test]
@@ -165,10 +212,10 @@ namespace FDG.Tests
                 "...but authoring new data like that must still fail.");
         }
 
-        private static bool MentionsAllModels(Condition condition) => condition switch
+        private static bool GatesOnMostModels(Condition condition) => condition switch
         {
-            Condition.AllModelsHaveThisRule => true,
-            Condition.And and => MentionsAllModels(and.Left) || MentionsAllModels(and.Right),
+            Condition.MostModelsHaveThisRule => true,
+            Condition.And and => GatesOnMostModels(and.Left) || GatesOnMostModels(and.Right),
             _ => false,
         };
     }

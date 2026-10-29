@@ -900,11 +900,11 @@ public sealed class RuleEvaluator
     {
         foreach (ResolvedRule rule in rules)
         {
-            // Definition is what makes a self-referential condition work (Condition.AllModelsHaveThisRule
-            // asks "does every model have the rule that is firing?"). Without it that condition takes its
+            // Definition is what makes a self-referential condition work (Condition.MostModelsHaveThisRule
+            // asks "do most models have the rule that is firing?"). Without it that condition takes its
             // "no rule identity to check" arm and returns true, so an ability gated on it was silently
-            // ungated. Versatile Defense is the first rule whose text puts the all-models gate on the
-            // CHOICE ("when a unit where all models have this rule is deployed or activated, pick one
+            // ungated. Versatile Defense is the first rule whose text puts the ownership gate on the
+            // CHOICE ("when a unit where most models have this rule is deployed or activated, pick one
             // effect") rather than on the effect, which is why nothing surfaced it before.
             // #191 search perf pass 10: a rule with no ability triggering at this hook offers nothing -
             // skip it before building its invocation (which every rule used to pay for).

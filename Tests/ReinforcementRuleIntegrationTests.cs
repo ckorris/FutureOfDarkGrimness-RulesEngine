@@ -28,7 +28,7 @@ namespace FDG.Tests
         private const string RuleName = "Reinforcement";
 
         private static Condition Gate() => new Condition.And(
-            new Condition.AllModelsHaveThisRule(),
+            new Condition.MostModelsHaveThisRule(),
             new Condition.Not(new Condition.TokenPresent(TokenType.ReinforcementSpent)));
 
         private static SpecialRuleDefinition Definition() => new(RuleName,

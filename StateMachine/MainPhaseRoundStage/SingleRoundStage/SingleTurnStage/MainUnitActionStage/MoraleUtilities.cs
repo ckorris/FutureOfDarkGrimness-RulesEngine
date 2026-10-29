@@ -115,8 +115,8 @@ namespace FDG.Stages
             // #183 shape: the participant carries the unit's LIVING MODELS, so a rule held on a model
             // rather than the unit (a joined hero's, or a per-model champion upgrade) is visible here at
             // all. Without it MostModelsHaveThisRule could only ever see unit-level attachments, making
-            // its majority arithmetic dead code. Fearless is unaffected - it gates on
-            // AllModelsHaveThisRule, which a lone hero still fails.
+            // its majority arithmetic dead code. Fearless rides the same gate since #428 (3.6: "a unit
+            // where most models have this rule"), so a joined hero without it no longer breaks it.
             IReadOnlyList<RuleOperation> completeOps = gameContext.RuleEvaluator.EvaluateAll(
                 new MoraleTestContext(testingUnit),
                 RuleParticipant.Actor(testingUnit, models: HeroStatRules.LivingModels(testingUnit)));

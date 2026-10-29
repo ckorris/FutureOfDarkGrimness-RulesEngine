@@ -7,7 +7,7 @@ namespace FDG.Rules.Dispatch;
 /// A rule-authoring defect found by <see cref="RuleValidator"/>. A capability violation sets
 /// <see cref="MissingCapability"/> (a Condition/Effect reads something its hook can't provide); a
 /// semantic violation leaves it null and carries a human-readable <see cref="Detail"/> instead
-/// (e.g. the #183 all-models gate check). Consumers render <see cref="Describe"/>.
+/// (e.g. the #183 rule-ownership gate check). Consumers render <see cref="Describe"/>.
 /// </summary>
 public sealed record RuleViolation(string RuleName, EHookID Hook, string Member, Type? MissingCapability,
     string? Detail = null)
@@ -23,13 +23,14 @@ public sealed class RuleValidator
     private const string EFFECT_MEMBER_NAME = "Effect";
     private const string AVAILABLE_WHEN_MEMBER_NAME = "AvailableWhen";
 
-    // #183 — Subject-seat hooks where a unit-targeted defensive rule must gate on
-    // Condition.AllModelsHaveThisRule. These are the attack-interaction hooks whose Subject participant
-    // is the unit being attacked/charged; the rulebook applies rules like Evasive/Resistance/Fortified
-    // only "to units where all models have this rule", and slice-2 model visibility means an ungated
-    // copy carried by a lone joined hero would otherwise fire for the whole unit. The gate is the single
-    // mechanism enforcing the RAW reading in both directions (host-has-hero-lacks and hero-has-host-lacks).
-    private static readonly IReadOnlySet<EHookID> AllModelsGatedSubjectHooks = new HashSet<EHookID>
+    // #183 — Subject-seat hooks where a unit-targeted defensive rule must gate on rule ownership
+    // (Condition.MostModelsHaveThisRule since #428; Condition.EveryModelHasThisRule also satisfies it). These
+    // are the attack-interaction hooks whose Subject participant is the unit being attacked/charged; OPR 3.6
+    // applies rules like Evasive/Resistance/Fortified only "to units where most models have this rule", and
+    // slice-2 model visibility means an ungated copy carried by a lone joined hero would otherwise fire for
+    // the whole unit. The gate is the single mechanism enforcing the RAW reading in both directions (a
+    // joined hero is one model of the unit, so it neither breaks a majority nor makes one on its own).
+    private static readonly IReadOnlySet<EHookID> OwnershipGatedSubjectHooks = new HashSet<EHookID>
     {
         EHookID.Shooting_OnRangeCheck,
         EHookID.Shooting_OnHitRollModifier,
@@ -53,7 +54,7 @@ public sealed class RuleValidator
 
         foreach (HookEntry entry in rule.Passive)
         {
-            CheckAllModelsGate(rule, entry, violations);
+            CheckOwnershipGate(rule, entry, violations);
 
             if (!_catalog.TryGetContextType(entry.HookID, out _))
             {
@@ -76,7 +77,8 @@ public sealed class RuleValidator
 
     /// <summary>
     /// #267 — the AUTHORING check: everything <see cref="Validate"/> covers, plus the whole-unit-ability
-    /// all-models gate (<see cref="CheckUnitWideSelfEffectGate"/>).
+    /// ownership gate (<see cref="CheckUnitWideSelfEffectGate"/>) and, since #428, a refusal of the legacy
+    /// <c>allModelsHaveThisRule</c> kind (<see cref="CheckNoLegacyAllModelsKind"/>).
     ///
     /// <para>Deliberately separate from <see cref="Validate"/>, which is the army-LOAD gate and hard-fails
     /// the whole load. Supplement definitions travel inside saved <c>.fdgarmy</c> files, so folding the new
@@ -93,12 +95,15 @@ public sealed class RuleValidator
             // A passive entry's effect applies to the bearer, so it is always "self-targeted".
             CheckUnitWideSelfEffectGate(rule, entry.HookID, entry.Effect, entry.Condition,
                 targetsSelf: true, CONDITION_MEMBER_NAME, violations);
+            CheckNoLegacyAllModelsKind(rule, entry.HookID, entry.Condition, CONDITION_MEMBER_NAME, violations);
         }
 
         foreach (ActivatedAbility ability in rule.Activated)
         {
             CheckUnitWideSelfEffectGate(rule, ability.TriggerHook, ability.Effect, ability.AvailableWhen,
                 ability.TargetSelector.TargetAffinity == ETargetAffinity.Self,
+                AVAILABLE_WHEN_MEMBER_NAME, violations);
+            CheckNoLegacyAllModelsKind(rule, ability.TriggerHook, ability.AvailableWhen,
                 AVAILABLE_WHEN_MEMBER_NAME, violations);
         }
 
@@ -118,47 +123,76 @@ public sealed class RuleValidator
     }
 
     // #183 — a unit-scoped rule with a Subject-seat entry at a defensive attack-interaction hook must gate
-    // its condition on AllModelsHaveThisRule (weapon-scoped rules ride their weapon and are exempt; the
-    // gate is meaningless per-weapon). Enforced here so both the catalog (via RuleFireLint) and any
-    // embedded/imported supplement rule (via army-load + BookRuleSupplement) reject an ungated one.
-    private static void CheckAllModelsGate(SpecialRuleDefinition rule, HookEntry entry,
+    // its condition on rule ownership (weapon-scoped rules ride their weapon and are exempt; the gate is
+    // meaningless per-weapon). Enforced here so both the catalog (via RuleFireLint) and any
+    // embedded/imported supplement rule (via army-load + BookRuleSupplement) reject an ungated one. This is
+    // the army-LOAD gate, so it accepts the legacy allModelsHaveThisRule kind (a MostModelsHaveThisRule).
+    private static void CheckOwnershipGate(SpecialRuleDefinition rule, HookEntry entry,
         List<RuleViolation> violations)
     {
         if (rule.Scope != ERuleScope.Unit
             || entry.Seat != ERuleSeat.Subject
-            || !AllModelsGatedSubjectHooks.Contains(entry.HookID)
-            || GatesOnAllModels(entry.Condition))
+            || !OwnershipGatedSubjectHooks.Contains(entry.HookID)
+            || GatesOnRuleOwnership(entry.Condition))
         {
             return;
         }
 
         violations.Add(new RuleViolation(rule.Name, entry.HookID, CONDITION_MEMBER_NAME, MissingCapability: null,
             "a unit-scoped defensive rule firing at the Subject seat must gate its condition on " +
-            "AllModelsHaveThisRule - RAW, the unit benefits only if every model has the rule, and per-model " +
-            "dispatch would otherwise let a lone joined hero's copy fire for the whole unit"));
+            "MostModelsHaveThisRule - RAW, the unit benefits only if most of its models have the rule, and " +
+            "per-model dispatch would otherwise let a lone joined hero's copy fire for the whole unit"));
     }
 
-    // #267 — a Unit-scoped rule that repositions or re-activates the WHOLE bearer unit must gate on
-    // AllModelsHaveThisRule. The rulebook convention is that a unit-wide ability works only if every model
-    // has it, and per-model dispatch means a single joined hero carrying Teleport would otherwise let the
-    // entire unit teleport. This is the activated-ability sibling of the #183 defensive-rule gate above,
-    // which only covers passive Subject-seat entries and so never saw Teleport / Fanatic / Wolfborn.
+    // #267 — a Unit-scoped rule that repositions or re-activates the WHOLE bearer unit must gate on rule
+    // ownership (MostModelsHaveThisRule since #428; EveryModelHasThisRule where the 3.6 text keeps "all
+    // models"). The rulebook convention is that a unit-wide ability works only if most of the unit has it,
+    // and per-model dispatch means a single joined hero carrying Teleport would otherwise let the entire
+    // unit teleport. This is the activated-ability sibling of the #183 defensive-rule gate above, which only
+    // covers passive Subject-seat entries and so never saw Teleport / Fanatic / Wolfborn.
     private static void CheckUnitWideSelfEffectGate(SpecialRuleDefinition rule, EHookID hook, Effect effect,
         Condition condition, bool targetsSelf, string member, List<RuleViolation> violations)
     {
         if (rule.Scope != ERuleScope.Unit
             || !targetsSelf
             || !IsWholeUnitSelfEffect(effect, hook)
-            || GatesOnAllModels(condition))
+            || GatesOnRuleOwnership(condition))
         {
             return;
         }
 
         violations.Add(new RuleViolation(rule.Name, hook, member, MissingCapability: null,
             "a rule that repositions or re-activates the WHOLE bearer unit must gate on " +
-            "AllModelsHaveThisRule - RAW the unit gets the ability only if every model has it, and per-model " +
-            "dispatch would otherwise let one joined hero's copy move or reactivate the entire unit"));
+            "MostModelsHaveThisRule - RAW the unit gets the ability only if most of its models have it, and " +
+            "per-model dispatch would otherwise let one joined hero's copy move or reactivate the entire unit"));
     }
+
+    // #428 — the legacy "allModelsHaveThisRule" kind loads (old army files embed it, and it means
+    // MostModelsHaveThisRule), but new data must say what it means: mostModelsHaveThisRule, or
+    // everyModelHasThisRule for a rule whose 3.6 text keeps "all models". Authoring-only, like the #267 check,
+    // so the old files that still carry the kind keep opening.
+    private static void CheckNoLegacyAllModelsKind(SpecialRuleDefinition rule, EHookID hook, Condition condition,
+        string member, List<RuleViolation> violations)
+    {
+        if (!ContainsLegacyAllModelsKind(condition))
+        {
+            return;
+        }
+
+        violations.Add(new RuleViolation(rule.Name, hook, member, MissingCapability: null,
+            "uses the legacy 'allModelsHaveThisRule' condition kind, which OPR 3.6 data reads as " +
+            "'mostModelsHaveThisRule' - write 'mostModelsHaveThisRule', or 'everyModelHasThisRule' if the 3.6 " +
+            "rule text still says 'all models'"));
+    }
+
+    private static bool ContainsLegacyAllModelsKind(Condition condition) => condition switch
+    {
+        Condition.LegacyAllModelsHaveThisRule => true,
+        Condition.And and => ContainsLegacyAllModelsKind(and.Left) || ContainsLegacyAllModelsKind(and.Right),
+        Condition.Or or => ContainsLegacyAllModelsKind(or.Left) || ContainsLegacyAllModelsKind(or.Right),
+        Condition.Not not => ContainsLegacyAllModelsKind(not.Inner),
+        _ => false,
+    };
 
     // The effects that move or re-activate every model of the bearer unit at once.
     private static bool IsWholeUnitSelfEffect(Effect effect, EHookID hook) => effect switch
@@ -174,12 +208,14 @@ public sealed class RuleValidator
         _ => false,
     };
 
-    // True if AllModelsHaveThisRule appears in a CONJUNCTIVE position (top-level or inside an And chain),
-    // so it actually gates. Under an Or/Not it wouldn't, so those don't count.
-    private static bool GatesOnAllModels(Condition condition) => condition switch
+    // True if a rule-ownership gate appears in a CONJUNCTIVE position (top-level or inside an And chain), so
+    // it actually gates. Under an Or/Not it wouldn't, so those don't count. MostModelsHaveThisRule matches its
+    // legacy-kind subtype too; EveryModelHasThisRule is the stricter gate and satisfies the requirement.
+    private static bool GatesOnRuleOwnership(Condition condition) => condition switch
     {
-        Condition.AllModelsHaveThisRule => true,
-        Condition.And and => GatesOnAllModels(and.Left) || GatesOnAllModels(and.Right),
+        Condition.MostModelsHaveThisRule => true,
+        Condition.EveryModelHasThisRule => true,
+        Condition.And and => GatesOnRuleOwnership(and.Left) || GatesOnRuleOwnership(and.Right),
         _ => false,
     };
 }

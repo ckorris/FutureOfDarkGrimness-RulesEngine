@@ -66,7 +66,7 @@ namespace FDG.Stages
                     EModelRuleScope.AllOwners),
                 // #183: the defender's living models contribute their per-model defensive rules (a joined
                 // hero's relocated Evasive/Melee-Evasion/Artillery) under AnyOwner, so the merge no longer
-                // hides them; the rule's AllModelsHaveThisRule gate still decides whether it applies.
+                // hides them; the rule's MostModelsHaveThisRule gate still decides whether it applies.
                 RuleParticipant.Subject(defender, models: HeroStatRules.LivingModels(defender)));
 
             IReadOnlyList<RuleOperation> operations = named.Select(n => n.Op).ToList();

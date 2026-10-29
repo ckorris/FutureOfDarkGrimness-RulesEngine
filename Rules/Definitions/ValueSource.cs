@@ -62,12 +62,12 @@ public abstract record ValueSource
     /// <summary>
     /// How many LIVING models of the bearer's unit carry the rule that is firing — Caster Group's
     /// "Caster(X), where X is the total number of models with this rule in this unit". Self-referential in
-    /// the same way <see cref="Condition.AllModelsHaveThisRule"/> is: it reads the firing rule's own
+    /// the same way <see cref="Condition.MostModelsHaveThisRule"/> is: it reads the firing rule's own
     /// identity, so one value source serves every count-your-carriers rule.
     ///
     /// <para>Counts a model as a carrier if it holds the rule itself OR the unit does (a unit-scoped rule
     /// covers every model), and counts unit-held GRANTS for every model, matching
-    /// <see cref="Condition.AllModelsHaveThisRule"/>'s accounting. Living only: the count is read at each
+    /// <see cref="Condition.MostModelsHaveThisRule"/>'s accounting. Living only: the count is read at each
     /// firing, so a unit that has taken casualties funds a smaller pool next round, which is what
     /// "the total number of models with this rule" means once models start dying.</para>
     /// </summary>

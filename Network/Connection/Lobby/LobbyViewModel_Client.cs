@@ -418,7 +418,7 @@ namespace FDG.Network.Connection.Lobby
 
             FDGGame_AsClient fdgGame = new FDGGame_AsClient(_gameDataStore, _messageBusClient, _thisPlayerID.Value);
 
-            // #406: only a well-formed ID is passed on; anything else (an older host, a garbled frame)
+            // #412: only a well-formed ID is passed on; anything else (an older host, a garbled frame)
             // reads as "no ID", which the front end handles by sending its game_join without one.
             _launchedGameId = Guid.TryParse(launchGameMessage.GameId, out Guid gameId) ? gameId.ToString("D") : null;
             OnLaunched?.Invoke(fdgGame);

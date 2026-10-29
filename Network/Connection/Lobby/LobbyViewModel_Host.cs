@@ -173,7 +173,7 @@ namespace FDG.Network.Connection.Lobby
 
         public bool IsResumeMode => _isResume;
 
-        // #406: minted at launch (new game or resume), before OnLaunched fires and before the launch
+        // #412: minted at launch (new game or resume), before OnLaunched fires and before the launch
         // message goes out carrying it. Written once on the launch path; read by the front end.
         private volatile string? _launchedGameId;
 

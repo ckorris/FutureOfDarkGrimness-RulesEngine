@@ -13,7 +13,7 @@ using NUnit.Framework;
 namespace FDG.Tests
 {
     /// <summary>
-    /// #406: the launch message carries a host-minted game ID so the front end's anonymous usage events
+    /// #412: the launch message carries a host-minted game ID so the front end's anonymous usage events
     /// (host game_start/game_end, client game_join) can be paired. The field is optional on the wire in
     /// both directions - an older host sends none, an older client ignores it - which is why it needed
     /// no protocol bump. Also pins the host-only AI-profile lookup the host's game_start reads.

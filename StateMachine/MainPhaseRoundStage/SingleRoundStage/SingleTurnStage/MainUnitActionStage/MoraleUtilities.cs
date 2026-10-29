@@ -246,6 +246,33 @@ namespace FDG.Stages
         }
 
         /// <summary>
+        /// #413: why <see cref="ResolveWoundDrivenMorale"/> took no test, as a log line - or null when
+        /// nothing is worth saying (a unit destroyed outright already has its death logged). Without it a
+        /// skipped test left only "Resolving ranged morale." in the log, which read as a missed roll.
+        /// Example: a 3-model Tough(3) unit shot to 4/9 wounds with 2 models standing logs
+        /// "Hive Guardians took wounds but is above half strength (2/3 models) - no morale test."
+        /// </summary>
+        public static string? DescribeSkippedWoundDrivenMorale(float remainingWoundsBefore, IUnit unitAfter)
+        {
+            if (unitAfter.GetIsAlive() == false) return null;
+            if ((unitAfter.RemainingWounds < remainingWoundsBefore) == false)
+                return $"{unitAfter.Name} took no wounds - no morale test.";
+            if (unitAfter.GetIsAtHalfStrength() == false)
+                return $"{unitAfter.Name} took wounds but is above half strength ({DescribeStrength(unitAfter)}) - no morale test.";
+            return null;
+        }
+
+        // Mirrors GetIsAtHalfStrength's shape split: models for a multi-model unit, wounds for a lone model.
+        private static string DescribeStrength(IUnit unit)
+        {
+            if (unit.Models.Count == 1)
+                return $"{unit.RemainingWounds:0.##}/{unit.MaxWounds:0.##} wounds";
+
+            int livingModels = unit.Models.Count(model => model.GetIsAlive());
+            return $"{livingModels}/{unit.Models.Count} models";
+        }
+
+        /// <summary>
         /// Resolve a wound-driven morale test (shooting): if the unit took wounds and is now at half
         /// strength or less, it tests, and a failure makes it Shaken. A failed non-melee
         /// morale test never Routs — Rout is a melee-only result (GF v3.5.1: the general morale rule says

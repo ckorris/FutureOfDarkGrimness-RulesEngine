@@ -193,6 +193,70 @@ namespace FDG.Tests
                 "the action's wounds left the unit at half strength, so it tests once at the end.");
         }
 
+        // #413: the reported case - 3x Tough(3) Hive Guardians shot to 4/9 wounds with 2 of 3 models still
+        // standing. Half strength counts MODELS for a multi-model unit, so no test is owed; the stage used to
+        // go silent after "Resolving ranged morale.", which read as a missed roll. The die fails, so a
+        // wrongly-taken test would show as Shaken.
+        [Test]
+        public async Task ToughUnit_WoundedButAboveHalfByModels_NoTest_LogsWhy()
+        {
+            var log = new RecordingTextOutput();
+            var (combat, defender) = BuildShoot(defenderModels: 3, dieValue: 1, toughness: 3, log);
+            combat.RegisterAttackedDefender(defender);
+            var models = defender.GetValue().Models;
+            models[0].DealWounds(3);                    // one model dead
+            models[1].DealWounds(2);                    // one on its last wound -> 4/9 wounds, 2/3 models
+
+            await RunResolve(combat);
+
+            Assert.That(IsShaken(defender), Is.False, "2 of 3 models standing is above half strength - no test.");
+            Assert.That(log.Entries.Select(e => e.Message), Has.Member(
+                "Defender took wounds but is above half strength (2/3 models) - no morale test."));
+        }
+
+        [Test]
+        public async Task SingleToughModel_WoundedButAboveHalf_LogsWounds()
+        {
+            var log = new RecordingTextOutput();
+            var (combat, defender) = BuildShoot(defenderModels: 1, dieValue: 1, toughness: 6, log);
+            combat.RegisterAttackedDefender(defender);
+            defender.GetValue().Models[0].DealWounds(2);
+
+            await RunResolve(combat);
+
+            Assert.That(IsShaken(defender), Is.False);
+            Assert.That(log.Entries.Select(e => e.Message), Has.Member(
+                "Defender took wounds but is above half strength (4/6 wounds) - no morale test."),
+                "a lone model measures half strength by wounds, so the reason quotes wounds, not models.");
+        }
+
+        [Test]
+        public async Task TargetedButUnwounded_LogsWhy()
+        {
+            var log = new RecordingTextOutput();
+            var (combat, defender) = BuildShoot(defenderModels: 4, dieValue: 1, toughness: 1, log);
+            KillModels(defender, 2);                    // at half before the shooting
+            combat.RegisterAttackedDefender(defender);
+
+            await RunResolve(combat);
+
+            Assert.That(log.Entries.Select(e => e.Message), Has.Member("Defender took no wounds - no morale test."));
+        }
+
+        [Test]
+        public async Task DestroyedOutright_LogsNoSkipReason()
+        {
+            var log = new RecordingTextOutput();
+            var (combat, defender) = BuildShoot(defenderModels: 2, dieValue: 6, toughness: 1, log);
+            combat.RegisterAttackedDefender(defender);
+            KillModels(defender, 2);
+
+            await RunResolve(combat);
+
+            Assert.That(log.Entries.Select(e => e.Message), Has.None.Contains("no morale test"),
+                "a destroyed unit's death is already logged - no skip reason is added for it.");
+        }
+
         // Helpers
 
         private static bool IsShaken(DataBinding<UnitData> unit) =>
@@ -230,13 +294,18 @@ namespace FDG.Tests
             }
         }
 
-        private static (CombatActionContext Combat, DataBinding<UnitData> Defender) BuildShoot(int defenderModels, int dieValue)
+        private static (CombatActionContext Combat, DataBinding<UnitData> Defender) BuildShoot(int defenderModels, int dieValue,
+            int toughness = 1, ITextOutput? log = null)
         {
             var store = GameDataStore.GameDataStoreBuilder.GetDefault();
-            var ctx = new TestGameContext(store, new FixedDiceRoller(dieValue));
+            var ctx = new TestGameContext(store, new FixedDiceRoller(dieValue), textOutput: log);
 
             var attacker = MakeUnit(store, "Attacker", modelCount: 1, new Position(0, 0));
             var defender = MakeUnit(store, "Defender", defenderModels, new Position(10, 0));
+            if (toughness > 1)
+            {
+                foreach (var model in defender.GetValue().Models) model.SetMaxWounds(toughness);
+            }
 
             var combat = new CombatActionContext(ctx, attacker, isMelee: false);
             return (combat, defender);

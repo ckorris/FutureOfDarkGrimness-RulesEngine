@@ -52,6 +52,11 @@ namespace FDG.Stages
                 GameContext.Log($"{defender.Name()} is at half strength or less, failed its morale test, " +
                     "and is now Shaken.");
             }
+            else if (MoraleUtilities.DescribeSkippedWoundDrivenMorale(
+                         baseline.RemainingWoundsBefore, defender.GetValue()) is string reason)
+            {
+                GameContext.Log(reason);
+            }
 
             await onFinished(new StrafeMoraleResults(result));
         }

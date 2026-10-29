@@ -111,6 +111,8 @@ namespace FDG.Stages
             storm.OnAllDone.Bind(chooseAction);
             chooseAction.ToReconcileEndOfActivation.Bind(toReconcileActivationEvent);
             chooseAction.ToBackOut.Bind(backedOutEvent);
+            // #408: Back at an activation-start "pick one effect" prompt leaves the same way.
+            activationStart.OnBackedOut.Bind(backedOutEvent);
             movement.OnFinishedMovement.Bind(chooseAction);
             // Abandoning the move at the path prompt returns without registering a move distance.
             movement.BackToChooseAction.Bind(chooseAction);

@@ -519,6 +519,10 @@ namespace FDG.Stages
                         "Choose Action received a cancel reply, but the activation was not cancellable.");
                 }
 
+                // #408: undo the token-only activation-start abilities (and the start-of-activation sweep),
+                // so re-activating the unit later offers them afresh with nothing spent.
+                context.ActivationStartTokens?.Restore();
+
                 GameContext.Log($"{context.ActivatingUnit.GetValue().Name}: activation backed out - " +
                     "choose a unit to activate.");
                 await ToBackOut.Activate(context);

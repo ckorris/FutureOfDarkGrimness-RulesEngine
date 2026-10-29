@@ -108,8 +108,8 @@ namespace FDG.Stages
                     if (!accepted) continue;
                 }
 
-                AbilityEffectChoice.Outcome outcome = await AbilityEffectChoice.Resolve(
-                    GameContext, unit.PlayerID, unit, ruleOffers, "as this activation ends");
+                AbilityEffectChoice.Outcome outcome = (await AbilityEffectChoice.Resolve(
+                    GameContext, unit.PlayerID, unit, ruleOffers, "as this activation ends"))!.Value; // not cancellable
 
                 GameContext.Log(ruleOffers.Count == 1
                     ? $"{unit.Name}: {outcome.Chosen.RuleName} applies."

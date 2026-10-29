@@ -109,6 +109,28 @@ public class TokenContainer : ITokenContainer
         if (changed is { } c) OnTokenCountChanged?.Invoke(c);
     }
 
+    public void RestoreTokens(IReadOnlyList<Token> snapshot)
+    {
+        List<Token> removed = new List<Token>();
+        List<Token> added = new List<Token>();
+        lock (_lock)
+        {
+            // Tokens are immutable records, so value equality says exactly which entries survived untouched.
+            // A pile whose count changed is reported as removed + re-added - simpler than pairing entries
+            // up, and every subscriber (network sync, renderer) only reacts to "something changed".
+            List<Token> remaining = new List<Token>(snapshot);
+            foreach (Token current in _tokens)
+            {
+                if (!remaining.Remove(current)) removed.Add(current);
+            }
+            added.AddRange(remaining);
+            _tokens = new List<Token>(snapshot);
+        }
+
+        foreach (Token token in removed) OnTokenRemoved?.Invoke(token);
+        foreach (Token token in added) OnTokenAdded?.Invoke(token);
+    }
+
     public int RemoveTokens(TokenType tokenType, int count = 1)
         => RemoveMatching(entry => entry.Type == tokenType, count);
 

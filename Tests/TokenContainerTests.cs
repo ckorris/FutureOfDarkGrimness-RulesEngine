@@ -11,6 +11,50 @@ namespace FDG.Tests
     public class TokenContainerTests
     {
         // ----------------------------------------------------------------------
+        // RestoreTokens (#408) — rolling a container back to an earlier snapshot
+        // ----------------------------------------------------------------------
+
+        [Test]
+        public void RestoreTokens_PutsBackTheSnapshot_AndAnnouncesEveryDifference()
+        {
+            var c = new TokenContainer();
+            c.AddToken(MakeToken(TokenType.Shaken, count: 1));
+            c.AddToken(MakeToken(TokenType.Fatigued, count: 2));
+            List<Token> snapshot = c.GetAllTokens().ToList();
+
+            c.RemoveTokens(TokenType.Shaken);              // gone since the snapshot
+            c.RemoveTokens(TokenType.Fatigued);            // count changed (2 -> 1)
+            c.AddToken(MakeToken(TokenType.ActivatedOutOfOrder, count: 1)); // new since the snapshot
+
+            var added = new List<Token>();
+            var removed = new List<Token>();
+            c.OnTokenAdded += added.Add;
+            c.OnTokenRemoved += removed.Add;
+
+            c.RestoreTokens(snapshot);
+
+            Assert.That(c.GetAllTokens(), Is.EqualTo(snapshot), "exactly the snapshot, in its order");
+            Assert.That(removed.Select(t => t.Type), Is.EquivalentTo(new[] { TokenType.Fatigued, TokenType.ActivatedOutOfOrder }));
+            Assert.That(added.Select(t => t.Type), Is.EquivalentTo(new[] { TokenType.Shaken, TokenType.Fatigued }),
+                "network sync and the renderer hear about the rollback like any other change");
+        }
+
+        [Test]
+        public void RestoreTokens_ToTheSameState_AnnouncesNothing()
+        {
+            var c = new TokenContainer();
+            c.AddToken(MakeToken(TokenType.Shaken, count: 1));
+            int events = 0;
+            c.OnTokenAdded += _ => events++;
+            c.OnTokenRemoved += _ => events++;
+
+            c.RestoreTokens(c.GetAllTokens().ToList());
+
+            Assert.That(events, Is.Zero);
+            Assert.That(c.GetTokenCount(TokenType.Shaken), Is.EqualTo(1));
+        }
+
+        // ----------------------------------------------------------------------
         // AddToken — new entries
         // ----------------------------------------------------------------------
 

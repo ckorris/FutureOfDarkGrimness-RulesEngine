@@ -20,8 +20,10 @@ namespace FDG.StageResolution.Requests
     /// System.Text.Json rule schema knows how to round-trip. An in-process agent that wants the effect graph
     /// can look <see cref="RuleName"/> up in the rule catalog.</para>
     ///
-    /// Mandatory: there is no cancel and no "none of these". The stage that raises it has already checked
-    /// that at least two options are affordable and available.
+    /// There is never a "none of these": the stage has already checked that at least two options are
+    /// affordable and available. #408: at activation start the request may still be backed out of
+    /// (<see cref="AllowCancel"/>) - Back un-picks the unit rather than skipping the rule, so the "pick one
+    /// effect" text still holds for any activation that actually happens. Deployment's copy stays mandatory.
     /// </summary>
     public class ChooseAbilityEffectRequest : IStageTaskRequest<int>
     {
@@ -44,10 +46,18 @@ namespace FDG.StageResolution.Requests
         /// <summary>At least two, in the order the rule declares them. The reply is an index into this.</summary>
         public IReadOnlyList<EffectOption> Options { get; }
 
+        /// <summary>The reply that means "back out of this activation" (#408). Only valid when
+        /// <see cref="AllowCancel"/>; AI resolvers never send it.</summary>
+        public const int CANCEL = -1;
+
+        /// <summary>#408: whether the front ends offer Back, replying <see cref="CANCEL"/>.</summary>
+        public bool AllowCancel { get; }
+
         [JsonConstructor]
         public ChooseAbilityEffectRequest(PlayerID targetPlayerID, TaskID taskID, string instructions,
-            string ruleName, string bearerName, IReadOnlyList<EffectOption> options)
+            string ruleName, string bearerName, IReadOnlyList<EffectOption> options, bool allowCancel = false)
         {
+            AllowCancel = allowCancel;
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
             Instructions = instructions;
@@ -58,8 +68,9 @@ namespace FDG.StageResolution.Requests
         }
 
         public ChooseAbilityEffectRequest(PlayerID targetPlayerID, string instructions, string ruleName,
-            string bearerName, IReadOnlyList<EffectOption> options)
-            : this(targetPlayerID, new TaskID(Guid.NewGuid()), instructions, ruleName, bearerName, options)
+            string bearerName, IReadOnlyList<EffectOption> options, bool allowCancel = false)
+            : this(targetPlayerID, new TaskID(Guid.NewGuid()), instructions, ruleName, bearerName, options,
+                allowCancel)
         {
         }
 

@@ -48,14 +48,25 @@ namespace FDG.Stages
         /// <paramref name="occasion"/> completes the prompt ("Havoc Brothers: pick one effect &lt;occasion&gt;.")
         /// — the caller's hook is what makes it accurate, since the same rule is asked at both deployment and
         /// activation start.
+        ///
+        /// <para>#408: with <paramref name="allowCancel"/> the prompt offers Back, and a Back reply returns
+        /// null having applied nothing - the caller backs out of whatever it was doing.</para>
         /// </summary>
-        public static async Task<Outcome> Resolve(IGameContext gameContext, PlayerID player, IUnit unit,
-            IReadOnlyList<AbilityOffer> options, string occasion)
+        public static async Task<Outcome?> Resolve(IGameContext gameContext, PlayerID player, IUnit unit,
+            IReadOnlyList<AbilityOffer> options, string occasion, bool allowCancel = false)
         {
-            AbilityOffer chosen = options.Count == 1
-                ? options[0]
-                : options[await AskWhichEffect(gameContext, player, options[0].RuleName, unit, options,
-                    occasion)];
+            AbilityOffer chosen;
+            if (options.Count == 1)
+            {
+                chosen = options[0];
+            }
+            else
+            {
+                int? index = await AskWhichEffect(gameContext, player, options[0].RuleName, unit, options,
+                    occasion, allowCancel);
+                if (index == null) return null;
+                chosen = options[index.Value];
+            }
 
             IReadOnlyList<RuleOperation> operations =
                 gameContext.RuleEvaluator.ResolveAbility(chosen, new List<IUnit> { unit });
@@ -68,8 +79,8 @@ namespace FDG.Stages
             return new Outcome(chosen, operations);
         }
 
-        private static async Task<int> AskWhichEffect(IGameContext gameContext, PlayerID player,
-            string ruleName, IUnit unit, IReadOnlyList<AbilityOffer> options, string occasion)
+        private static async Task<int?> AskWhichEffect(IGameContext gameContext, PlayerID player,
+            string ruleName, IUnit unit, IReadOnlyList<AbilityOffer> options, string occasion, bool allowCancel)
         {
             IRuleResolver? resolver = gameContext.RuleEvaluator.RuleResolver;
             List<ChooseAbilityEffectRequest.EffectOption> effectOptions = options
@@ -78,10 +89,12 @@ namespace FDG.Stages
                 .ToList();
 
             var request = new ChooseAbilityEffectRequest(player, $"{unit.Name}: pick one effect {occasion}.",
-                ruleName, unit.Name, effectOptions);
+                ruleName, unit.Name, effectOptions, allowCancel);
 
             int index = await gameContext.PlayerRequester
                 .RequestDecision<ChooseAbilityEffectRequest, int>(request);
+
+            if (allowCancel && index == ChooseAbilityEffectRequest.CANCEL) return null;
 
             // A resolver that answers out of range would silently mis-apply an effect; clamp to the first
             // option (what every resolver's own default already is) rather than throw mid-stage.

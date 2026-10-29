@@ -19,9 +19,13 @@ namespace FDG.Stages
     ///
     /// A rule contributes one <see cref="ActivatedAbility"/> per effect, all at this hook, each labelled;
     /// <see cref="AbilityEffectChoice"/> groups the offers by rule and, when a rule offers more than one, asks
-    /// the player which via <see cref="ChooseAbilityEffectRequest"/> — a mandatory pick, since the rule text
-    /// says "pick one effect", not "you may pick". A rule offering exactly one ability applies it without a
-    /// prompt: there is nothing to choose. The once-per-activation <see cref="Cost"/> is keyed on the rule
+    /// the player which via <see cref="ChooseAbilityEffectRequest"/> — never a "none of these", since the rule
+    /// text says "pick one effect", not "you may pick". A rule offering exactly one ability is a "you may" and
+    /// gets a Yes/No instead.
+    ///
+    /// #408: a pick never traps the player. The stage snapshots the unit's tokens on entry; a rule-granting
+    /// ability (all of the above) changes only tokens, so Back at the pick, or at the action menu afterwards,
+    /// restores the snapshot and un-picks the unit with nothing spent. Abilities that do more stay one-way. The once-per-activation <see cref="Cost"/> is keyed on the rule
     /// name, so taking one effect spends the gate for its siblings.
     ///
     /// Each chosen ability's effect is an <see cref="Effect.AddRule"/> granting a helper rule, usually with
@@ -49,10 +53,14 @@ namespace FDG.Stages
     {
         public StageBinding OnFinished;
 
+        // #408: Back at a "pick one effect" prompt - un-pick the unit, as ChooseActionStage.ToBackOut does.
+        public StageBinding OnBackedOut;
+
         public ActivationStartStage(IGameContext gameContext, IStateMachineLayer<IUnitActionContext> parent)
             : base(gameContext, parent)
         {
             OnFinished = new StageBinding(this);
+            OnBackedOut = new StageBinding(this);
         }
 
         public override async Task Enter(IUnitActionContext context)
@@ -60,6 +68,9 @@ namespace FDG.Stages
             GameContext.LogDebug("Entered Activation Start.");
 
             IUnit unit = context.ActivatingUnit.GetValue();
+
+            // #408: before anything is swept or granted, so a back-out puts the unit exactly as it was.
+            context.ActivationStartTokens = TokenSnapshot.Capture(unit);
 
             ClearUntilNextActivationTokens(unit);
 
@@ -86,13 +97,30 @@ namespace FDG.Stages
                     if (!accepted) continue;
                 }
 
-                // #248: resolving the ability spends its cost and grants a rule — re-running this stage
-                // would double-apply, so the activation can no longer be backed out of. Only reached once
-                // an optional ability is accepted (declining above leaves the activation pristine).
-                context.MarkIrreversibleAction();
+                // #248 / #408: resolving the ability spends its cost and grants a rule. When that is ALL it
+                // does - every corpus "pick one effect" rule and the Feats - it changes only tokens, so the
+                // snapshot above undoes it and the activation stays backable: the player can still back out
+                // of the action menu, and Back at the pick itself un-picks the unit. Anything else (Spawn
+                // places a unit, a rolled grant rolls dice) is a one-way door, as before.
+                bool restorable = ruleOffers.All(offer => offer.Ability.Effect is Effect.AddRule);
+                if (!restorable)
+                {
+                    context.MarkIrreversibleAction();
+                }
 
-                AbilityEffectChoice.Outcome outcome = await AbilityEffectChoice.Resolve(
-                    GameContext, context.ActivatingPlayer(), unit, ruleOffers, "for this activation");
+                AbilityEffectChoice.Outcome? resolved = await AbilityEffectChoice.Resolve(
+                    GameContext, context.ActivatingPlayer(), unit, ruleOffers, "for this activation",
+                    allowCancel: restorable && !context.IrreversibleActionTaken);
+
+                if (resolved == null)
+                {
+                    context.ActivationStartTokens.Restore();
+                    GameContext.Log($"{unit.Name}: activation backed out - choose a unit to activate.");
+                    await OnBackedOut.Activate(context);
+                    return;
+                }
+
+                AbilityEffectChoice.Outcome outcome = resolved.Value;
 
                 GameContext.Log(ruleOffers.Count == 1
                     ? $"{unit.Name}: {outcome.Chosen.RuleName} applies."

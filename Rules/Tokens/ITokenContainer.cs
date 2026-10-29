@@ -66,6 +66,13 @@ public interface ITokenContainer
     /// </summary>
     public IEnumerable<Token> TokensWithOwner(UnitID owningUnitID);
     
+    /// <summary>
+    /// #408: makes this container hold exactly <paramref name="snapshot"/> (a <see cref="GetAllTokens"/>
+    /// result taken earlier), firing the usual add / remove / count-changed events for each difference so
+    /// network sync sees the rollback like any other change.
+    /// </summary>
+    public void RestoreTokens(IReadOnlyList<Token> snapshot);
+
     public event Action<Token>? OnTokenAdded;
     
     public event Action<Token>? OnTokenRemoved;

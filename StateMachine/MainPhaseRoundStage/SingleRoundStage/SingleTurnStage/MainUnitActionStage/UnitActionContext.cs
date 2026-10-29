@@ -2,6 +2,7 @@
 using FDG.Data;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Foundation;
+using FDG.Rules.Tokens;
 using FDG.Utilities;
 using System.Collections.Generic;
 using System.Linq;
@@ -86,7 +87,8 @@ namespace FDG.Stages
 
         /// <summary>
         /// #248: true once ANYTHING irreversible has happened this activation beyond HasMoved/HasAttacked —
-        /// an activation-start rule applied (token ops, reposition, ThisActivation grant), spell tokens were
+        /// an activation-start rule applied (token ops, reposition; a plain rule grant no longer counts, #408 -
+        /// see <see cref="ActivationStartTokens"/>), spell tokens were
         /// spent, a custom action resolved, a teleport landed. Gates the "back out to unit selection" offer:
         /// while false (and not moved/attacked), un-picking the unit is safe because re-activating it re-runs
         /// ActivationStartStage against unchanged state.
@@ -96,6 +98,15 @@ namespace FDG.Stages
         /// <summary>Marks the activation dirty (see <see cref="IrreversibleActionTaken"/>). Called by every
         /// stage at the exact point it commits something that cannot be undone.</summary>
         public void MarkIrreversibleAction();
+
+        /// <summary>
+        /// #408: the unit's tokens as they stood when the activation began, captured by
+        /// <c>ActivationStartStage</c> before it sweeps or grants anything. A back-out restores them, which
+        /// undoes the token-only activation-start abilities (Versatile Attack and friends) without counting
+        /// them as irreversible - and brings back a Versatile Defense grant the start-of-activation sweep
+        /// retired. Null until that stage runs.
+        /// </summary>
+        public TokenSnapshot? ActivationStartTokens { get; set; }
 
         public void Reset(DataBinding<UnitData> activatingUnit);
     }
@@ -169,6 +180,8 @@ namespace FDG.Stages
             IrreversibleActionTaken = true;
         }
 
+        public TokenSnapshot? ActivationStartTokens { get; set; }
+
         //TODO: This pattern sucks, make a new instance of the context each time.
         public void Reset(DataBinding<UnitData> activatingUnit)
         {
@@ -178,6 +191,7 @@ namespace FDG.Stages
             MoveShootAllowance = 0f;
             HasAttacked = false;
             IrreversibleActionTaken = false;
+            ActivationStartTokens = null;
             PendingCustomAction = null;
             _attemptedSpells.Clear();
             StartedActivationShaken = activatingUnit.GetValue().Tokens.HasToken(TokenType.Shaken);

@@ -153,8 +153,8 @@ namespace FDG.Stages
                 // Corpus deployment abilities are all Self-targeted — the bearer is the target. Foe/Friend
                 // target selection (none at this hook yet) lands with the next activated-ability slice.
                 // Resolve also closes the cost gate (Vanguard's once-per-game marker) and runs the executor.
-                AbilityEffectChoice.Outcome outcome = await AbilityEffectChoice.Resolve(
-                    GameContext, owningPlayer, deployedUnit, ruleOffers, "on deployment");
+                AbilityEffectChoice.Outcome outcome = (await AbilityEffectChoice.Resolve(
+                    GameContext, owningPlayer, deployedUnit, ruleOffers, "on deployment"))!.Value; // not cancellable
 
                 if (ruleOffers.Count > 1)
                 {

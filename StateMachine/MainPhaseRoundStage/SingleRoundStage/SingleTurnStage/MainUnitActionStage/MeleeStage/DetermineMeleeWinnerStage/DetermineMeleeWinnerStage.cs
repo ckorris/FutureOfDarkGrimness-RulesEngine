@@ -43,6 +43,18 @@ namespace FDG.Stages
             attackerWoundsDealt += attackerBonus;
             defenderWoundsDealt += defenderBonus;
 
+            // #431 Scourge: "enemies count as having taken 2 extra wounds when checking who won melee". The struck
+            // unit's counted wounds (earned on its own block rolls of 1, CountedWounds) are added to what its
+            // opponent dealt - the same polarity as Fear above - and are used up by this check.
+            float defenderCountedTaken = CountedWounds.Take(defender);
+            float attackerCountedTaken = CountedWounds.Take(attacker);
+            if (defenderCountedTaken > 0f)
+                GameContext.Log($"{defender.Name} counts as having taken +{defenderCountedTaken:0.##} wounds in melee.");
+            if (attackerCountedTaken > 0f)
+                GameContext.Log($"{attacker.Name} counts as having taken +{attackerCountedTaken:0.##} wounds in melee.");
+            attackerWoundsDealt += defenderCountedTaken;
+            defenderWoundsDealt += attackerCountedTaken;
+
             if (attackerWoundsDealt == defenderWoundsDealt)
             {
                 GameContext.Log($"Attackers and defenders tied: {attackerWoundsDealt} vs. {defenderWoundsDealt}.");

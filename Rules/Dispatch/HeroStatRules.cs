@@ -57,6 +57,23 @@ public static class HeroStatRules
     }
 
     /// <summary>
+    /// #431: one MODEL's own Defense - the hero's for a joined hero's model, the unit's for every other - for the
+    /// "where most models have Defense X+ to Y+" gates (<c>Condition.TargetMostModelsDefenseInRange</c>), which
+    /// count models rather than asking what the unit saves at. Distinct from <see cref="GetSaveDefense"/>, the
+    /// single value the save stage rolls against. Takes an <see cref="IUnit"/> so rule conditions can call it;
+    /// only a <see cref="UnitData"/> can carry a joined hero.
+    /// </summary>
+    public static int GetModelDefense(IUnit unit, IModel model)
+    {
+        if (unit is UnitData { HeroAttachment: { } hero } && model.ID == hero.HeroModelId)
+        {
+            return hero.Defense;
+        }
+
+        return unit.Defense;
+    }
+
+    /// <summary>
     /// The Quality a weapon batch hits at. A batch whose living owners are exactly the hero fires at the
     /// hero's Quality; a batch the rank and file (also) carry stays at the unit's Quality (the deferred
     /// same-weapon-collision case).

@@ -130,6 +130,50 @@ namespace FDG
         }
 
         /// <summary>
+        /// #431: <see cref="GetIsAtHalfStrength"/> for a unit that also COUNTS as having taken
+        /// <paramref name="countedWounds"/> more wounds than it has (OPR 3.6 Scourge, "... count as having taken 2
+        /// extra wounds ... if shooting wounds would trigger Morale Tests"). Nothing is dealt; the wounds are
+        /// allocated virtually in the mandatory order (already-wounded models first, then the rank and file in
+        /// unit order, a joined hero last - <c>AssignWoundsResults</c>' order), and a model counts as gone only
+        /// when the counted wounds cover all it has left. A single model compares its remaining wounds less the
+        /// counted ones against its Tough. Zero or less counted wounds is exactly <see cref="GetIsAtHalfStrength"/>.
+        /// </summary>
+        public static bool GetIsAtHalfStrength(this IUnit unit, float countedWounds)
+        {
+            if (countedWounds <= 0f)
+            {
+                return unit.GetIsAtHalfStrength();
+            }
+
+            if (unit.Models.Count == 1)
+            {
+                return (unit.RemainingWounds - countedWounds) * 2f <= unit.MaxWounds;
+            }
+
+            ModelID? heroId = unit.JoinedHeroModelId;
+            IEnumerable<IModel> order = unit.Models
+                .Where(model => model.GetIsAlive())
+                .OrderBy(model => heroId is ModelID hid && model.ID == hid ? 2 : model.WoundsDealt > 0f ? 0 : 1);
+
+            float budget = countedWounds;
+            int livingModels = 0;
+            foreach (IModel model in order)
+            {
+                float remaining = model.TotalWounds - model.WoundsDealt;
+                if (budget + AssignWoundsResults.WoundEpsilon >= remaining)
+                {
+                    budget -= remaining;
+                    continue; // counts as removed
+                }
+
+                budget = 0f; // a partly-covered model stands; nothing spills past it
+                livingModels++;
+            }
+
+            return livingModels * 2 <= unit.Models.Count;
+        }
+
+        /// <summary>
         /// Whether this unit is in play: alive, and neither held off the table nor tucked inside something.
         /// The single gate for activation, targeting, line of sight, and drawing.
         ///

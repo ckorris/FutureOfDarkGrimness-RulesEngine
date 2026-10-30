@@ -1,4 +1,5 @@
 using FDG.Data;
+using FDG.Rules.Dispatch;
 using FDG.Utilities;
 
 namespace FDG.Stages
@@ -43,8 +44,14 @@ namespace FDG.Stages
         {
             DataBinding<UnitData> defenderBinding = attacked.Defender;
 
+            // #431 Scourge: wounds the defender only COUNTS as having taken this action ("... if shooting wounds
+            // would trigger Morale Tests") join the check, and are used up by it.
+            float counted = CountedWounds.Take(defenderBinding.GetValue());
+            if (counted > 0f)
+                GameContext.Log($"{defenderBinding.Name()} counts as having taken {counted:0.##} extra wound(s) for morale.");
+
             bool? result = await MoraleUtilities.ResolveWoundDrivenMorale(
-                GameContext, defenderBinding, attacked.RemainingWoundsAtStart);
+                GameContext, defenderBinding, attacked.RemainingWoundsAtStart, counted);
 
             if (result == true)
             {
@@ -55,7 +62,7 @@ namespace FDG.Stages
                 GameContext.Log($"{defenderBinding.Name()} is at half strength or less, failed its morale test, and is now Shaken.");
             }
             else if (MoraleUtilities.DescribeSkippedWoundDrivenMorale(
-                         attacked.RemainingWoundsAtStart, defenderBinding.GetValue()) is string reason)
+                         attacked.RemainingWoundsAtStart, defenderBinding.GetValue(), counted) is string reason)
             {
                 GameContext.Log(reason);
             }

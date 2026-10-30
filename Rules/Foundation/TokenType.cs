@@ -112,6 +112,15 @@ public readonly record struct TokenType(string Id)
     // bearer's own next melee.
     public const string REGENERATIVE_STRENGTH_SPENT_ID = "RegenerativeStrengthSpentThisMelee";
 
+    // #431 Scourge: wounds this unit COUNTS as having taken this activation without losing them - "enemies
+    // count as having taken 2 extra wounds when checking who won melee, or if shooting wounds would trigger
+    // Morale Tests". A Magnitude payload (fractional under the probabilistic roller, like the marker above),
+    // granted by AssignWoundsStage and read-and-removed by the melee result and the wound-driven morale check
+    // (Rules.Dispatch.CountedWounds). It lives on the STRUCK unit, which is usually not the activated one, so
+    // the end-of-activation sweep clears it table-wide (ReconcileEndOfActivationStage); RoundEnd is the
+    // catalog's backstop.
+    public const string COUNTED_WOUNDS_TAKEN_ID = "CountedWoundsTaken";
+
 
     public static readonly TokenType Shaken = new(SHAKEN_ID);
     public static readonly TokenType Fatigued = new(FATIGUED_ID);
@@ -123,6 +132,7 @@ public readonly record struct TokenType(string Id)
     public static readonly TokenType MovedThisRound = new(MOVED_THIS_ROUND_ID);
     public static readonly TokenType RegenerativeStrengthMarker = new(REGENERATIVE_STRENGTH_MARKER_ID);
     public static readonly TokenType RegenerativeStrengthSpent = new(REGENERATIVE_STRENGTH_SPENT_ID);
+    public static readonly TokenType CountedWoundsTaken = new(COUNTED_WOUNDS_TAKEN_ID);
     public static readonly TokenType SpellTokens = new(SPELL_TOKENS_ID);
 
     /// <summary>

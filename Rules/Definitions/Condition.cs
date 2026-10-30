@@ -56,6 +56,13 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(IsNotSpell), "isNotSpell")]
 [JsonDerivedType(typeof(IsSpell), "isSpell")]
 [JsonDerivedType(typeof(UnpredictableBranchIs), "unpredictableBranchIs")]
+// #431: the OPR 3.6 weapon-rule family's target gates (Smash, Pierce, Fragment, Puncture, Decimate, Destructive,
+// Demolish, Purge, Reap). Named for the mechanism so #432-#435 can reuse them.
+[JsonDerivedType(typeof(TargetOverHalfWeaponRange), "targetOverHalfWeaponRange")]
+[JsonDerivedType(typeof(TargetMostModelsDefenseInRange), "targetMostModelsDefenseInRange")]
+[JsonDerivedType(typeof(TargetAboveHalfStrength), "targetAboveHalfStrength")]
+[JsonDerivedType(typeof(TargetShakenOrFatigued), "targetShakenOrFatigued")]
+[JsonDerivedType(typeof(TargetMostModelsWithinInchesOfTerrain), "targetMostModelsWithinInchesOfTerrain")]
 public abstract record Condition
 {
 
@@ -379,6 +386,135 @@ public abstract record Condition
     {
         protected override bool EvaluateCore(IHasTarget context) =>
             MajorityToughAtLeast(context.Target, MinToughValue);
+    }
+
+    /// <summary>
+    /// #431: true when the target is more than half of the FIRING WEAPON's range away - "when attacking units
+    /// over half of this weapon's range away" (OPR 3.6 Smash, Pierce). Reads the context's attacker-to-target
+    /// distance (<see cref="IHasDistance"/>, the closest-models measurement the shooting stages take) against
+    /// <see cref="RuleInvocation.Weapon"/>'s printed <see cref="IWeapon.RangeInches"/>.
+    /// <para>
+    /// The printed range, not the effective one: the text says "this weapon's range", and range modifiers
+    /// (Increased Shooting Range, Aircraft's -12") change what may be targeted, not the weapon's profile (#431
+    /// decision). False - never throws - when the firing rule has no weapon (a unit-scoped copy), when the
+    /// weapon has no range (a melee weapon), and in melee (an Assault weapon swung in base contact is never
+    /// "over half its range away"), so the gate cannot leak onto attacks the text does not describe.
+    /// </para>
+    /// </summary>
+    public sealed record TargetOverHalfWeaponRange : Condition
+    {
+        public override IReadOnlyCollection<Type> RequiredCapabilities => [typeof(IHasDistance)];
+
+        public override bool Evaluate(RuleInvocation invocation)
+        {
+            if (invocation.Hook is not IHasDistance distance)
+            {
+                throw new InvalidOperationException(
+                    $"{nameof(TargetOverHalfWeaponRange)} requires {nameof(IHasDistance)}, but the firing " +
+                    $"context ({invocation.Hook?.GetType().Name ?? "null"}) does not provide it.");
+            }
+
+            if (invocation.Hook is IHasCombatKind { IsMelee: true })
+            {
+                return false;
+            }
+
+            float range = invocation.Weapon?.RangeInches ?? 0f;
+            return range > 0f && distance.DistanceInches > range / 2f;
+        }
+    }
+
+    /// <summary>
+    /// #431: true when a strict majority of the target's LIVING models have a Defense between
+    /// <see cref="MinDefense"/>+ and <see cref="MaxDefense"/>+ inclusive - "when attacking units where most models
+    /// have Defense 5+ to Defense 6+" (Fragment: 5..6) / "Defense 2+ to Defense 3+" (Puncture: 2..3). The values
+    /// are the save numbers, so 2 is the best Defense; the order of the two fields does not matter.
+    /// <para>
+    /// Per model: the rank and file have the unit's Defense, a joined hero its own
+    /// (<see cref="Dispatch.HeroStatRules.GetModelDefense"/>), so a hero is one model of the majority, the #428
+    /// reading of "most models". The stat as printed (after Armor's set), not this roll's modifiers - cover and
+    /// buffs change the roll, not the model's Defense. No living models: false.
+    /// </para>
+    /// </summary>
+    public sealed record TargetMostModelsDefenseInRange(int MinDefense, int MaxDefense) : CapabilityCondition<IHasTarget>
+    {
+        protected override bool EvaluateCore(IHasTarget context)
+        {
+            int low = Math.Min(MinDefense, MaxDefense);
+            int high = Math.Max(MinDefense, MaxDefense);
+            int living = 0;
+            int inRange = 0;
+            foreach (IModel model in context.Target.Models)
+            {
+                if (!model.GetIsAlive())
+                {
+                    continue;
+                }
+
+                living++;
+                int defense = Dispatch.HeroStatRules.GetModelDefense(context.Target, model);
+                if (defense >= low && defense <= high)
+                {
+                    inRange++;
+                }
+            }
+
+            return living > 0 && inRange * 2 > living;
+        }
+    }
+
+    /// <summary>
+    /// #431: true when the target has MORE than half of its total size, or of its Tough value for a single-model
+    /// unit - "when attacking units with more than half of their total size or Tough value (for single-model
+    /// units)" (OPR 3.6 Decimate, Destructive). Exactly the complement of the morale rules' "half or less"
+    /// (<see cref="IUnitExtensions.GetIsAtHalfStrength"/>), so the two can never disagree about a unit: a
+    /// multi-model unit counts living models against its starting models (a joined hero is one of them), a
+    /// single model counts remaining wounds against its Tough. Read when the attack resolves, before this
+    /// attack's own wounds land.
+    /// </summary>
+    public sealed record TargetAboveHalfStrength : CapabilityCondition<IHasTarget>
+    {
+        protected override bool EvaluateCore(IHasTarget context) =>
+            context.Target.GetIsAlive() && !context.Target.GetIsAtHalfStrength();
+    }
+
+    /// <summary>
+    /// #431: true when the target is Shaken or Fatigued - "when attacking units that are Shaken or Fatigued"
+    /// (OPR 3.6 Purge, Reap). Reads the two status tokens directly. The same pair
+    /// <see cref="CountsAsFatiguedInMelee"/> reads on the BEARER, but written out rather than delegated: that
+    /// predicate means "counts as Fatigued in melee" and may grow, while this text names exactly two states.
+    /// </summary>
+    public sealed record TargetShakenOrFatigued : CapabilityCondition<IHasTarget>
+    {
+        protected override bool EvaluateCore(IHasTarget context) =>
+            context.Target.Tokens.HasToken(TokenType.Shaken) || context.Target.Tokens.HasToken(TokenType.Fatigued);
+    }
+
+    /// <summary>
+    /// #431: true when a strict majority of the TARGET's living models are within <see cref="DistanceInches"/> of
+    /// any terrain piece - "when attacking units with most models within 1\" of terrain" (OPR 3.6 Demolish). The
+    /// target-side twin of <see cref="MostModelsWithinInchesOfTerrain"/> (which asks about the bearer), on the
+    /// same geometry (<see cref="TerrainProximityQueries.MostModelsWithinInches"/>: base edge, living models
+    /// only). A context that cannot supply the table's terrain carries an empty list, so the gate
+    /// conservatively stays shut there (the AI's volley valuation).
+    /// </summary>
+    public sealed record TargetMostModelsWithinInchesOfTerrain(float DistanceInches) : Condition
+    {
+        public override IReadOnlyCollection<Type> RequiredCapabilities => [typeof(IHasTerrain), typeof(IHasTarget)];
+
+        public override bool Evaluate(RuleInvocation invocation)
+        {
+            if (invocation.Hook is not IHasTerrain terrainContext || invocation.Hook is not IHasTarget target)
+            {
+                throw new InvalidOperationException(
+                    $"{nameof(TargetMostModelsWithinInchesOfTerrain)} requires {nameof(IHasTerrain)} and " +
+                    $"{nameof(IHasTarget)}, but the firing context " +
+                    $"({invocation.Hook?.GetType().Name ?? "null"}) does not provide both.");
+            }
+
+            return TerrainProximityQueries.MostModelsWithinInches(
+                target.Target, terrainContext.Terrain, DistanceInches);
+        }
     }
 
     /// <summary>

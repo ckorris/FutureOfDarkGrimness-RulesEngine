@@ -31,10 +31,11 @@ namespace FDG.Stages
 
             // #042 Blast: the attacking weapon ignores cover — drop the bonus. Derived from the attacker's
             // rules via the shared query so the cover stage, targeting options, and movement options agree.
-            if (bonus > 0 && SightRuleQueries.IgnoresCover(
-                    metaData.AttackingUnit.GetValue(), metaData.WeaponType, GameContext.RuleEvaluator))
+            // #431: Anti-Cover, Demolish and Pierce ignore it too, so the log names the rule that did.
+            if (bonus > 0 && SightRuleQueries.CoverIgnoreSource(
+                    metaData.AttackingUnit.GetValue(), metaData.WeaponType, GameContext.RuleEvaluator) is string ignoredBy)
             {
-                GameContext.Log($"Cover ignored by {metaData.AttackingUnit.GetValue().Name}'s weapon (Blast).");
+                GameContext.Log($"Cover ignored by {metaData.AttackingUnit.GetValue().Name}'s weapon ({ignoredBy}).");
                 bonus = 0;
             }
 

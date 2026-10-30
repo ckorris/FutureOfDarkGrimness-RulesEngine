@@ -138,21 +138,22 @@ namespace FDG.Stages
                     actor, subject);
             List<RuleOperation> completeOps = completeNamed.Select(n => n.Op).ToList();
 
-            RollModifierSink saveModifiers = new RollModifierSink();
-            saveModifiers.ApplyFrom(completeOps);
+            // #431 Pierce: the same fold as the stage, positive Defense modifiers dropped when ignored.
+            int saveNet = RollToHitStage<ICombatMetadata>.WholeAttackSaveModifier(completeOps,
+                out bool ignoresPositiveDefense);
             int apReduction = completeOps.OfType<RuleOperation.ReduceArmorPenetration>()
                 .Sum(op => op.Amount);
             List<string>? saveModifierTags =
-                RollToHitStage<ICombatMetadata>.ComposeSaveModifierTags(completeNamed);
+                RollToHitStage<ICombatMetadata>.ComposeSaveModifierTags(completeNamed, ignoresPositiveDefense);
 
             // --- DetermineSaveRollsNeededStage mirror (line-for-line sign conventions).
             int baseDefense = HeroStatRules.GetSaveDefense(defender);
             int ap = Math.Max(0, weapon.ArmorPenetration - apReduction);
-            int coverBonus = hasCover && !ignoresCover ? 1 : 0;
-            int grantedDefense = GrantedRollModifiers.PeekNet(defender, ERollKind.Save);
+            int coverBonus = hasCover && !ignoresCover && !ignoresPositiveDefense ? 1 : 0;
+            int grantedDefense = GrantedRollModifiers.PeekNet(defender, ERollKind.Save, ignoresPositiveDefense);
             int persistentApMarkers = defender.Tokens.GetTokenCount(TokenType.PersistentApBonus);
 
-            int saveNeeded = baseDefense + ap - coverBonus - saveModifiers.Net(ERollKind.Save)
+            int saveNeeded = baseDefense + ap - coverBonus - saveNet
                 - grantedDefense + persistentApMarkers;
             List<string>? saveTags = DetermineSaveRollsNeededStage<ICombatMetadata>.ComposeThresholdTags(
                 baseDefense, ap, coverBonus, saveModifierTags, grantedDefense, persistentApMarkers);

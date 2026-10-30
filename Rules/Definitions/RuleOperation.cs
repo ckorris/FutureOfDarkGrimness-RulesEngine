@@ -821,6 +821,29 @@ public abstract record RuleOperation
     }
 
     /// <summary>
+    /// #431: the defender counts as having taken <see cref="Count"/> more wounds - for the melee result and the
+    /// wound-driven morale trigger only; nothing is dealt. Resolution of <see cref="Effect.CountsAsWoundsTaken"/>
+    /// (Scourge), folded by <c>AssignWoundsStage</c> into the defender's
+    /// <see cref="Foundation.TokenType.CountedWoundsTaken"/> magnitude (<see cref="Dispatch.CountedWounds"/>).
+    /// Float for the usual reason: the matching-die count is fractional under the probabilistic roller.
+    /// </summary>
+    public sealed record AddCountedWoundsTaken(float Count) : RuleOperation
+    {
+        public override string Describe() =>
+            $"made the target count as having taken {RollTags.Count(Count, "extra wound")}";
+    }
+
+    /// <summary>
+    /// #431: the attack ignores every positive modifier to the target's Defense rolls. Resolution of
+    /// <see cref="Effect.IgnorePositiveDefenseModifiers"/> (Pierce); a marker read by <c>RollToHitStage</c>,
+    /// which drops the positive Save deltas and flags <c>RollToHitResults</c> for the save stage.
+    /// </summary>
+    public sealed record IgnorePositiveDefenseModifiers : RuleOperation
+    {
+        public override string Describe() => "ignored the target's positive Defense modifiers";
+    }
+
+    /// <summary>
     /// Insert the bearer's strikes ahead of the charging unit's. Resolution of
     /// <see cref="Effect.StrikeFirst"/> (Counter).
     /// </summary>

@@ -100,6 +100,9 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(PerHitSaveModifier), "perHitSaveModifier")]
 [JsonDerivedType(typeof(ExtraAttack), "extraAttack")]
 [JsonDerivedType(typeof(ActivateUnitNext), "activateUnitNext")]
+// #431: OPR 3.6 Pierce's "ignores all positive Defense modifiers" and Scourge's counted (not dealt) wounds.
+[JsonDerivedType(typeof(IgnorePositiveDefenseModifiers), "ignorePositiveDefenseModifiers")]
+[JsonDerivedType(typeof(CountsAsWoundsTaken), "countsAsWoundsTaken")]
 
 public abstract record Effect
 {
@@ -259,6 +262,36 @@ public abstract record Effect
         protected override void ApplyCore(IHasUnmodifiedSaveRolls context, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.InsertExtraWounds(context.UnmodifiedSaveRolls.At(OnRollValue) * Count));
+        }
+    }
+
+    /// <summary>
+    /// #431 Scourge: "For each unmodified result of 1 to block hits, enemies count as having taken 2 extra
+    /// wounds when checking who won melee, or if shooting wounds would trigger Morale Tests." Each of the
+    /// defender's unmodified <see cref="OnRollValue"/> block rolls makes it COUNT as having taken
+    /// <see cref="WoundsPerDie"/> more wounds - the same histogram read as <see cref="AddExtraWound"/> (Shred),
+    /// but nothing is dealt: no model loses a wound, nothing is saved or regenerated.
+    /// <para>
+    /// The emitted <see cref="RuleOperation.AddCountedWoundsTaken"/> is folded by <c>AssignWoundsStage</c> into
+    /// one <see cref="Foundation.TokenType.CountedWoundsTaken"/> magnitude on the defender
+    /// (<see cref="Dispatch.CountedWounds"/>), read and removed by the two consumers the text names:
+    /// <c>DetermineMeleeWinnerStage</c> (added to the struck unit's taken total, so the striker's side wins
+    /// ties it would otherwise lose - Fear(X)'s polarity) and the wound-driven morale check of a shooting attack
+    /// (<c>ResolveRangedMoraleStage</c>, and <c>ResolveStrafeMoraleStage</c> for "as if shooting" attacks),
+    /// where the counted wounds are allocated virtually for the half-strength test and alone can trigger it.
+    /// Defense rolls are not hit rolls, so #418's Fatigue view does not apply.
+    /// </para>
+    /// </summary>
+    public sealed record CountsAsWoundsTaken(int OnRollValue = 1, int WoundsPerDie = 2)
+        : CapabilityEffect<IHasUnmodifiedSaveRolls>
+    {
+        protected override void ApplyCore(IHasUnmodifiedSaveRolls context, List<RuleOperation> operations)
+        {
+            float counted = context.UnmodifiedSaveRolls.At(OnRollValue) * WoundsPerDie;
+            if (counted > 0f)
+            {
+                operations.Add(new RuleOperation.AddCountedWoundsTaken(counted));
+            }
         }
     }
 
@@ -1433,6 +1466,29 @@ public abstract record Effect
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.IgnoreCover());
+        }
+    }
+
+    /// <summary>
+    /// #431 Pierce: "Ignores all positive Defense modifiers on the target". Authored at
+    /// <see cref="EHookID.Shooting_OnHitRollComplete"/> (Actor), where the defender's own Defense bonuses
+    /// (Shielded, Grounded Protection, ... - every positive Save delta in the corpus rides that hook's Subject
+    /// seat) fold into the attack's save modifier. <c>RollToHitStage</c> drops the positive Save deltas from
+    /// that net when the op is present (the attacker's negative ones - Thrust, Destructive - still apply) and
+    /// flags the results, so <c>DetermineSaveRollsNeededStage</c> also drops cover's +1 and any positive granted
+    /// "+X to Defense rolls" buff. AP reduction (Fortified) changes the weapon's AP, not the target's Defense,
+    /// and is unaffected (#431 decision).
+    /// <para>
+    /// Pierce ALSO carries <see cref="IgnoreCover"/>: cover's only effect is that +1, so the targeting
+    /// overlays, the shooting forecast, the AI and the calculator - which ask
+    /// <c>SightRuleQueries.IgnoresCover</c>, not this op - price the weapon the way the save stage resolves it.
+    /// </para>
+    /// </summary>
+    public sealed record IgnorePositiveDefenseModifiers : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.IgnorePositiveDefenseModifiers());
         }
     }
 

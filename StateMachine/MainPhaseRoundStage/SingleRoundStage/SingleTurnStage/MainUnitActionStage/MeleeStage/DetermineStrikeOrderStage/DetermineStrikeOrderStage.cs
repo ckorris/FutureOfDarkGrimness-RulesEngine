@@ -37,13 +37,15 @@ namespace FDG.Stages
             IUnit defender = context.DefendingUnit.GetValue();
 
             // #197 P20: the CHARGER joins as an Actor so Unwieldy ("strikes last when charging") can queue
-            // the mirror op. Deliberately a plain unit participant, not the weapon-carrier fan-out the
-            // defender gets: Counter is weapon-scoped ("strikes first with this weapon"), Unwieldy is a
-            // unit/model rule about the whole charge. This evaluation also SPENDS one-shot grants, which is
-            // how Unwieldy Debuff's "once (next time the effect would apply)" is consumed.
+            // the mirror op. #431: OPR 3.6 prints Unwieldy as a WEAPON rule (Great Heat Axe: "AP(1), Scourge,
+            // Unwieldy"), so the charger now gets the same weapon-carrier fan-out the defender gets for Counter -
+            // its unit participant (the unit-scoped "Unwieldy in melee" grant) plus one per melee weapon. Like
+            // Counter, one carrier swaps the whole melee: the engine orders units, not weapons (#431 decision).
+            // This evaluation also SPENDS one-shot grants, which is how Unwieldy Debuff's "once (next time the
+            // effect would apply)" is consumed; the evaluator dedupes the duplicate unit rules across carriers.
             IReadOnlyList<RuleOperation> operations = GameContext.RuleEvaluator.EvaluateAll(
                 new CounterTriggerContext(attacker, defender),
-                Prepend(RuleParticipant.Actor(attacker), SubjectWithMeleeWeapons(defender)));
+                Concat(ActorWithMeleeWeapons(attacker), SubjectWithMeleeWeapons(defender)));
 
             // A charger that strikes last and a defender that strikes first are the same swapped melee seen
             // from either side, so both ops route here and the swap happens exactly once even if both fire.
@@ -91,12 +93,27 @@ namespace FDG.Stages
             return participants.ToArray();
         }
 
-        // #197 P20: the charger's Actor seat ahead of the defender's participants. Its own method only
+        /// <summary>
+        /// #431: the charger as an Actor participant once weaponless (unit-scoped Unwieldy in melee, the
+        /// Unwieldy Debuff grant) plus once per melee weapon (OPR 3.6's weapon-scoped Unwieldy) - the Actor-seat
+        /// mirror of <see cref="SubjectWithMeleeWeapons"/>. Carriers stay model-less, like the defender's.
+        /// </summary>
+        internal static RuleParticipant[] ActorWithMeleeWeapons(IUnit charger)
+        {
+            var participants = new List<RuleParticipant> { RuleParticipant.Actor(charger) };
+            foreach (Weapon meleeWeapon in charger.GetMeleeWeapons())
+            {
+                participants.Add(RuleParticipant.Actor(charger, meleeWeapon));
+            }
+            return participants.ToArray();
+        }
+
+        // #197 P20: the charger's Actor seat(s) ahead of the defender's participants. Its own method only
         // because SubjectWithMeleeWeapons is shared with the tests and must keep returning just the
         // defender's side.
-        private static RuleParticipant[] Prepend(RuleParticipant first, RuleParticipant[] rest)
+        private static RuleParticipant[] Concat(RuleParticipant[] first, RuleParticipant[] rest)
         {
-            var all = new List<RuleParticipant> { first };
+            var all = new List<RuleParticipant>(first);
             all.AddRange(rest);
             return all.ToArray();
         }

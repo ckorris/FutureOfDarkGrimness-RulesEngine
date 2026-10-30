@@ -33,6 +33,12 @@ namespace FDG
         // the first cut of this rule passed its tests and did nothing in a real game.) 0 when none fired.
         public float SelfWounds;
 
+        // #431 Pierce: the attack ignores every positive modifier to the target's Defense rolls. The defender's
+        // positive Save deltas are already left out of SaveModifier when this is set; it is carried so
+        // DetermineSaveRollsNeededStage also drops cover's +1 and any positive granted Defense buff. False
+        // when no such rule fired.
+        public bool IgnoresPositiveDefenseModifiers;
+
         public RollToHitResults(List<SuccessfulHitInfo> successfulHits, List<FailedHitInfo> failedHitList)
         {
             SuccessfulHitList = successfulHits;
@@ -40,6 +46,7 @@ namespace FDG
             SaveModifier = 0;
             ArmorPenetrationReduction = 0;
             SelfWounds = 0f;
+            IgnoresPositiveDefenseModifiers = false;
         }
     }
 }

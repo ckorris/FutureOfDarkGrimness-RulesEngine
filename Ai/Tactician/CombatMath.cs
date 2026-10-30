@@ -394,9 +394,8 @@ namespace FDG.Ai.Tactician
                         groups.Add(SingleGroupInfo(cappedHits - currentHits));
                 }
 
-                var saveModifiers = new RollModifierSink();
-                saveModifiers.ApplyFrom(completeOps);
-                saveNet = saveModifiers.Net(ERollKind.Save);
+                // #431 Pierce: the stage's own fold, so an ignored Defense bonus is ignored here too.
+                saveNet = RollToHitStage<ICombatMetadata>.WholeAttackSaveModifier(completeOps, out _);
                 foreach (RuleOperation op in completeOps)
                 {
                     if (op is RuleOperation.ReduceArmorPenetration reduce) apReduction += reduce.Amount;

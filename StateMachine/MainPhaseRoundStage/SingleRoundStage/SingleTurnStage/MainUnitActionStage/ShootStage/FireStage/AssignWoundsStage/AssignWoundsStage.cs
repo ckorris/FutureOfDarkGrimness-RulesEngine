@@ -58,8 +58,11 @@ namespace FDG.Stages
 
             // #042 save-reroll rules (Bane): the defender re-rolls its highest unmodified saves, turning
             // saved dice into possible failures. The threshold is normally the unmodified max (6); a Boost
-            // variant widens it to 5-6 (#197). Re-roll each successful group's qualifying count and add the
-            // new failures to the wound total — done BEFORE Deadly multiplies, since it finalizes the saves.
+            // variant widens it to 5-6 (#197), as do OPR 3.6's "re-roll successful unmodified Defense results of
+            // 5-6" rules (#431 Fragment / Obliterate / Reap). Only SUCCESSFUL saves are ever re-rolled: the
+            // loop walks the successful groups, so a natural 5 that already failed (Defense 6+, or AP) stays put.
+            // Re-roll each successful group's qualifying count and add the new failures to the wound total -
+            // done BEFORE Deadly multiplies, since it finalizes the saves.
             RerollSink rerollSink = new RerollSink();
             rerollSink.ApplyFrom(saveCompleteOperations);
             if (rerollSink.RerollSavesAtOrAbove is int rerollFrom)
@@ -76,7 +79,7 @@ namespace FDG.Stages
                     float newWounds = rerollResult.Below(saveNeeded);
                     totalWoundsDealt += newWounds;
                     await GameContext.Presenter.Present(DiceRolledBeat.From(rerollResult, saveNeeded,
-                        GameContext.Settings.RandomnessType, "Bane Re-roll", RollTags.Count(newWounds, "new wound"),
+                        GameContext.Settings.RandomnessType, "Defense Re-roll", RollTags.Count(newWounds, "new wound"),
                         category: ERollBeatCategory.Defense, context: $"{defender.Name} re-saves"));
                 }
             }
@@ -115,6 +118,19 @@ namespace FDG.Stages
             {
                 packets.Add(WoundPacket.Unconfined(woundInjection.TotalExtraWounds));
                 GameContext.Log($"Shred added {woundInjection.TotalExtraWounds:0.##} extra wound(s).");
+            }
+
+            // #431 Scourge (counted wounds): "for each unmodified result of 1 to block hits, enemies count as having
+            // taken 2 extra wounds when checking who won melee, or if shooting wounds would trigger Morale Tests".
+            // Nothing is dealt here: the count is banked on the defender (CountedWounds) for the melee result or
+            // the shooting morale check of this activation to read.
+            float countedWounds = saveCompleteOperations.OfType<RuleOperation.AddCountedWoundsTaken>()
+                .Sum(op => op.Count);
+            if (countedWounds > 0f)
+            {
+                CountedWounds.Add(defender, countedWounds);
+                GameContext.Log($"{defender.Name} counts as having taken {countedWounds:0.##} extra wound(s) " +
+                    "(melee result / morale only).");
             }
 
             // #376 Bloodthirsty Fighter (bonus attacks): "each unmodified 1 to block earns a follow-up

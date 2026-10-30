@@ -339,7 +339,9 @@ public static class RuleFireLint
                     or RuleOperation.ApplyPerHitSaveModifier
                     or RuleOperation.ReduceArmorPenetration
                     // #197 Hazardous: RollToHitStage sums these and wounds the attacker after the attack.
-                    or RuleOperation.InflictSelfWounds,
+                    or RuleOperation.InflictSelfWounds
+                    // #431 Pierce: RollToHitStage drops the positive Save deltas and flags the save stage.
+                    or RuleOperation.IgnorePositiveDefenseModifiers,
 
             // SightRuleQueries reads the attacker's weapon-sight flags off CoverIgnoreContext.
             EHookID.Shooting_OnSaveRollModifier =>
@@ -351,7 +353,9 @@ public static class RuleFireLint
                 op is RuleOperation.ApplyReroll { Roll: ERollKind.Save }
                     or RuleOperation.InsertExtraWounds
                     or RuleOperation.IgnoreWound
-                    or RuleOperation.AddBonusAttacks,
+                    or RuleOperation.AddBonusAttacks
+                    // #431 Scourge: banked on the defender for the melee result / shooting morale check.
+                    or RuleOperation.AddCountedWoundsTaken,
 
             EHookID.Shooting_OnPreApplyWound => op is RuleOperation.MultiplyWounds,
             EHookID.Shooting_OnRangeCheck => op is RuleOperation.ApplyRangeModifier,
@@ -528,6 +532,13 @@ public static class RuleFireLint
                 break;
             case Condition.TokenPresent token when positive:
                 SeedTokens(world.Bearer, token.TType, token.MinCount);
+                break;
+            // #431: the target-state gates seed the opposing unit (the target of every Actor-seat entry).
+            case Condition.TargetMostModelsDefenseInRange defense when positive:
+                world.Other.Defense = Math.Min(defense.MinDefense, defense.MaxDefense);
+                break;
+            case Condition.TargetShakenOrFatigued when positive:
+                SeedTokens(world.Other, TokenType.Fatigued, 1);
                 break;
             case Condition.CountsAsFatiguedInMelee when positive:
                 // #422: no corpus rule fires only WHILE Fatigued (Impact/Counter/Brace gate on the negation,
@@ -728,6 +739,16 @@ public static class RuleFireLint
                 // save-side rules (not distance-gated).
                 yield return new SaveRollCompleteContext(attacker, defender, OneOfEachFace(),
                     TerrainPieces: OriginTerrain);
+                // #431 (Obliterate): a Tough-majority defender on the save side too - the hit-side variants'
+                // twin, Actor seat only for the same reason.
+                if (seat == ERuleSeat.Actor)
+                {
+                    foreach (bool isMelee in new[] { false, true })
+                    {
+                        yield return new SaveRollCompleteContext(attacker, world.ToughOther, OneOfEachFace(),
+                            isMelee, IsSpell: false, DistanceInches: NearInches);
+                    }
+                }
                 break;
             case EHookID.Shooting_OnPreApplyWound:
                 yield return new PreApplyWoundContext(attacker, defender);

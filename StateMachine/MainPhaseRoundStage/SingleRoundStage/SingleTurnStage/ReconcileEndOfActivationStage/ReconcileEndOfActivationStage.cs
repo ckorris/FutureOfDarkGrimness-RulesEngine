@@ -53,6 +53,15 @@ namespace FDG.Stages
                 new TokenClearService().ClearForHook(EHookID.Activation_OnEndOfActivation, containers);
             }
 
+            // #431 Scourge: counted wounds belong to the activation that earned them ("wounds each unit took during
+            // this activation"). They sit on the STRUCK units, which the sweep above never visits, and the checks
+            // that consume them can be skipped (a melee that ends in a wipe-out has no result step) - so clear
+            // whatever is left on every unit now.
+            if (GameContext.TableState?.Units != null)
+            {
+                CountedWounds.SweepAll(GameContext.TableState.Units.Objects);
+            }
+
             // Activation over -- clear the spotlight target so nothing is highlighted between activations.
             if (GameContext.GameDataStore.IsTypeAssigned<GameProgressData>())
                 GameProgressUtilities.SetActivatingUnit(GameContext.GameDataStore, null);

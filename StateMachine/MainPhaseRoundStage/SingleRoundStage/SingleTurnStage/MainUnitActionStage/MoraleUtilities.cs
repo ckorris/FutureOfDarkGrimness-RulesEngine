@@ -240,11 +240,18 @@ namespace FDG.Stages
         /// and it now sits at half strength or less. The rule tests at the end of ANY activation whose
         /// wounds leave the unit at half or less (GF v3.5.1) — including a unit that was already below
         /// half before this activation's wounds (#254; an earlier crossing-only check skipped those).
+        /// <para>
+        /// #431: <paramref name="countedWounds"/> are wounds the unit only COUNTS as having taken (OPR 3.6
+        /// Scourge, "... if shooting wounds would trigger Morale Tests"; <see cref="Rules.Dispatch.CountedWounds"/>).
+        /// They count as wounds taken, so they alone can make the test due, and they are allocated virtually for
+        /// the half-strength check (<see cref="IUnitExtensions.GetIsAtHalfStrength(IUnit, float)"/>).
+        /// </para>
         /// </summary>
-        public static bool WoundsLeftUnitAtHalfStrength(float remainingWoundsBefore, IUnit unitAfter)
+        public static bool WoundsLeftUnitAtHalfStrength(float remainingWoundsBefore, IUnit unitAfter,
+            float countedWounds = 0f)
         {
-            bool tookWounds = unitAfter.RemainingWounds < remainingWoundsBefore;
-            return tookWounds && unitAfter.GetIsAtHalfStrength();
+            bool tookWounds = unitAfter.RemainingWounds < remainingWoundsBefore || countedWounds > 0f;
+            return tookWounds && unitAfter.GetIsAtHalfStrength(countedWounds);
         }
 
         /// <summary>
@@ -254,13 +261,15 @@ namespace FDG.Stages
         /// Example: a 3-model Tough(3) unit shot to 4/9 wounds with 2 models standing logs
         /// "Hive Guardians took wounds but is above half strength (2/3 models) - no morale test."
         /// </summary>
-        public static string? DescribeSkippedWoundDrivenMorale(float remainingWoundsBefore, IUnit unitAfter)
+        public static string? DescribeSkippedWoundDrivenMorale(float remainingWoundsBefore, IUnit unitAfter,
+            float countedWounds = 0f)
         {
             if (unitAfter.GetIsAlive() == false) return null;
-            if ((unitAfter.RemainingWounds < remainingWoundsBefore) == false)
+            if ((unitAfter.RemainingWounds < remainingWoundsBefore || countedWounds > 0f) == false)
                 return $"{unitAfter.Name} took no wounds - no morale test.";
-            if (unitAfter.GetIsAtHalfStrength() == false)
-                return $"{unitAfter.Name} took wounds but is above half strength ({DescribeStrength(unitAfter)}) - no morale test.";
+            if (unitAfter.GetIsAtHalfStrength(countedWounds) == false)
+                return $"{unitAfter.Name} took wounds but is above half strength ({DescribeStrength(unitAfter)}" +
+                    (countedWounds > 0f ? $", counting {countedWounds:0.##} extra" : "") + ") - no morale test.";
             return null;
         }
 
@@ -281,13 +290,15 @@ namespace FDG.Stages
         /// a failed test makes a unit Shaken; only the melee-results rule routs a loser at half strength).
         /// Returns null if no test was taken (above half, unwounded, or destroyed outright), true if
         /// passed, false if failed and Shaken. Logging is left to the caller, which knows the wound source.
+        /// <paramref name="countedWounds"/>: #431 Scourge's counted wounds - see
+        /// <see cref="WoundsLeftUnitAtHalfStrength"/>; the caller takes them (<c>CountedWounds.Take</c>).
         /// </summary>
         public static async Task<bool?> ResolveWoundDrivenMorale(IGameContext gameContext, DataBinding<UnitData> unitBinding,
-            float remainingWoundsBefore)
+            float remainingWoundsBefore, float countedWounds = 0f)
         {
             IUnit unit = unitBinding.GetValue();
             if (!unit.GetIsAlive()) return null;                              // wiped out outright — no test
-            if (!WoundsLeftUnitAtHalfStrength(remainingWoundsBefore, unit)) return null;
+            if (!WoundsLeftUnitAtHalfStrength(remainingWoundsBefore, unit, countedWounds)) return null;
 
             // #006: a living joined hero takes morale on behalf of the unit (its Quality).
             // failureCausesShakenOrRout: this test's failure Shakens the unit, so a conversion rule

@@ -192,9 +192,10 @@ namespace FDG.Stages
             // via RollToHitResults.SaveModifier — Thrust's charge AP, the defender's Shielded +1. Rending
             // and Crack no longer ride this scalar: their AP is per-hit (split into a face group above), so
             // this now holds only genuinely attack-wide modifiers.
-            RollModifierSink saveModifiers = new RollModifierSink();
-            saveModifiers.ApplyFrom(operations);
-            results.SaveModifier = saveModifiers.Net(ERollKind.Save);
+            // #431 Pierce ("ignores all positive Defense modifiers on the target") is folded here too - see
+            // WholeAttackSaveModifier; the flag tells the save stage to drop cover and granted buffs as well.
+            results.SaveModifier = WholeAttackSaveModifier(operations, out bool ignoresPositiveDefense);
+            results.IgnoresPositiveDefenseModifiers = ignoresPositiveDefense;
 
             // Fortified (defender) reduces the incoming WEAPON AP, floored at the save stage. Sum any
             // reduction ops here and carry the total alongside the save modifier.
@@ -203,7 +204,7 @@ namespace FDG.Stages
 
             // #245: name the rules behind the two scalars above so the save beat's chips can say
             // "Shielded +1" / "Thrust -1" / "Fortified AP-1" instead of an anonymous net number.
-            results.SaveModifierTags = ComposeSaveModifierTags(named);
+            results.SaveModifierTags = ComposeSaveModifierTags(named, results.IgnoresPositiveDefenseModifiers);
 
             // #197 Hazardous: the attacker's own unmodified 1s wound it. Counted here, where the UNMODIFIED
             // histogram is in hand, and CARRIED to ApplyWoundsStage - the last stage of every chain that
@@ -262,15 +263,24 @@ namespace FDG.Stages
         // #245: chips naming the whole-attack save modifiers this evaluation produced, for the save
         // beat. Positive is the defender's favor (Shielded +1), negative the attacker's (Thrust -1);
         // Fortified's AP reduction reads as the AP it removes. Internal for tests.
-        internal static List<string>? ComposeSaveModifierTags(IReadOnlyList<(RuleOperation Op, string RuleName)> named)
+        internal static List<string>? ComposeSaveModifierTags(IReadOnlyList<(RuleOperation Op, string RuleName)> named,
+            bool ignoresPositiveDefense = false)
         {
             List<string> tags = new List<string>();
             foreach ((RuleOperation op, string ruleName) in named)
             {
                 switch (op)
                 {
+                    // #431 Pierce: an ignored Defense bonus earns no chip; the Pierce chip below says why.
+                    case RuleOperation.ApplyRollModifier { Roll: ERollKind.Save } mod
+                        when mod.Delta > 0 && ignoresPositiveDefense:
+                        break;
                     case RuleOperation.ApplyRollModifier { Roll: ERollKind.Save } mod when mod.Delta != 0:
                         tags.Add($"{RollTags.NameOr(ruleName, "modifier")} {RollTags.Delta(mod.Delta)}");
+                        break;
+                    case RuleOperation.IgnorePositiveDefenseModifiers
+                        when named.Any(n => n.Op is RuleOperation.ApplyRollModifier { Roll: ERollKind.Save, Delta: > 0 }):
+                        tags.Add($"{RollTags.NameOr(ruleName, "rule")}: no +Def");
                         break;
                     case RuleOperation.ReduceArmorPenetration reduce when reduce.Amount != 0:
                         tags.Add($"{RollTags.NameOr(ruleName, "AP reduction")} AP-{reduce.Amount}");
@@ -278,6 +288,31 @@ namespace FDG.Stages
                 }
             }
             return tags.Count > 0 ? tags : null;
+        }
+
+        /// <summary>
+        /// The whole-attack save modifier one hit-roll-complete evaluation produces: the net Save delta (Thrust's
+        /// -1, the defender's Shielded +1, ...). #431 Pierce: when the evaluation also carries
+        /// <see cref="RuleOperation.IgnorePositiveDefenseModifiers"/>, every positive Save delta - a Defense bonus
+        /// for the target - is left out and only the negative ones count. Shared with the shooting forecast and
+        /// the AI's CombatMath so all three agree. Internal for those callers and the tests.
+        /// </summary>
+        internal static int WholeAttackSaveModifier(IReadOnlyList<RuleOperation> operations,
+            out bool ignoresPositiveDefense)
+        {
+            RollModifierSink saveModifiers = new RollModifierSink();
+            saveModifiers.ApplyFrom(operations);
+            int net = saveModifiers.Net(ERollKind.Save);
+
+            ignoresPositiveDefense = operations.OfType<RuleOperation.IgnorePositiveDefenseModifiers>().Any();
+            if (ignoresPositiveDefense)
+            {
+                net -= operations.OfType<RuleOperation.ApplyRollModifier>()
+                    .Where(op => op.Roll == ERollKind.Save && op.Delta > 0)
+                    .Sum(op => op.Delta);
+            }
+
+            return net;
         }
 
         // #204: the distinct rule name(s) that added on-6 extra hits, joined for the save presentation

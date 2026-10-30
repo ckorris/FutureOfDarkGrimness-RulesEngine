@@ -1,5 +1,6 @@
 using System;
 using FDG.Data;
+using FDG.Rules.Dispatch;
 using FDG.Utilities;
 
 namespace FDG.Stages
@@ -39,8 +40,14 @@ namespace FDG.Stages
             StrafeMoraleBaseline baseline = QueryForResultOrThrowException<StrafeMoraleBaseline>(metaData);
             DataBinding<UnitData> defender = metaData.DefendingUnit;
 
+            // #431 Scourge on a strafe / Crossing Strike weapon ("as if it was shooting"): the counted wounds
+            // join the check, exactly as in ResolveRangedMoraleStage.
+            float counted = CountedWounds.Take(defender.GetValue());
+            if (counted > 0f)
+                GameContext.Log($"{defender.Name()} counts as having taken {counted:0.##} extra wound(s) for morale.");
+
             bool? result = await MoraleUtilities.ResolveWoundDrivenMorale(
-                GameContext, defender, baseline.RemainingWoundsBefore);
+                GameContext, defender, baseline.RemainingWoundsBefore, counted);
 
             if (result == true)
             {
@@ -53,7 +60,7 @@ namespace FDG.Stages
                     "and is now Shaken.");
             }
             else if (MoraleUtilities.DescribeSkippedWoundDrivenMorale(
-                         baseline.RemainingWoundsBefore, defender.GetValue()) is string reason)
+                         baseline.RemainingWoundsBefore, defender.GetValue(), counted) is string reason)
             {
                 GameContext.Log(reason);
             }

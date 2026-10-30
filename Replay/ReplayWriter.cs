@@ -42,16 +42,26 @@ namespace FDG.Replay
 
         public IReadOnlyList<ReplayEvent> Events { get; }
 
-        public ReplayDocument(ReplayHeader header, IReadOnlyList<ReplayEvent> events)
+        /// <summary>
+        /// Things the reader noticed that do not stop playback (#454) - today only a build-stamp mismatch.
+        /// Player-facing, ASCII. Empty for a document built in memory.
+        /// </summary>
+        public IReadOnlyList<string> Warnings { get; }
+
+        public ReplayDocument(ReplayHeader header, IReadOnlyList<ReplayEvent> events, IReadOnlyList<string>? warnings = null)
         {
             Header = header;
             Events = events;
+            Warnings = warnings ?? Array.Empty<string>();
         }
     }
 
     /// <summary>
-    /// Reads the <c>.fdgreplay</c> container. Minimal by design (#450): it parses and refuses a format
-    /// mismatch; build-stamp warnings, indexing and playback are #454's.
+    /// Reads the <c>.fdgreplay</c> container, one line at a time straight off the gzip stream. A
+    /// <c>FormatVersion</c> mismatch is refused (plan rule 5); a <c>BuildVersion</c> mismatch is only a
+    /// <see cref="ReplayDocument.Warnings"/> entry - playback applies recorded state, so a different build can
+    /// still show it, though its rules or presentation may have moved on. Dev builds all stamp
+    /// <c>&lt;Version&gt;-dev</c>, so they never warn about each other.
     /// </summary>
     public static class ReplayReader
     {
@@ -124,8 +134,18 @@ namespace FDG.Replay
                 events.Add(replayEvent);
             }
 
-            return new ReplayDocument(header, events);
+            List<string> warnings = new List<string>();
+            if (header.BuildVersion != ReplayFormat.BuildVersion)
+            {
+                warnings.Add($"This replay was recorded by build {Describe(header.BuildVersion)}; this is build " +
+                    $"{ReplayFormat.BuildVersion}. It plays back what was recorded, but rules and visuals may differ.");
+            }
+
+            return new ReplayDocument(header, events, warnings);
         }
+
+        private static string Describe(string buildVersion) =>
+            string.IsNullOrEmpty(buildVersion) ? "(unknown)" : buildVersion;
 
         private static JObject ParseLine(string line, int lineNumber)
         {

@@ -198,7 +198,11 @@ namespace FDG.Ai.Tactician
             bool hasRanged = self.GetRangedWeapons().Count > 0;
             // #355: "can fight in melee", not "carries a melee weapon" - an impact-only unit's charge IS
             // its attack, so a charge macro-action must be generated for it too.
-            bool hasMelee = ChargeContactRules.CanFightInMelee(self);
+            // #425: and only for a unit that may declare a Charge at all - a Cumbersome artillery crew carries
+            // a melee profile but "may only use Hold or Advance actions", so no charge (or charge approach)
+            // macro is ever generated for it.
+            bool hasMelee = ChargeContactRules.CanFightInMelee(self)
+                && ActionRestrictionQueries.MayDeclare(self, evaluator, EActionType.Charge);
             float selfChargeBudget = hasMelee ? TacticalAnalysis.ChargeBudget(self, evaluator, terrain) : 0f;
 
             foreach (IUnit enemy in targetEnemies)

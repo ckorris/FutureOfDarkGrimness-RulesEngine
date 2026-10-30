@@ -64,7 +64,8 @@ namespace FDG.Tests
             Assert.That(req.ValidOptions, Does.Not.Contain(ChooseActionStage.MOVEMENT_CHOICE_NAME),
                 "Immobile removes Move from the offered actions");
             Assert.That(req.InvalidOptions.Any(o =>
-                    o.Option == ChooseActionStage.MOVEMENT_CHOICE_NAME && o.Reason == "Immobile."),
+                    o.Option == ChooseActionStage.MOVEMENT_CHOICE_NAME
+                    && o.Reason == "Immobile - may only use Hold actions."),
                 Is.True, "Move is shown disabled with the Immobile reason");
         }
 

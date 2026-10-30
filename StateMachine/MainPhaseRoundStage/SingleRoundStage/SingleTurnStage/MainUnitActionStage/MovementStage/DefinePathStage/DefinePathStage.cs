@@ -66,12 +66,24 @@ namespace FDG.Stages
             bool ignoresImpassibleTerrain = Rules.Dispatch.MovementRuleQueries.IgnoresAllTerrain(
                 context.MovingUnit.GetValue(), context.GameContext.RuleEvaluator);
 
+            // #425 Cumbersome: the budgets are already Advance-only (MovementActionContext); these name the rule so
+            // the movement panels can say why there is no Rush and that the move forfeits the shot.
+            IReadOnlySet<Rules.Definitions.EActionType>? allowedActions = Rules.Dispatch.ActionRestrictionQueries
+                .AllowedActions(context.MovingUnit.GetValue(), context.GameContext.RuleEvaluator, out string? restrictingRule);
+            string? advanceOnlyRule = allowedActions != null
+                && allowedActions.Contains(Rules.Definitions.EActionType.Advance)
+                && !allowedActions.Contains(Rules.Definitions.EActionType.Rush)
+                    ? restrictingRule : null;
+            string? noShootAfterMoveRule = Rules.Dispatch.ActionRestrictionQueries.ShootingAfterMovingForbiddenBy(
+                context.MovingUnit.GetValue(), context.GameContext.RuleEvaluator);
+
             var pathRequest = new DefineMovementPathRequest(playerID,
                 $"Moving {context.MovingUnit.GetValue().Name}", context.MovingUnit,
                 context.MaxAdvanceDistance, context.MaxRushDistance, hardCap,
                 WeaponSightProfileBuilder.For(context.MovingUnit.GetValue(), context.GameContext.RuleEvaluator),
                 canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain, BuildRangeOverrides(context),
-                perModelBudgets, allowCancel: true, mainActivationMove: true);
+                perModelBudgets, allowCancel: true, mainActivationMove: true,
+                advanceOnlyRule: advanceOnlyRule, noShootAfterMoveRule: noShootAfterMoveRule);
 
             CancellableResult<List<ModelMoveEntry>> pathResult = await context.PlayerRequester()
                 .RequestDecision<DefineMovementPathRequest, CancellableResult<List<ModelMoveEntry>>>(pathRequest);

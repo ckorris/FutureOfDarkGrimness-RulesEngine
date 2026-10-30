@@ -175,6 +175,14 @@ namespace FDG.Stages
                 _maxChargeDistance = Math.Min(_maxChargeDistance, difficultCap);
             }
 
+            // #425 Cumbersome ("May only use Hold or Advance actions"): an allowed-action set without Rush caps
+            // the Move at the Advance, and one without Charge caps the charge-length approach too - so the move
+            // request, its per-model budgets and the authoritative re-validation (DefinePathStage) all see an
+            // Advance-only budget. Same formula as MovementRuleQueries' AI-facing budgets.
+            IReadOnlySet<EActionType>? allowedActions = ActionRestrictionQueries.AllowedActions(unit, GameContext.RuleEvaluator);
+            (_maxAdvanceDistance, _maxRushDistance, _maxChargeDistance) = ActionRestrictionQueries.CapBudget(
+                allowedActions, _maxAdvanceDistance, _maxRushDistance, _maxChargeDistance);
+
             // #093: per-model budgets. Each living model's budget folds the unit's movement rules AND that
             // model's own (a joined hero's Fast/Slow), so a Fast hero can range ahead within coherency while
             // the rest of the unit keeps the unit budget. A native model with no model rules lands exactly on
@@ -203,6 +211,8 @@ namespace FDG.Stages
                     modelRush = Math.Min(modelRush, difficultCap);
                     modelCharge = Math.Min(modelCharge, difficultCap);
                 }
+                (modelAdvance, modelRush, modelCharge) = ActionRestrictionQueries.CapBudget(
+                    allowedActions, modelAdvance, modelRush, modelCharge);
                 _modelBudgets[model.ID] = new ModelBudget(modelAdvance, modelRush, modelCharge);
             }
         }

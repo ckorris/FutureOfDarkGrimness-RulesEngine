@@ -87,6 +87,20 @@ namespace FDG.StageResolution.Requests
         /// </summary>
         public bool MainActivationMove { get; }
 
+        /// <summary>
+        /// #425: the alias-aware name of the rule that limits this unit to Advance (Cumbersome: "May only use Hold
+        /// or Advance actions"), or null. The budgets above are already capped (Rush == Advance); this is the
+        /// explanation the movement panels print instead of a "rush up to" figure that equals the Advance.
+        /// </summary>
+        public string? AdvanceOnlyRule { get; }
+
+        /// <summary>
+        /// #425: the alias-aware name of the rule that forbids shooting after any move (Cumbersome: "can't shoot
+        /// when moving"), or null. Read by the movement panels so they neither promise "can still shoot afterward"
+        /// nor draw post-move fire lines for a unit the shoot gate will refuse.
+        /// </summary>
+        public string? NoShootAfterMoveRule { get; }
+
         [JsonConstructor]
         public DefineMovementPathRequest(PlayerID targetPlayerID, TaskID taskID, string taskName,
             DataBinding<UnitData> unitDataBinding, float maxAdvanceDistance, float maxRushDistance, float maxDistanceInches,
@@ -94,7 +108,8 @@ namespace FDG.StageResolution.Requests
             bool ignoresDifficultTerrain = false, bool ignoresImpassibleTerrain = false,
             IReadOnlyList<WeaponRangeOverride>? weaponRangeOverrides = null,
             IReadOnlyList<ModelMoveBudgetInfo>? modelMoveBudgets = null,
-            bool allowCancel = false, bool mainActivationMove = false)
+            bool allowCancel = false, bool mainActivationMove = false,
+            string? advanceOnlyRule = null, string? noShootAfterMoveRule = null)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
@@ -111,6 +126,8 @@ namespace FDG.StageResolution.Requests
             ModelMoveBudgets = modelMoveBudgets ?? new List<ModelMoveBudgetInfo>();
             AllowCancel = allowCancel;
             MainActivationMove = mainActivationMove;
+            AdvanceOnlyRule = advanceOnlyRule;
+            NoShootAfterMoveRule = noShootAfterMoveRule;
         }
 
         public DefineMovementPathRequest(PlayerID targetPlayerID,  string taskName,
@@ -119,7 +136,8 @@ namespace FDG.StageResolution.Requests
             bool ignoresDifficultTerrain = false, bool ignoresImpassibleTerrain = false,
             IReadOnlyList<WeaponRangeOverride>? weaponRangeOverrides = null,
             IReadOnlyList<ModelMoveBudgetInfo>? modelMoveBudgets = null,
-            bool allowCancel = false, bool mainActivationMove = false)
+            bool allowCancel = false, bool mainActivationMove = false,
+            string? advanceOnlyRule = null, string? noShootAfterMoveRule = null)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = new TaskID(Guid.NewGuid());
@@ -136,6 +154,8 @@ namespace FDG.StageResolution.Requests
             ModelMoveBudgets = modelMoveBudgets ?? new List<ModelMoveBudgetInfo>();
             AllowCancel = allowCancel;
             MainActivationMove = mainActivationMove;
+            AdvanceOnlyRule = advanceOnlyRule;
+            NoShootAfterMoveRule = noShootAfterMoveRule;
         }
 
         /// <summary>

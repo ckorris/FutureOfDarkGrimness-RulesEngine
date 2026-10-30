@@ -899,6 +899,17 @@ public abstract record RuleOperation
         public override string Describe() => "could still shoot after Rushing";
     }
 
+    /// <summary>
+    /// #425: the bearer may not shoot once it has moved this activation - Cumbersome's "can't shoot when
+    /// moving". Read by <c>ChooseActionStage.GetCanShoot</c> (and the Tactician's shoot-after-move planning)
+    /// through <see cref="Rules.Dispatch.ActionRestrictionQueries.ShootingAfterMovingForbiddenBy"/>. Resolution
+    /// of <see cref="Effect.NoShootingAfterMoving"/>; the opposite of <see cref="AllowShootAfterRush"/>.
+    /// </summary>
+    public sealed record ForbidShootingAfterMoving : RuleOperation
+    {
+        public override string Describe() => "could not shoot after moving";
+    }
+
     // --- Capabilities ------------------------------------------------------------------------------
     //
     // Answers to questions asked at Lifecycle_OnCapabilityQuery, never APPLIED by anything: presence in
@@ -1021,7 +1032,7 @@ public abstract record RuleOperation
 
     /// <summary>
     /// Limit the bearer's declarable actions to <see cref="Allowed"/>. Resolution of
-    /// <see cref="Effect.RestrictActions"/> (Immobile, Artillery Hold-only).
+    /// <see cref="Effect.RestrictActions"/> (Immobile, Cumbersome).
     /// </summary>
     public sealed record RestrictActions(IReadOnlyList<EActionType> Allowed) : RuleOperation
     {

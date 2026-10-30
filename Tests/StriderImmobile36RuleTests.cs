@@ -77,7 +77,7 @@ namespace FDG.Tests
             Assert.That(req.ValidOptions, Does.Not.Contain(ChooseActionStage.CHARGE_CHOICE_NAME),
                 "the enemy is 1in away (inside the 3in strike range), so Charge would be offered - but Immobile 'may only use Hold actions'");
             Assert.That(req.InvalidOptions.Any(o => o.Option == ChooseActionStage.CHARGE_CHOICE_NAME
-                                                     && o.Reason == "Immobile."), Is.True,
+                                                     && o.Reason == "Immobile - may only use Hold actions."), Is.True,
                 "and the menu says why: " + string.Join(" | ", req.InvalidOptions.Select(o => $"{o.Option}={o.Reason}")));
         }
 

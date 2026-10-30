@@ -25,7 +25,7 @@ public static class CoreRuleCatalog
         Stealth, Artillery, Indirect, Reliable, Fast, VeryFast, Slow, Surge, Relentless, Furious,
         Deadly, Regeneration, Unstoppable, Tough, Rending, Bane, Shred, Vanguard, Scout, Ambush, Thrust,
         Blast, Takedown, Limited, Impact, Counter, Brace, MartialProwess, Strafing, Fear, Fearless, Hero, Transport,
-        FuriousBuff, Mend, Immobile, Caster, SpellAmplifier,
+        FuriousBuff, Mend, Immobile, Cumbersome, Caster, SpellAmplifier,
         Evasive, MeleeEvasion, Precise, GoodShot,
         Agile, Quick, RapidAdvance, RapidRush, RapidCharge,
         Lacerate, Crack,
@@ -2366,8 +2366,7 @@ public static class CoreRuleCatalog
     /// Immobile (#100; Core Rules v3.6.0 "May only use Hold actions"): the unit can't move — it may only Hold (and shoot). A passive rule at
     /// <see cref="EHookID.Activation_OnActionChoice"/> that queues
     /// <see cref="RuleOperation.RestrictActions"/> with the allowed set [Hold]; ChooseActionStage reads it
-    /// and grays out Move and Charge. The general action-restriction primitive (also Artillery's deferred
-    /// Hold-only facet).
+    /// and grays out Move and Charge. The general action-restriction primitive (also <see cref="Cumbersome"/>'s).
     /// </summary>
     public static SpecialRuleDefinition Immobile { get; } = new SpecialRuleDefinition("Immobile",
         new[]
@@ -2380,4 +2379,30 @@ public static class CoreRuleCatalog
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Negative,
         Description: "May only use Hold actions.");
+
+    /// <summary>
+    /// Cumbersome (#425; new in Core Rules v3.6.0, carried by artillery units): "May only use Hold or Advance
+    /// actions, but can't shoot when moving." Two answers at <see cref="EHookID.Activation_OnActionChoice"/>,
+    /// both read through <see cref="ActionRestrictionQueries"/>: <see cref="RuleOperation.RestrictActions"/>
+    /// [Hold, Advance] - ChooseActionStage greys Charge, and <c>MovementActionContext</c> caps the Move at the
+    /// unit's Advance (no Rush, and no charge-length approach) - and
+    /// <see cref="RuleOperation.ForbidShootingAfterMoving"/>, which closes Shoot once the unit has moved, so an
+    /// Advance is move-only. A unit that wants to shoot Holds. #425 D1 (owner review): an Advance of 0" still
+    /// spends the move action and so still forbids the shot - the action, not the distance, is "moving".
+    /// </summary>
+    public static SpecialRuleDefinition Cumbersome { get; } = new SpecialRuleDefinition("Cumbersome",
+        new[]
+        {
+            new HookEntry(EHookID.Activation_OnActionChoice,
+                new Condition.Always(),
+                new Effect.RestrictActions(new[] { EActionType.Hold, EActionType.Advance }),
+                ELifetime.ThisActivation),
+            new HookEntry(EHookID.Activation_OnActionChoice,
+                new Condition.Always(),
+                new Effect.NoShootingAfterMoving(),
+                ELifetime.ThisActivation),
+        },
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Negative,
+        Description: "May only use Hold or Advance actions, but can't shoot when moving.");
 }

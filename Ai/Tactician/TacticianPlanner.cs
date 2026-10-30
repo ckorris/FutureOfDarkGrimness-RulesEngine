@@ -94,6 +94,10 @@ namespace FDG.Ai.Tactician
         // Strider / Flying, read once per activation (see UnitRoute).
         private bool? _ignoresAllTerrain;
         private bool? _ignoresDifficultTerrain;
+        // #425 Cumbersome, read once per activation: may the active unit shoot after moving, and may it
+        // declare a Charge at all? (ActionRestrictionQueries - the gates ChooseActionStage applies.)
+        private bool? _activeShootsAfterMoving;
+        private bool? _activeMayCharge;
         // #359: advance lanes of the friendlies that have not activated yet this round - the
         // endpoints the lane-block penalty charges against. Endpoint-independent, built lazily.
         private List<LaneGeometry.AdvanceLane>? _advanceLanes;
@@ -283,6 +287,8 @@ namespace FDG.Ai.Tactician
             _routeGrid = null;
             _ignoresAllTerrain = null;
             _ignoresDifficultTerrain = null;
+            _activeShootsAfterMoving = null;
+            _activeMayCharge = null;
             _advanceLanes = null;
             _terrainSnapshot = null;
             _sightSnapshot = null;
@@ -805,7 +811,8 @@ namespace FDG.Ai.Tactician
             UnitData self = _activeUnit!.GetValue();
             Position end = candidate.ProjectedCentroid;
             Position now = Centroid(self);
-            bool meleeCapable = self.GetMeleeWeapons().Count > 0;
+            // #425: a unit that may not declare a Charge (Cumbersome) earns no approach credit for one.
+            bool meleeCapable = self.GetMeleeWeapons().Count > 0 && ActiveMayCharge();
 
             float offense = 0f;
             float retaliation = 0f;
@@ -1665,8 +1672,20 @@ namespace FDG.Ai.Tactician
         // as Rush) could shoot after - phantom offense that made gunline units "seek cover" or
         // "escort" every round instead of firing (#16 RL-row collapse: Warriors fired 0-1 times
         // per game; the RL row was the only one below the 50% gate line).
-        private static bool CanShootAfter(MacroAction candidate) =>
-            candidate.ActionType is EActionType.Hold or EActionType.Advance;
+        //
+        // #425 Cumbersome ("can't shoot when moving"): only Hold keeps the volley - the engine's shoot gate
+        // closes after ANY move, so an Advance plan must not be credited a shot it can never take.
+        private bool CanShootAfter(MacroAction candidate) =>
+            candidate.ActionType == EActionType.Hold
+            || (candidate.ActionType == EActionType.Advance && ActiveShootsAfterMoving());
+
+        private bool ActiveShootsAfterMoving() =>
+            _activeShootsAfterMoving ??= ActionRestrictionQueries.ShootingAfterMovingForbiddenBy(
+                _activeUnit!.GetValue(), _evaluator) == null;
+
+        private bool ActiveMayCharge() =>
+            _activeMayCharge ??= ActionRestrictionQueries.MayDeclare(
+                _activeUnit!.GetValue(), _evaluator, EActionType.Charge);
 
         // #363: terrain doesn't change inside an activation - one snapshot serves every
         // (candidate x enemy) sight test of the plan. #376 also feeds it to the mobility queries

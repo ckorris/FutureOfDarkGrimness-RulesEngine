@@ -187,6 +187,12 @@ namespace FDG.Rules.Dispatch
             AccumulateMovementRules(unit, evaluator, EActionType.Rush, GameWideConstants.RUSH_DISTANCE_INCHES, unitSink, terrain);
             AccumulateMovementRules(unit, evaluator, EActionType.Charge, GameWideConstants.CHARGE_DISTANCE_INCHES, unitSink, terrain);
             float maxRush = GameWideConstants.RUSH_DISTANCE_INCHES + unitSink.Net(EActionType.Rush);
+            // #425 Cumbersome: no Rush means the longest legal move is the Advance - the same cap
+            // MovementActionContext applies to the move request (ActionRestrictionQueries.CapBudget).
+            IReadOnlySet<EActionType>? allowed = ActionRestrictionQueries.AllowedActions(unit, evaluator);
+            maxRush = ActionRestrictionQueries.CapBudget(allowed,
+                GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES + unitSink.Net(EActionType.Advance),
+                maxRush, float.MaxValue).Rush;
 
             foreach (IModel model in unit.Models)
             {
@@ -200,6 +206,10 @@ namespace FDG.Rules.Dispatch
                 AccumulateModelMovementRules(unit, model, evaluator, EActionType.Rush, GameWideConstants.RUSH_DISTANCE_INCHES, modelSink, terrain);
                 AccumulateModelMovementRules(unit, model, evaluator, EActionType.Charge, GameWideConstants.CHARGE_DISTANCE_INCHES, modelSink, terrain);
                 float modelRush = GameWideConstants.RUSH_DISTANCE_INCHES + modelSink.Net(EActionType.Rush);
+                // #425: an Advance-only unit's per-model Rush is its per-model Advance (CapBudget).
+                modelRush = ActionRestrictionQueries.CapBudget(allowed,
+                    GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES + modelSink.Net(EActionType.Advance),
+                    modelRush, float.MaxValue).Rush;
                 if (modelRush > maxRush)
                 {
                     maxRush = modelRush;
@@ -230,6 +240,8 @@ namespace FDG.Rules.Dispatch
             try
             {
             var budgets = new Dictionary<ModelID, (float, float, float)>();
+            // #425: the same Advance-only cap MovementActionContext applies to each model's budget.
+            IReadOnlySet<EActionType>? allowed = ActionRestrictionQueries.AllowedActions(unit, evaluator);
             foreach (IModel model in unit.Models)
             {
                 if (!model.GetIsAlive())
@@ -243,7 +255,7 @@ namespace FDG.Rules.Dispatch
                 AccumulateModelMovementRules(unit, model, evaluator, EActionType.Charge, GameWideConstants.CHARGE_DISTANCE_INCHES, sink, terrain);
                 // #432: the model's own charge range (Highborn's +2") rides the Charge budget like a move bonus.
                 sink.Add(EActionType.Charge, RangeRuleQueries.OwnChargeRangeDelta(unit, evaluator, model));
-                budgets[model.ID] = (
+                budgets[model.ID] = ActionRestrictionQueries.CapBudget(allowed,
                     GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES + sink.Net(EActionType.Advance),
                     GameWideConstants.RUSH_DISTANCE_INCHES + sink.Net(EActionType.Rush),
                     GameWideConstants.CHARGE_DISTANCE_INCHES + sink.Net(EActionType.Charge));

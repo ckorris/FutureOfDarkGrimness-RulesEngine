@@ -65,6 +65,8 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(StrikeFirst), "strikeFirst")]
 [JsonDerivedType(typeof(StrikeLast), "strikeLast")]
 [JsonDerivedType(typeof(ShootAfterRush), "shootAfterRush")]
+// #425: Cumbersome's "can't shoot when moving" (Core Rules v3.6.0).
+[JsonDerivedType(typeof(NoShootingAfterMoving), "noShootingAfterMoving")]
 [JsonDerivedType(typeof(EnableCasting), "enableCasting")]
 [JsonDerivedType(typeof(EnableTransport), "enableTransport")]
 [JsonDerivedType(typeof(EnableReDeployment), "enableReDeployment")]
@@ -1148,6 +1150,22 @@ public abstract record Effect
         }
     }
 
+    /// <summary>
+    /// #425: the bearer may not shoot once it has moved this activation - Cumbersome's "can't shoot when
+    /// moving" (Core Rules v3.6.0: "May only use Hold or Advance actions, but can't shoot when moving."). The
+    /// mirror of <see cref="ShootAfterRush"/>, authored at the same <see cref="EHookID.Activation_OnActionChoice"/>
+    /// hook: <c>ChooseActionStage.GetCanShoot</c> closes Shoot for a unit that has moved (a 0" Advance included -
+    /// the action, not the distance, is what moved it) when the op is present. Read through
+    /// <see cref="Dispatch.ActionRestrictionQueries.ShootingAfterMovingForbiddenBy"/>.
+    /// </summary>
+    public sealed record NoShootingAfterMoving : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.ForbidShootingAfterMoving());
+        }
+    }
+
     // --- Capabilities --------------------------------------------------------------------------
     //
     // Authored at EHookID.Lifecycle_OnCapabilityQuery, where an effect is the ANSWER to "what can this
@@ -1403,8 +1421,9 @@ public abstract record Effect
 
     /// <summary>
     /// Restricts the bearer to declaring only the actions in <see cref="Allowed"/>.
-    /// Covers Immobile (<c>[Hold]</c> only) and Artillery's Hold-only facet. The
-    /// engine drops disallowed actions from the choice set.
+    /// Covers Immobile (<c>[Hold]</c> only) and Cumbersome (<c>[Hold, Advance]</c>, #425). The
+    /// engine drops disallowed actions from the choice set, and a set without Rush caps the
+    /// unit's move at its Advance (<c>MovementActionContext</c>).
     /// </summary>
     public sealed record RestrictActions(IReadOnlyList<EActionType> Allowed) : Effect
     {

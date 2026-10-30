@@ -396,9 +396,11 @@ public static class RuleFireLint
             EHookID.Melee_OnPostMelee => op is RuleOperation.InvokeTriggeredMove,
 
             // #197 P20: ChooseActionStage reads AllowShootAfterRush at the same hook it reads RestrictActions
-            // - both are answers to "what may this unit do this activation".
+            // - both are answers to "what may this unit do this activation". #425: Cumbersome's
+            // ForbidShootingAfterMoving is the same kind of answer, read by GetCanShoot.
             EHookID.Activation_OnActionChoice =>
-                op is RuleOperation.RestrictActions or RuleOperation.AllowShootAfterRush,
+                op is RuleOperation.RestrictActions or RuleOperation.AllowShootAfterRush
+                    or RuleOperation.ForbidShootingAfterMoving,
 
             // UnitCreationRules applies the token grants (auras) and folds SetMaxWounds (Tough) and
             // SetDefense (Armor).

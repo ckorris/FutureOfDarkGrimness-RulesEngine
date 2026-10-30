@@ -152,6 +152,7 @@ namespace FDG.Tests
             yield return Case(new RuleOperation.StrikeFirst(), "struck first");
             yield return Case(new RuleOperation.StrikeLast(), "struck last");
             yield return Case(new RuleOperation.AllowShootAfterRush(), "could still shoot after Rushing");
+            yield return Case(new RuleOperation.ForbidShootingAfterMoving(), "could not shoot after moving");
             yield return Case(new RuleOperation.IgnoreEnemyMovementBlock(), "moved through enemy units");
             // #419: Fear(X) 3.6 polarity - the bonus lands on the enemy's taken total. Singular at 1.
             yield return Case(new RuleOperation.ExtraMeleeWoundCount(1),

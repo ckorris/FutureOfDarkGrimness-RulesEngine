@@ -408,6 +408,45 @@ namespace FDG.Tests
             });
         }
 
+        // #424 Assault: one weapon in both reports. The calculator batches through the unit's two pools, so a
+        // Heavy Pistol unit volleys at 10" in shooting mode AND swings the same pistols in melee mode - 5 dice on
+        // 4+ either way, the same stat line, no split copy and no double count of anything.
+        [Test]
+        public void AnAssaultPistolUnit_IsVolleyedInBothModes_WithTheSameWeapon()
+        {
+            WeaponFileEntry pistols = Rifle(5, range: 12, attacks: 1, ap: 1, name: "Heavy Pistol");
+            pistols.SpecialRules.Add(new SpecialRuleEntry_Core("Assault"));
+            ArmyListFile pistoleers = Army(Unit("Pistoleers", 5, 4, 4, pistols));
+            pistoleers.RuleDefinitions.Add(AssaultDefinitions.Assault);
+
+            CombatReport shot = CombatCalculator.Run(pistoleers, Army(Unit("Targets", 10, 4, 4)),
+                new CombatSituation(DistanceInches: 10f));
+            CombatReport swing = CombatCalculator.Run(pistoleers, Army(Unit("Targets", 10, 4, 4)),
+                new CombatSituation(Mode: ECombatMode.Melee));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(shot.Volleys.Select(v => v.Weapon.Name), Is.EqualTo(new[] { "Heavy Pistol" }));
+                Assert.That(shot.Volleys[0].InRange, Is.True, "10\" is within the pistol's 12\"");
+                Assert.That(shot.Volleys[0].ExpectedHits, Is.EqualTo(2.5f).Within(Tolerance));
+                Assert.That(swing.Volleys.Select(v => v.Weapon.Name), Is.EqualTo(new[] { "Heavy Pistol" }),
+                    "the melee report swings the same pistols");
+                Assert.That(swing.Volleys[0].ExpectedHits, Is.EqualTo(2.5f).Within(Tolerance));
+                Assert.That(swing.Volleys[0].Saves.Single().SaveNeeded, Is.EqualTo(5), "Defense 4 + the pistol's AP 1");
+            });
+        }
+
+        [Test]
+        public void APlainPistolUnit_StillHasNoMeleeVolley()
+        {
+            CombatReport swing = CombatCalculator.Run(
+                Army(Unit("Riflemen", 5, 4, 4, Rifle(5, range: 12, name: "Pistol"))),
+                Army(Unit("Targets", 10, 4, 4)),
+                new CombatSituation(Mode: ECombatMode.Melee));
+
+            Assert.That(swing.Volleys, Is.Empty, "control: without the grant a pistol is not swung");
+        }
+
         // ---- fixture helpers ---------------------------------------------------------------------
 
         private const float Tolerance = 0.001f;

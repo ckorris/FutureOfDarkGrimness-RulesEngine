@@ -7,7 +7,7 @@ namespace FDG.Rules.Dispatch;
 /// Folds token-clear-roll operations (round-start Shaken recovery) into one effective threshold per
 /// token type. Multiple sources for the same token don't stack into multiple rolls: the sink keeps
 /// the BEST (lowest) threshold — the WoundIgnoreSink discipline — so Vale Oath (4+) plus Vale Oath
-/// Boost (3+) is a single roll at 3+ (#376). Distinct rules for the same token fold the same way
+/// Enhanced (3+) is a single roll at 3+ (#376). Distinct rules for the same token fold the same way
 /// (owner-ruled facet: Steadfast + Battleborn on one unit would be one roll at 4+, not two chances —
 /// no shipped unit carries both). The rolls themselves live with the stage via
 /// <see cref="TokenClearRolls"/>: rolling is execution, the sink stays a pure fold.

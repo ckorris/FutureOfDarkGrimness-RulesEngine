@@ -7,7 +7,7 @@ namespace FDG.Rules.Definitions;
 /// clears a token on a roll (<see cref="RuleOperation.ClearTokenOnRoll"/>) applies itself here via
 /// <see cref="SinkOperation{TSink}.ApplyTo"/>, so the round-start stage learns each token type's
 /// recovery threshold without inspecting concrete op types. Thresholds compose by MINIMUM per token
-/// type - the WoundIgnoreSink discipline (#376 Vale Oath Boost): a base rule at 4+ plus a Boost at 3+
+/// type - the WoundIgnoreSink discipline (#376 Vale Oath Boost, now Enhanced Vale Oath): a base rule at 4+ plus an Enhanced rule at 3+
 /// is ONE roll at 3+, never two chances. The roll itself lives with the stage (one decisive die per
 /// token type), since rolling is execution and the sink stays a pure fold.
 /// </summary>

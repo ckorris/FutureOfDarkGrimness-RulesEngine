@@ -1896,9 +1896,9 @@ public abstract record Effect
     /// nothing is asked of the path, only of the destination.
     ///
     /// <para>The die is rolled here, at Apply, exactly as <see cref="Heal"/> rolls its own — the operation
-    /// carries a concrete distance. Multiple entries SUM: Rapid Blink Boost widens "within D3\"" to
+    /// carries a concrete distance. Multiple entries SUM: Enhanced Rapid Blink widens "within D3\"" to
     /// "within 2D3\"" by contributing a second, independently rolled D3, which is the increment discipline
-    /// every other Boost rule follows. The stage folds them into ONE placement rather than prompting twice.</para>
+    /// every other Enhanced rule follows. The stage folds them into ONE placement rather than prompting twice.</para>
     ///
     /// <para>#434: <see cref="Move"/> makes it a real MOVE instead - OPR 3.6 rewrote the family as "you may move all
     /// models with this rule in it by up to D3+1"" (Bounding, Dash, Nimble, Rapid Blink, Wolfborn), so the models
@@ -1954,8 +1954,8 @@ public abstract record Effect
     /// Shaken"). Gate it on <see cref="Condition.TokenPresent"/> so the die is only rolled when there is
     /// something to clear.
     ///
-    /// <para>A sink fold, not an executable (#376 Vale Oath Boost): all entries for one token type fold
-    /// to the BEST (lowest) threshold and the stage makes ONE decisive roll at it — so a Boost is
+    /// <para>A sink fold, not an executable (#376 Vale Oath Boost, now Enhanced Vale Oath): all entries for one token type fold
+    /// to the BEST (lowest) threshold and the stage makes ONE decisive roll at it — so an Enhanced rule is
     /// authored as the full boosted band (3), the min-threshold convention (see RerollSink's doctrine
     /// note), and never becomes a second chance. The stage still rolls with <c>RollDecisive</c>, never a
     /// histogram — the outcome is binary (the unit either recovers or does not), so a probabilistic

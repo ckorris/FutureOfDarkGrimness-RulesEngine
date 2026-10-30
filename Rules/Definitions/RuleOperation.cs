@@ -415,7 +415,7 @@ public abstract record RuleOperation
     /// Resolution of <see cref="Effect.RepositionAtActivation"/>.
     ///
     /// <para>Deliberately NOT an <see cref="ExecutableOperation"/>: several of these can fire at once (a Rapid
-    /// Blink unit that also has Rapid Blink Boost emits two), and executing each would prompt the player twice.
+    /// Blink unit that also has Enhanced Rapid Blink emits two), and executing each would prompt the player twice.
     /// <c>ActivationStartStage</c> sums them into a single placement instead — the same "the stage folds it"
     /// shape <c>BeforeAttackActionStage</c> uses for DealHits.</para>
     /// <para>#426: <see cref="EnemyClearanceInches"/> / <see cref="ExemptEnemyRule"/> carry Vanguard 3.6's
@@ -506,9 +506,9 @@ public abstract record RuleOperation
     /// <summary>
     /// Clear every <see cref="TType"/> token on a single roll of <see cref="MinRoll"/>+. Resolution of
     /// <see cref="Effect.ClearTokenOnRoll"/> — the round-start Shaken recovery. A sink fold rather than
-    /// an executable (#376 Vale Oath Boost): thresholds from multiple entries compose by MINIMUM per
+    /// an executable (#376 Vale Oath Boost, now Enhanced Vale Oath): thresholds from multiple entries compose by MINIMUM per
     /// token type in <c>TokenClearRollSink</c>, and the stage then makes ONE decisive roll per type —
-    /// an executable-per-entry would roll once per rule and turn a Boost into a second chance.
+    /// an executable-per-entry would roll once per rule and turn an Enhanced rule into a second chance.
     /// </summary>
     public sealed record ClearTokenOnRoll(TokenType TType, int MinRoll) : SinkOperation<ITokenClearRollSink>
     {

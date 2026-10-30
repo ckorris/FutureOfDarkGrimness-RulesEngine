@@ -1,7 +1,10 @@
 using FDG.Ai;
 using FDG.Ai.Resolvers;
 using FDG.Data;
+using FDG.EngineInterface;
 using FDG.GameModel;
+using FDG.Network.Connection;
+using FDG.Network.Connection.Lobby;
 using FDG.Network.Messages;
 using FDG.Players;
 using FDG.Replay;
@@ -316,6 +319,60 @@ namespace FDG.Tests
             Assert.That(seeded.WithConcreteSeed().DiceSeed, Is.EqualTo(17));
             Assert.That(random.WithConcreteSeed().DiceSeed, Is.Not.Null);
             Assert.That(random.DiceSeed, Is.Null, "a copy: the lobby's own setting stays random for the next game");
+        }
+
+        // --- The host lobby's real launch (the GUI's new-game path) --------------------------------------
+
+        [Test]
+        [CancelAfter(30_000)]
+        public async Task HostLobbyLaunch_RecordsTheGame_UnderAConcreteSeed()
+        {
+            var hostVm = new LobbyViewModel_Host("Host", "The Table", "", new NullNetworkHost());
+            hostVm.AddAiPlayer(EAiProfile.SoloRules);
+            LobbyPlayerInfoSummary[] players = hostVm.PlayerInfos.ToArray();
+            hostVm.UpdateArmyListFile(players[0].PlayerID, MakeShooterArmy());
+            hostVm.UpdateArmyListFile(players[1].PlayerID, MakeDefenderArmy());
+            var launched = new TaskCompletionSource<IFDGGame>();
+            hostVm.OnLaunched += game => launched.TrySetResult(game);
+
+            Assert.That(hostVm.Replay, Is.Null, "no replay before launch");
+            Assert.That(hostVm.TryLaunchGame(out string? failReason), Is.True, failReason);
+            IFDGGame localGame = await launched.Task;
+
+            // The host's own slot is a local human whose front end never attaches here, so the state machine
+            // stays parked at its ready gate: the recording holds GameStart + snapshot 0 and nothing else.
+            Assert.That(hostVm.Replay, Is.Not.Null);
+            Assert.That(localGame.Replay, Is.SameAs(hostVm.Replay), "the front end's game exposes the same recording");
+            Assert.That(hostVm.Replay!.IsRecording, Is.True);
+            ReplayDocument document;
+            using (MemoryStream stream = new MemoryStream(hostVm.Replay.ExportGzip()))
+                document = ReplayReader.ReadGzip(stream);
+
+            Assert.That(document.Header.Seed, Is.Not.Null, "D5 on the lobby path: the lobby's seed setting was random");
+            Assert.That(document.Header.Slots.Select(s => s.Controller), Is.EqualTo(new[] { EReplayController.Human, EReplayController.Ai }));
+            Assert.That(document.Header.RecordedByPlayerId, Is.EqualTo(players[0].PlayerID), "the host's own player");
+            Assert.That(((MarkerEvent)document.Events[0]).Marker, Is.EqualTo(EReplayMarker.GameStart));
+            Assert.That(document.Events[1], Is.InstanceOf<SnapshotEvent>());
+
+            hostVm.Dispose();
+            Assert.That(hostVm.Replay.IsRecording, Is.False, "tearing the lobby down stops the recording");
+            Assert.DoesNotThrow(() => hostVm.Replay.ExportGzip(), "and what was recorded stays exportable");
+        }
+
+        // Host-only no-op network double (the same shape as LobbyBotNamingTests'): no client ever joins.
+        private sealed class NullNetworkHost : INetworkHost
+        {
+            public event Action<ConnectionID>? OnNewClientConnected { add { } remove { } }
+            public event Action<ConnectionID>? OnClientDisconnected { add { } remove { } }
+            public event Action<ArraySegment<byte>, ConnectionID>? OnMessageReceived { add { } remove { } }
+
+            public Task StartAsync() => Task.CompletedTask;
+            public Task SendCommandToAllAsync(ArraySegment<byte> data, bool isPooled) => Task.CompletedTask;
+            public Task SendCommandToSingleClientAsync(ConnectionID clientId, ArraySegment<byte> data, bool isPooled)
+                => Task.CompletedTask;
+            public void DisconnectClient(ConnectionID clientId) { }
+            public void MarkClientAuthenticated(ConnectionID clientId) { }
+            public void Stop() { }
         }
 
         // --- Wire --------------------------------------------------------------------------------------

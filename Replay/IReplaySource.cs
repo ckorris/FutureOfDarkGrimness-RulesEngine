@@ -26,6 +26,7 @@ namespace FDG.Replay
     /// <param name="Outcome">The GameEnded marker's outcome name, or null while the game is running.</param>
     /// <param name="DurationMs">Milliseconds from the recording's start to its latest event.</param>
     /// <param name="SizeBytes">Approximate UNcompressed size of the event stream (payload characters plus a
-    /// per-line allowance). The exported file is the gzip of this, typically 15-20x smaller.</param>
+    /// per-line allowance) - it ignores JSON escaping, so it reads ~18% under the real raw size (measured on
+    /// 2k games, #450). The exported file is the gzip of the stream, ~14-16x smaller than the raw.</param>
     public sealed record ReplaySummary(int Steps, int Rounds, string? Outcome, long DurationMs, long SizeBytes);
 }

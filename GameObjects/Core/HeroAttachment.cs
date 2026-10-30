@@ -9,7 +9,9 @@ namespace FDG
     ///
     /// Read by the stat-divergence seams:
     /// <list type="bullet">
-    ///   <item>morale tests use <see cref="Quality"/> on behalf of the unit;</item>
+    ///   <item>the unit may take morale tests at <see cref="Quality"/> while the hero isn't Shaken (#421:
+    ///         <c>MoraleUtilities.ResolveMoraleQuality</c> takes the best of that, the unit's own and any
+    ///         Tough(9)+ Hero's aura);</item>
     ///   <item>the hero saves at the unit's Defense until it is the sole survivor, then at
     ///         <see cref="Defense"/>;</item>
     ///   <item>the hero's weapon batches fire at <see cref="Quality"/>;</item>

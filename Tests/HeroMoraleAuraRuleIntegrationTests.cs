@@ -2,6 +2,8 @@ using System.Collections.Generic;
 using System.Linq;
 using FDG.Data;
 using FDG.Players;
+using FDG.Presentation;
+using FDG.Presentation.Beats;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Dispatch.Contexts;
@@ -244,6 +246,60 @@ namespace FDG.Tests
 
             Assert.That(MoraleUtilities.ResolveMoraleQuality(_ctx, host.GetValue()),
                 Is.EqualTo(MoraleUtilities.MoraleQuality.Own(5)));
+        }
+
+        // --- presentation: the log line and the roll chip name the source ----------------------------------------
+
+        [Test]
+        public async Task TheLogLineAndTheRollChip_NameTheHeroWhoseAuraWasUsed()
+        {
+            var sink = new RecordingPresentationSink();
+            _ctx = new TestGameContext(_store, new FixedDiceRoller(Die), textOutput: _log,
+                presenter: new LocalPresenter(sink, new InstantPresentationClock()));
+            DataBinding<UnitData> warriors = Warriors();
+            Hero("Captain", _p1, tough: 9, quality: 3, gap: 5f);
+
+            await RunWoundDrivenMorale(warriors);
+
+            Assert.That(_log.Entries.Select(e => e.Message),
+                Contains.Item("Warriors tests morale at Quality 3+ (Hero aura: Captain)."));
+            DiceRolledBeat roll = sink.Beats.OfType<DiceRolledBeat>().Single(b => b.Label == "Warriors - Morale Test");
+            Assert.That(roll.SuccessThreshold, Is.EqualTo(3));
+            Assert.That(roll.ModifierTags, Is.EqualTo(new[] { "Quality 3+ (Hero aura: Captain)" }),
+                "a Hero-sourced test always shows its source chip, even with no other modifier");
+        }
+
+        [Test]
+        public async Task AJoinedHerosLogLine_NamesTheJoinedHero()
+        {
+            DataBinding<UnitData> host = JoinedUnit(heroQuality: 3);
+
+            await MoraleUtilities.TakeMoraleTest(_ctx, host.GetValue(),
+                MoraleUtilities.ResolveMoraleQuality(_ctx, host.GetValue()));
+
+            Assert.That(_log.Entries.Select(e => e.Message),
+                Contains.Item("Squad tests morale at Quality 3+ (joined Hero: Banner Captain)."));
+        }
+
+        [Test]
+        public async Task AUnitOnItsOwnQuality_LogsNoSourceLine()
+        {
+            DataBinding<UnitData> warriors = Warriors();
+
+            await RunWoundDrivenMorale(warriors);
+
+            Assert.That(_log.Entries.Any(e => e.Message.Contains("tests morale at")), Is.False);
+        }
+
+        [Test]
+        public void HeroDescription_IsTheCore360Wording()
+        {
+            Assert.That(CoreRuleCatalog.Hero.Description, Is.EqualTo(
+                "Heroes with up to Tough(6) may deploy as part of one multi-model unit without another Hero, but must " +
+                "use the unit's Defense until all other models have been killed. The Hero's unit, and units within 6\" " +
+                "of friendly Heroes with Tough(9) or higher, may use the Hero's Quality for Morale Tests as long as the " +
+                "Hero isn't Shaken."));
+            Assert.That(CoreRuleCatalog.Hero.Description.All(c => c < 128), Is.True, "game text is ASCII-only");
         }
 
         // --- the melee loser's test (#419) -------------------------------------------------------------------------

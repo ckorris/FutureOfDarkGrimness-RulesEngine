@@ -1308,12 +1308,22 @@ public static class CoreRuleCatalog
     /// explicit setup code in <see cref="HeroJoinResolver"/>. This definition exists so the army-list rule
     /// name "Hero" resolves (rather than skip+log) and so the host/hero eligibility checks have a stable
     /// <see cref="SpecialRuleDefinition"/> identity to test against.
+    /// <para>
+    /// #421: the description is the Core Rules v3.6.0 text verbatim (ASCII). Its morale half - the hero's own
+    /// unit, and units within 6" of a friendly Tough(9)+ Hero, may test at the Hero's Quality while the Hero
+    /// isn't Shaken - is not a hook either: it reaches across units at test time, so every morale test reads
+    /// it through <c>MoraleUtilities.ResolveMoraleQuality</c> (<see cref="HeroStatRules.GetMoraleQuality"/>,
+    /// <see cref="HeroStatRules.TryGetMoraleAuraHero"/>).
+    /// </para>
     /// </summary>
     public static SpecialRuleDefinition Hero { get; } = new SpecialRuleDefinition("Hero",
         Array.Empty<HookEntry>(),
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Positive,
-        Description: "A leader that joins a friendly unit; the unit takes morale at the hero's Quality, and the hero is wounded last.");
+        Description: "Heroes with up to Tough(6) may deploy as part of one multi-model unit without another Hero, " +
+            "but must use the unit's Defense until all other models have been killed. The Hero's unit, and units " +
+            "within 6\" of friendly Heroes with Tough(9) or higher, may use the Hero's Quality for Morale Tests as " +
+            "long as the Hero isn't Shaken.");
 
     /// <summary>The 3.6 book rule's name (#430): replaces the 3.5 "Unique".</summary>
     public const string UniqueHeroName = "Unique Hero";

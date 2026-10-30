@@ -70,6 +70,17 @@ namespace FDG.Stages
         {
             /// <summary>A test at the unit's own (or a caller-chosen) Quality - no hero involved.</summary>
             public static MoraleQuality Own(int quality) => new(quality, EMoraleQualitySource.Unit);
+
+            /// <summary>
+            /// The threshold and its source as players read it - the morale roll's first chip and its log line:
+            /// "Quality 5+", "Quality 3+ (joined Hero: Captain)", "Quality 3+ (Hero aura: Lord)". ASCII only.
+            /// </summary>
+            public string Describe() => Source switch
+            {
+                EMoraleQualitySource.JoinedHero => $"Quality {Quality}+ (joined Hero: {HeroName ?? "Hero"})",
+                EMoraleQualitySource.HeroAura => $"Quality {Quality}+ (Hero aura: {HeroName ?? "Hero"})",
+                _ => $"Quality {Quality}+",
+            };
         }
 
         /// <summary>
@@ -198,6 +209,13 @@ namespace FDG.Stages
                 return new MoraleTestOutcome(passed: false, baseRollNeeded, passedViaReroll: false);
             }
 
+            // #421: a Hero lent the Quality - say whose, so the number in the log is never a mystery. (The unit's
+            // own Quality needs no line; the existing pass/fail lines carry the threshold.)
+            if (quality.Source != EMoraleQualitySource.Unit)
+            {
+                gameContext.Log($"{testingUnit.Name} tests morale at {quality.Describe()}.");
+            }
+
             // #245: the NAMED live evaluation - identical to EvaluateAll (logs, spends grants), but each
             // op carries its rule name so the beat's chips can say which rule shifted the test.
             IReadOnlyList<(RuleOperation Op, string RuleName)> named = gameContext.RuleEvaluator.EvaluateAllNamedLive(
@@ -221,7 +239,7 @@ namespace FDG.Stages
             await gameContext.Presenter.Present(DiceRolledBeat.FromDecisive(initialRoll, rollNeeded,
                 $"{testingUnit.Name} - Morale Test",
                 passedInitial ? "Passed" : "Failed",
-                modifierTags: ComposeMoraleTags(baseRollNeeded, named, grantedNet)));
+                modifierTags: ComposeMoraleTags(quality, named, grantedNet)));
             if (passedInitial)
             {
                 return new MoraleTestOutcome(passed: true, rollNeeded, passedViaReroll: false);
@@ -338,8 +356,14 @@ namespace FDG.Stages
         // Internal for tests.
         internal static List<string>? ComposeMoraleTags(int baseRollNeeded,
             IReadOnlyList<(RuleOperation Op, string RuleName)> named, int grantedNet)
+            => ComposeMoraleTags(MoraleQuality.Own(baseRollNeeded), named, grantedNet);
+
+        // #421: the first chip names a lending Hero ("Quality 3+ (Hero aura: Lord)"), and a Hero-sourced test always
+        // shows its chips - the borrowed Quality IS the modifier worth reading, even with nothing else on the roll.
+        internal static List<string>? ComposeMoraleTags(MoraleQuality quality,
+            IReadOnlyList<(RuleOperation Op, string RuleName)> named, int grantedNet)
         {
-            List<string> tags = new List<string> { $"Quality {baseRollNeeded}+" };
+            List<string> tags = new List<string> { quality.Describe() };
             foreach ((RuleOperation op, string ruleName) in named)
             {
                 if (op is not RuleOperation.ApplyRollModifier mod || mod.Roll != ERollKind.Morale || mod.Delta == 0)
@@ -348,7 +372,7 @@ namespace FDG.Stages
             }
             if (grantedNet != 0) tags.Add($"buff {RollTags.Delta(grantedNet)}");
 
-            return tags.Count > 1 ? tags : null;
+            return tags.Count > 1 || quality.Source != EMoraleQualitySource.Unit ? tags : null;
         }
 
         /// <summary>

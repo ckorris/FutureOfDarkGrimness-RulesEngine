@@ -67,6 +67,8 @@ namespace FDG.Rules.Definitions;
 // "when shot/charged from over 9"/6" away"). The thresholds are data, one per attack kind.
 [JsonDerivedType(typeof(AttackingFromOver), "attackingFromOver")]
 [JsonDerivedType(typeof(AttackedFromOver), "attackedFromOver")]
+// #435: OPR 3.6 AoF Banner's "+1 to Morale Test rolls triggered by shooting/melee".
+[JsonDerivedType(typeof(MoraleTestFromShootingOrMelee), "moraleTestFromShootingOrMelee")]
 public abstract record Condition
 {
 
@@ -377,6 +379,20 @@ public abstract record Condition
     {
         protected override bool EvaluateCore(IHasShootChargeDistance context) =>
             ShotOrChargedFromOver(context, ShootInches, ChargeInches);
+    }
+
+    /// <summary>
+    /// #435 (at <see cref="EHookID.Morale_OnPreMoraleTest"/>): true when the Morale Test about to be rolled was
+    /// triggered by shooting (the wound-driven half-strength test, strafe / Crossing Strike included - "as if it was
+    /// shooting") or by melee (the loser's test); false for a test a spell or a special rule demanded (Mind Control,
+    /// Fatigue Debuff, Spell Drain, a spell's "must take a Morale Test"). OPR 3.6 AoF Banner: "This model and its unit
+    /// get +1 to Morale Test rolls triggered by shooting/melee." JSON <c>{"kind": "moraleTestFromShootingOrMelee"}</c>.
+    /// Reads <see cref="IHasMoraleTestCause"/> (<see cref="Dispatch.Contexts.PreMoraleTestContext.Cause"/>).
+    /// </summary>
+    public sealed record MoraleTestFromShootingOrMelee : CapabilityCondition<IHasMoraleTestCause>
+    {
+        protected override bool EvaluateCore(IHasMoraleTestCause context) =>
+            context.MoraleTestCause is EMoraleTestCause.Shooting or EMoraleTestCause.Melee;
     }
 
     /// <summary>

@@ -810,6 +810,10 @@ public static class RuleFireLint
                 // shot/charged from over 9"/6" away" family (attackedFromOver) proves fireable on each arm.
                 yield return new PreMoraleTestContext(bearer, ShotFromInches: FarInches);
                 yield return new PreMoraleTestContext(bearer, ChargedFromInches: FarInches);
+                // #435: tests triggered by shooting and by melee, so Banner's "+1 to Morale Test rolls triggered by
+                // shooting/melee" (moraleTestFromShootingOrMelee) proves fireable on each.
+                yield return new PreMoraleTestContext(bearer, Cause: EMoraleTestCause.Shooting);
+                yield return new PreMoraleTestContext(bearer, Cause: EMoraleTestCause.Melee);
                 break;
             case EHookID.Morale_OnMoraleTestComplete:
                 yield return new MoraleTestContext(bearer);

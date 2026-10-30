@@ -41,10 +41,12 @@ namespace FDG.Stages
             // strength - the two outcomes #197 P7's No Retreat is worded for.
             // #432: a loser that was the CHARGED unit carries the charge distance it received, for the 3.6
             // "charged from over 6\"" morale rules (Hive Bond, Hold the Line, Valiant); a losing charger carries none.
+            // #435: the melee loser's test is the one melee triggers (OPR 3.6 Banner: "triggered by shooting/melee").
             MoraleUtilities.MoraleTestOutcome outcome = await MoraleUtilities.TakeMoraleTest(
                 GameContext, testingUnit, determineMoraleSaveNeededResult.Quality,
                 failureCausesShakenOrRout: true,
-                chargedFromInches: context.ChargedFromInchesFor(testingUnit));
+                chargedFromInches: context.ChargedFromInchesFor(testingUnit),
+                cause: FDG.Rules.Foundation.EMoraleTestCause.Melee);
 
             if (outcome.Passed)
             {

@@ -172,20 +172,25 @@ namespace FDG.Stages
         /// shot/charged from over 9\"/6\" away" rules can read them. Null (the default) for tests nothing like that
         /// triggered (spells, Mind Control, a charger losing its own melee).
         /// </para>
+        /// <para>
+        /// #435: <paramref name="cause"/> says what triggered the test - shooting (the wound-driven test), melee (the
+        /// loser's test) or anything else (a spell's or a rule's demand, the default) - and rides the same context for
+        /// OPR 3.6 AoF Banner's "+1 to Morale Test rolls triggered by shooting/melee".
+        /// </para>
         /// </summary>
         public static Task<MoraleTestOutcome> TakeMoraleTest(IGameContext gameContext, IUnit testingUnit,
             int baseRollNeeded, bool failureCausesShakenOrRout = false, float? shotFromInches = null,
-            float? chargedFromInches = null)
+            float? chargedFromInches = null, EMoraleTestCause cause = EMoraleTestCause.Other)
             => TakeMoraleTest(gameContext, testingUnit, MoraleQuality.Own(baseRollNeeded), failureCausesShakenOrRout,
-                shotFromInches, chargedFromInches);
+                shotFromInches, chargedFromInches, cause);
 
         /// <summary>
-        /// #421: <see cref="TakeMoraleTest(IGameContext, IUnit, int, bool, float?, float?)"/> at a Quality the
-        /// caller resolved through <see cref="ResolveMoraleQuality"/>, which also says where it came from.
+        /// #421: <see cref="TakeMoraleTest(IGameContext, IUnit, int, bool, float?, float?, EMoraleTestCause)"/> at a
+        /// Quality the caller resolved through <see cref="ResolveMoraleQuality"/>, which also says where it came from.
         /// </summary>
         public static async Task<MoraleTestOutcome> TakeMoraleTest(IGameContext gameContext, IUnit testingUnit,
             MoraleQuality quality, bool failureCausesShakenOrRout = false, float? shotFromInches = null,
-            float? chargedFromInches = null)
+            float? chargedFromInches = null, EMoraleTestCause cause = EMoraleTestCause.Other)
         {
             int baseRollNeeded = quality.Quality;
 
@@ -219,7 +224,7 @@ namespace FDG.Stages
             // #245: the NAMED live evaluation - identical to EvaluateAll (logs, spends grants), but each
             // op carries its rule name so the beat's chips can say which rule shifted the test.
             IReadOnlyList<(RuleOperation Op, string RuleName)> named = gameContext.RuleEvaluator.EvaluateAllNamedLive(
-                new PreMoraleTestContext(testingUnit, shotFromInches, chargedFromInches),
+                new PreMoraleTestContext(testingUnit, shotFromInches, chargedFromInches, cause),
                 RuleParticipant.Actor(testingUnit));
             RollModifierSink modifiers = new RollModifierSink();
             modifiers.ApplyFrom(named.Select(n => n.Op).ToList());
@@ -446,8 +451,11 @@ namespace FDG.Stages
             // #421: the best Quality on offer - the unit's own, its joined hero's, or a Tough(9)+ Hero's within 6".
             // failureCausesShakenOrRout: this test's failure Shakens the unit, so a conversion rule
             // (#197 P7 No Retreat) may rescue it.
+            // #435: a wound-driven test is the one shooting triggers (a strafe / Crossing Strike attacks "as if it
+            // was shooting" and lands here too) - OPR 3.6 Banner's "triggered by shooting/melee".
             if ((await TakeMoraleTest(gameContext, unit, ResolveMoraleQuality(gameContext, unit),
-                    failureCausesShakenOrRout: true, shotFromInches: shotFromInches)).Passed) return true;
+                    failureCausesShakenOrRout: true, shotFromInches: shotFromInches,
+                    cause: EMoraleTestCause.Shooting)).Passed) return true;
 
             await ApplyShakenWithPresentation(gameContext, unitBinding);
             return false;

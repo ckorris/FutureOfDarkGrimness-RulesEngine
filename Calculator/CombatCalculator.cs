@@ -141,9 +141,12 @@ namespace FDG.Calculator
                 if (ravage is not null) volleys.Add(ravage);
             }
 
+            // #423 B1: one Parry pool for the whole attack - the defender's X x carriers, sized when the first volley's
+            // hits land and spent across every weapon profile, exactly as CombatActionContext hands it to each swing.
+            var parryBudget = new ParryBudget();
             foreach ((Weapon weapon, int copies) in Batches(attackingUnit, melee))
             {
-                volleys.Add(await ResolveVolley(context, attacker, defender, weapon, copies, situation, melee));
+                volleys.Add(await ResolveVolley(context, attacker, defender, weapon, copies, situation, melee, parryBudget));
             }
 
             float woundsAfter = defendingUnit.RemainingWounds;
@@ -169,7 +172,7 @@ namespace FDG.Calculator
         /// <summary>Runs one weapon profile's batch through the real stage chain.</summary>
         private static async Task<VolleyReport> ResolveVolley(SandboxGameContext context,
             DataBinding<UnitData> attacker, DataBinding<UnitData> defender, Weapon weapon, int copies,
-            CombatSituation situation, bool melee)
+            CombatSituation situation, bool melee, ParryBudget parryBudget)
         {
             UnitData attackingUnit = attacker.GetValue();
             UnitData defendingUnit = defender.GetValue();
@@ -211,7 +214,8 @@ namespace FDG.Calculator
                 attackerMoved: situation.AttackerMoved,
                 isMelee: melee,
                 isCharging: charging,
-                chargeOriginDistanceInches: charging ? MathF.Max(0f, situation.ChargeFromInches) : 0f);
+                chargeOriginDistanceInches: charging ? MathF.Max(0f, situation.ChargeFromInches) : 0f,
+                parryBudget: melee ? parryBudget : null);
             metadata.AddResult(new CoverCheckResults(coverBonus));
 
             float woundsBefore = defendingUnit.RemainingWounds;
@@ -220,6 +224,8 @@ namespace FDG.Calculator
             await RunStage(new BuildTargetListStage<ICombatMetadata>(context, layer), metadata);
             await RunStage(new DetermineHitRollStage<ICombatMetadata>(context, layer), metadata);
             await RunStage(new RollToHitStage<ICombatMetadata>(context, layer), metadata);
+            // #423: the defender's Parry step, as in SwingMeleeWeaponStage (a no-op for shooting).
+            await RunStage(new ParryHitsStage<ICombatMetadata>(context, layer), metadata);
             await RunStage(new DetermineSaveRollsNeededStage<ICombatMetadata>(context, layer), metadata);
             await RunStage(new RollToSaveStage<ICombatMetadata>(context, layer), metadata);
             await RunStage(new AssignWoundsStage<ICombatMetadata>(context, layer), metadata);
@@ -229,7 +235,16 @@ namespace FDG.Calculator
             metadata.QueryForResult(out RollToHitResults toHit);
             metadata.QueryForResult(out DetermineSaveRollNeededResults saveNeeded);
 
-            float expectedHits = toHit.SuccessfulHitList?.Sum(hit => hit.HitCount) ?? 0f;
+            // #423: the hits that LANDED - the Parry step has already taken its ignored hits out of the groups, so the
+            // save buckets below carry fewer; the note says how many and why.
+            float hitsAfterParry = toHit.SuccessfulHitList?.Sum(hit => hit.HitCount) ?? 0f;
+            metadata.QueryForResult(out ParryResults parry);
+            float expectedHits = hitsAfterParry + (parry?.HitsIgnored ?? 0f);
+            if (parry != null && parry.DiceRolled > 0f)
+            {
+                volleyNotes.Add($"Parry: {parry.DiceRolled:0.##} dice ignored {parry.HitsIgnored:0.##} of " +
+                    $"{expectedHits:0.##} hits before the saves.");
+            }
 
             List<SaveBucket> buckets = (saveNeeded.PendingSaveRollsList ?? new List<PendingSaveRolls>())
                 .Select(pending => new SaveBucket(pending.SaveNeeded, pending.HitCount,

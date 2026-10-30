@@ -336,6 +336,59 @@ namespace FDG.Tests
             Assert.That(tired.Volleys.Select(volley => volley.Weapon.Name), Is.EqualTo(new[] { "Blade" }));
         }
 
+        // #423: the calculator runs the real ParryHitsStage, so a Parry defender's hit-ignore roll prices itself - the
+        // hits that landed stay on the row, the save buckets carry what was left after Parry, and a note says why.
+        [Test]
+        public void AParryDefender_IgnoresHitsBeforeTheSaves_AndTheRowSaysSo()
+        {
+            CombatReport report = CombatCalculator.Run(
+                Army(Unit("Swords", 4, 4, 4, Blade(4))),
+                Army(Unit("Elves", 5, 4, 4, HandWeapon(5, parry: 1))),
+                new CombatSituation(Mode: ECombatMode.Melee));
+
+            VolleyReport volley = report.Volleys.Single();
+            Assert.Multiple(() =>
+            {
+                Assert.That(volley.ExpectedHits, Is.EqualTo(4f).Within(Tolerance), "8 attacks at 4+ landed 4 hits");
+                Assert.That(volley.Saves.Sum(bucket => bucket.Hits), Is.EqualTo(4f - 4f / 6f).Within(Tolerance),
+                    "5 x Parry(1) capped at the 4 hits: 4 dice, 2/3 of a hit ignored before the saves");
+                Assert.That(report.ExpectedWounds, Is.EqualTo((4f - 4f / 6f) / 2f).Within(Tolerance), "half of the rest saved");
+                Assert.That(volley.Notes, Does.Contain("Parry: 4 dice ignored 0.67 of 4 hits before the saves."));
+            });
+        }
+
+        // #423 B1: one Parry pool per attack, shared across the attacker's weapon profiles (as CombatActionContext does).
+        [Test]
+        public void ATwoProfileAttacker_SpendsOneParryPoolAcrossBothRows()
+        {
+            UnitFileEntry beast = Unit("Beast", 1, 4, 4, Blade(1, attacks: 4), Rifle(1, range: 0, attacks: 4, name: "Fangs"));
+            CombatReport report = CombatCalculator.Run(
+                Army(beast),
+                Army(Unit("Elves", 3, 4, 4, HandWeapon(3, parry: 1))),
+                new CombatSituation(Mode: ECombatMode.Melee));
+
+            Assert.That(report.Volleys, Has.Count.EqualTo(2));
+            Assert.Multiple(() =>
+            {
+                Assert.That(report.Volleys[0].Notes, Does.Contain("Parry: 2 dice ignored 0.33 of 2 hits before the saves."),
+                    "the first profile's 2 hits take 2 of the 3 dice");
+                Assert.That(report.Volleys[1].Notes, Does.Contain("Parry: 1 die ignored 0.17 of 2 hits before the saves.")
+                    .Or.Contain("Parry: 1 dice ignored 0.17 of 2 hits before the saves."),
+                    "the second profile gets the one die left, not a fresh pool");
+            });
+        }
+
+        [Test]
+        public void ANonParryDefender_GetsNoParryNote()
+        {
+            CombatReport report = CombatCalculator.Run(
+                Army(Unit("Swords", 4, 4, 4, Blade(4))),
+                Army(Unit("Targets", 5, 4, 4)),
+                new CombatSituation(Mode: ECombatMode.Melee));
+
+            Assert.That(report.Volleys.Single().Notes.Any(n => n.StartsWith("Parry")), Is.False);
+        }
+
         [Test]
         public void WithoutACharge_ThereIsNoImpactRow()
         {
@@ -502,5 +555,13 @@ namespace FDG.Tests
 
         private static WeaponFileEntry Blade(int quantity, int attacks = 2, int ap = 0)
             => Rifle(quantity, range: 0, attacks: attacks, ap: ap, name: "Blade");
+
+        // #423: the AoF Hand Weapon shape - a melee weapon entry carrying Parry(X) as the book writes it.
+        private static WeaponFileEntry HandWeapon(int quantity, int parry)
+        {
+            WeaponFileEntry weapon = Rifle(quantity, range: 0, attacks: 1, name: "Hand Weapon");
+            weapon.SpecialRules.Add(new SpecialRuleEntry_CoreNumeric("Parry", parry));
+            return weapon;
+        }
     }
 }

@@ -401,6 +401,33 @@ namespace FDG.Tests
             await AssertVolleyPinned(attacker, defender, blade, weaponCount: 3, isMelee: true, isCharging: true);
         }
 
+        // #423 Parry(X): the defender's hit-ignore roll between the hits and the saves. The estimate folds the stage's own
+        // hits-taken operation (ParryBudgetFor) and removal order (RemoveWorstHitsFirst) - never the name "Parry".
+        [Test]
+        public async Task Parry_OnTheDefender_MatchesEngine()
+        {
+            // 3 blades, 6 attacks at 4+ -> 3 hits; 5 x Parry(1) capped at 3 dice -> 0.5 hits ignored -> 2.5 hits, half
+            // saved -> 1.25 wounds (1.5 without Parry).
+            var blade = Blade();
+            var attacker = MakeUnit(3, blade, atX: 0f);
+            var defender = MakeUnit(5, HandWeapon(1), atX: 1f);
+
+            await AssertVolleyPinned(attacker, defender, blade, weaponCount: 3, isMelee: true);
+        }
+
+        [Test]
+        public async Task Parry_AgainstRending_RemovesTheWorstGroupFirst_MatchesEngine()
+        {
+            // 4 Rending blades, 8 attacks: 4 hits of which 4/3 are natural 6s (AP+4, unsaveable at D4). 2 x Parry(3) = 6
+            // dice capped at 4 -> 2/3 of a hit ignored, all of it out of the Rending group.
+            var blade = Blade();
+            blade.AttachRuleDefinition(new ResolvedRule("Rending", CoreRuleCatalog.Rending));
+            var attacker = MakeUnit(4, blade, atX: 0f);
+            var defender = MakeUnit(2, HandWeapon(3), atX: 1f);
+
+            await AssertVolleyPinned(attacker, defender, blade, weaponCount: 4, isMelee: true);
+        }
+
         [Test]
         public async Task Thrust_ChargeHitAndApBonus_MatchesEngine()
         {
@@ -576,6 +603,56 @@ namespace FDG.Tests
             float swingWounds = 2f * 2f * 0.5f * 0.5f;
             Assert.That(estimate.AttackerAttack.ExpectedWounds,
                 Is.EqualTo(impactWounds + swingWounds).Within(0.001f));
+        }
+
+        // #423: the Parry reduction with the integration test's numbers - 2 hits, 3 carriers, 2 dice, 1/3 of a hit ignored.
+        [Test]
+        public void EstimateMelee_ParryDefender_ReducesTheChargersWounds()
+        {
+            var attacker = MakeUnit(2, Blade(), atX: 0f);
+            var defender = MakeUnit(3, HandWeapon(1), atX: 1f);
+
+            MeleeEstimate estimate = CombatMath.EstimateMelee(_ctx.RuleEvaluator, attacker, defender);
+
+            // 2 blades x A2 = 4 attacks at 4+ -> 2 hits; 3 x Parry(1) = 3 dice capped at 2 -> 2/6 ignored -> 5/3 hits,
+            // half saved -> 5/6 wounds (1.0 without Parry).
+            Assert.That(estimate.AttackerAttack.ExpectedWounds, Is.EqualTo(5f / 6f).Within(0.001f));
+        }
+
+        // #423 B1: one pool per attack. 3 x Parry(1) against a charger swinging two profiles of 2 expected hits each:
+        // the claws get 2 dice (1/3 ignored), the fangs the 1 left (1/6 ignored) - not a fresh 2 (B2 would price 1/3 again).
+        [Test]
+        public void EstimateMelee_TwoProfileCharger_SharesOneParryPoolAcrossItsSwings()
+        {
+            var claws = new Weapon("Claws", rangeInches: 0f, attacks: 4, armorPenetration: 0);
+            var fangs = new Weapon("Fangs", rangeInches: 0f, attacks: 4, armorPenetration: 0);
+            var beast = new ModelData(baseRadiusInches: 0.5f, weapons: new List<Weapon> { claws, fangs },
+                initialPosition: new Position(0f, 0f), gameDataStore: _store);
+            beast.SetMaxWounds(3);
+            var attacker = _store.GetDataBinding<UnitData>(_store.Create(new UnitData(new PlayerID(Guid.NewGuid()),
+                "Beast", quality: 4, defense: 4,
+                modelBindings: new List<DataBinding<ModelData>> { _store.GetDataBinding<ModelData>(_store.Create(beast)) })));
+            var defender = MakeUnit(3, HandWeapon(1), atX: 1f);
+
+            MeleeEstimate estimate = CombatMath.EstimateMelee(_ctx.RuleEvaluator, attacker, defender);
+
+            // claws: 2 hits - 1/3 = 5/3 -> 5/6 wounds; fangs: 2 hits - 1/6 = 11/6 -> 11/12 wounds; total 21/12.
+            Assert.That(estimate.AttackerAttack.ExpectedWounds, Is.EqualTo(21f / 12f).Within(0.001f));
+        }
+
+        // #423: the strike-back is a new attack - the CHARGER's own Parry pool prices the return strikes.
+        [Test]
+        public void EstimateMelee_TheStrikeBack_IsParriedByTheChargersOwnPool()
+        {
+            var attacker = MakeUnit(2, HandWeapon(1), atX: 0f, woundsPerModel: 3);
+            var defender = MakeUnit(4, Blade(), atX: 1f, woundsPerModel: 3);
+
+            MeleeEstimate estimate = CombatMath.EstimateMelee(_ctx.RuleEvaluator, attacker, defender);
+
+            // Charger: 2 hand weapons x A1 -> 1 hit, no Parry on the defender -> 0.5 wounds. Return: 4 blades x A2 = 8
+            // attacks -> 4 hits; the charger's 2 x Parry(1) = 2 dice -> 1/3 ignored -> 11/3 hits -> 11/6 wounds.
+            Assert.That(estimate.AttackerAttack.ExpectedWounds, Is.EqualTo(0.5f).Within(0.001f));
+            Assert.That(estimate.DefenderReturn.ExpectedWounds, Is.EqualTo(11f / 6f).Within(0.001f));
         }
 
         [Test]
@@ -1100,11 +1177,17 @@ namespace FDG.Tests
             float engineWounds = await EngineVolleyWounds(attacker, defender, weapon, weaponCount, isMelee,
                 isCharging, defenderInCover, attackerMoved);
 
-            // Estimate side - same evaluator, same units, caller-supplied distance/cover.
+            // Estimate side - same evaluator, same units, caller-supplied distance/cover. #423: a melee volley prices
+            // the defender's Parry pool the way the engine chain (which runs ParryHitsStage) rolls it - null when the
+            // defender has no carrier, so every pre-Parry pin is unchanged.
             var notes = new List<string>();
+            ParryBudget? parry = isMelee
+                ? CombatMath.ParryBudgetFor(_ctx.RuleEvaluator, attacker.GetValue(), defender.GetValue())
+                : null;
             float estimate = CombatMath.EstimateVolley(_ctx.RuleEvaluator, attacker, defender,
                 weapon, weaponCount,
-                new AttackContext(distance, attackerMoved, defenderInCover, isMelee, isCharging), notes);
+                new AttackContext(distance, attackerMoved, defenderInCover, isMelee, isCharging), notes,
+                parryBudget: parry);
             float estimateCapped = Math.Min(estimate, defender.GetValue().RemainingWounds);
 
             float tolerance = Math.Max(0.05f, 0.02f * engineWounds);
@@ -1126,6 +1209,8 @@ namespace FDG.Tests
             metadata.AddResult(new CoverCheckResults(coverBonus));
             await RunStage(new DetermineHitRollStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>()), metadata);
             await RunStage(new RollToHitStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>()), metadata);
+            // #423: the melee chain's Parry step (a no-op for shooting and for a defender without the rule).
+            await RunStage(new ParryHitsStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>()), metadata);
             await RunStage(new DetermineSaveRollsNeededStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>()), metadata);
             await RunStage(new RollToSaveStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>()), metadata);
             await RunStage(new AssignWoundsStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>()), metadata);
@@ -1152,6 +1237,15 @@ namespace FDG.Tests
 
         private static Weapon Blade(int attacks = 2, int ap = 0) =>
             new Weapon("Blade", rangeInches: 0f, attacks: attacks, armorPenetration: ap);
+
+        // #423: the AoF Hand Weapon shape - a melee weapon carrying Parry(X).
+        private static Weapon HandWeapon(int parry)
+        {
+            var weapon = new Weapon("Hand Weapon", rangeInches: 0f, attacks: 1, armorPenetration: 0);
+            weapon.AttachRuleDefinition(new ResolvedRule("Parry", CoreRuleCatalog.Parry,
+                new RuleArgument[] { new RuleArgument.Int(parry) }));
+            return weapon;
+        }
 
         private static void AttachUnitRule(DataBinding<UnitData> unit, string name,
             SpecialRuleDefinition definition) =>

@@ -64,7 +64,9 @@ namespace FDG.Stages
                 isCharging: contextSelf.IsCharging,
                 chargeOriginDistanceInches: contextSelf.ChargeOriginDistanceInches,
                 unpredictableBranch: contextSelf.UnpredictableBranch,
-                isBonusAttack: true, attackCountOverride: _attackCount);
+                isBonusAttack: true, attackCountOverride: _attackCount,
+                // #423 B1: the follow-up is the same attack, so it draws on the same Parry pool.
+                parryBudget: contextSelf.ParryBudget);
 
             // Melee runs no cover check but the shared DetermineSaveRollsNeededStage still reads
             // CoverCheckResults - seed a zero bonus, as SwingMeleeWeaponStage does.

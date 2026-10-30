@@ -288,12 +288,17 @@ namespace FDG.Ai.Tactician
             if (impact.TotalDice > 0)
             {
                 float impactHits = Dice.Roll(impact.TotalDice).AtOrAbove(2);
+                // #423: Impact hits are hits taken in melee - the defender parries them first, with a pool of their
+                // own (the stage's Impact entry carries no shared budget; #423 D3), before the charger's swings draw
+                // on the attack's.
+                List<SuccessfulHitInfo> impactGroups = SingleGroup(impactHits);
+                ApplyParry(impactGroups, ParryBudgetFor(evaluator, atk, def));
                 // #355: read the sink's AP like ResolveImpactHitsStage does - hardcoding 0 valued Heavy
                 // Impact's AP(1) hits as though they were core Impact's, understating every ram by it.
                 impactWounds = ResolveSaves(evaluator, atk, def,
                     new Weapon("Impact", rangeInches: 0f, attacks: 0,
                         armorPenetration: impact.ArmorPenetration),
-                    SingleGroup(impactHits), apReduction: 0, wholeAttackSaveModifier: 0,
+                    impactGroups, apReduction: 0, wholeAttackSaveModifier: 0,
                     coverBonus: 0, isMelee: true, notes, tally: attackerTally);
             }
 
@@ -329,6 +334,13 @@ namespace FDG.Ai.Tactician
             float DefenderAuto() => AutoWounds(evaluator, def, atk, Ops(evaluator.EvaluateAllNamed(
                 new ChargeContactContext(def, atk), DefenderStrikerParticipants(def, atk))), notes, defenderTally);
 
+            // --- ParryHitsStage mirror (#423): each side's Parry pool against the OTHER side's attack - one per
+            // attack (B1), threaded through every batch of that attack so a second weapon profile prices only the
+            // remainder; the strike-back is a new attack with the other unit's own pool. Null when a side has no
+            // Parry carrier (the common case), so nothing further is allocated.
+            ParryBudget? defenderParry = ParryBudgetFor(evaluator, atk, def);
+            ParryBudget? attackerParry = ParryBudgetFor(evaluator, def, atk);
+
             // --- Swings. The first striker attacks at full strength; the second striker's weapon pool
             // loses the models the first side is expected to kill (probabilistic play kills models only
             // via whole-wound allocation, which is exactly what SurvivorWeaponBatches mirrors).
@@ -338,19 +350,21 @@ namespace FDG.Ai.Tactician
                 defenderAuto = DefenderAuto();
                 defenderSwings = SwingAllBatches(evaluator, defender, attacker,
                     WeaponBatches(def, melee: true), meleeContext with { IsCharging = false }, notes,
-                    tally: defenderTally);
+                    tally: defenderTally, parry: attackerParry);
                 float attackerCasualties = defenderAuto + defenderSwings;
                 attackerSwings = SwingAllBatches(evaluator, attacker, defender,
-                    SurvivorWeaponBatches(atk, attackerCasualties), meleeContext, notes, carrier, attackerTally);
+                    SurvivorWeaponBatches(atk, attackerCasualties), meleeContext, notes, carrier, attackerTally,
+                    parry: defenderParry);
             }
             else
             {
                 attackerSwings = SwingAllBatches(evaluator, attacker, defender,
-                    WeaponBatches(atk, melee: true), meleeContext, notes, carrier, attackerTally);
+                    WeaponBatches(atk, melee: true), meleeContext, notes, carrier, attackerTally,
+                    parry: defenderParry);
                 defenderAuto = DefenderAuto();
                 defenderSwings = SwingAllBatches(evaluator, defender, attacker,
                     SurvivorWeaponBatches(def, impactWounds + attackerAuto + attackerSwings),
-                    meleeContext with { IsCharging = false }, notes, tally: defenderTally);
+                    meleeContext with { IsCharging = false }, notes, tally: defenderTally, parry: attackerParry);
             }
 
             // --- DetermineMeleeWinnerStage mirror: Fear(X) makes the ENEMY count as having taken X more wounds
@@ -378,12 +392,14 @@ namespace FDG.Ai.Tactician
         /// as one volley through the hit/save/wound stages. Public because the pin tests hold precisely
         /// this unit of math against the real stages.
         /// </summary>
+        /// <para>#423: <paramref name="parryBudget"/> is the defender's Parry pool for the attack this volley belongs to
+        /// (<see cref="ParryBudgetFor"/>); null prices no Parry. One pool is shared across the attack's volleys (B1).</para>
         public static float EstimateVolley(RuleEvaluator evaluator,
             DataBinding<UnitData> attacker, DataBinding<UnitData> defender,
             Weapon weapon, int weaponCount, AttackContext context, List<string> notes,
-            ResolvedRule? hypotheticalAttackerRule = null)
+            ResolvedRule? hypotheticalAttackerRule = null, ParryBudget? parryBudget = null)
             => EstimateVolleyCore(evaluator, attacker, defender, weapon, weaponCount, context, notes,
-                HypotheticalCarrier(hypotheticalAttackerRule));
+                HypotheticalCarrier(hypotheticalAttackerRule), parry: parryBudget);
 
         /// <summary>
         /// #442 (#431 Scourge): <see cref="EstimateVolley"/> plus the wounds the defender only COUNTS as taken - the
@@ -411,7 +427,7 @@ namespace FDG.Ai.Tactician
         private static float EstimateVolleyCore(RuleEvaluator evaluator,
             DataBinding<UnitData> attacker, DataBinding<UnitData> defender,
             Weapon weapon, int weaponCount, AttackContext context, List<string> notes, Weapon? carrier,
-            Tally? tally = null)
+            Tally? tally = null, ParryBudget? parry = null)
         {
             UnitData atk = attacker.GetValue();
             UnitData def = defender.GetValue();
@@ -545,6 +561,17 @@ namespace FDG.Ai.Tactician
 
             global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.VolleyComplete, __completeProbe);
 
+            // --- ParryHitsStage mirror (#423): between the hits landing and the saves, the defender rolls
+            // min(the attack's remaining Parry pool, the hits) dice and each 6+ removes a hit from the worst group
+            // first - the stage's own RemoveWorstHitsFirst, on the same groups. The pool is the attack's (B1):
+            // EstimateMelee sizes one per striker and threads it through every batch, so a two-profile charger's
+            // second swing prices only the remainder, as the engine rolls it. Null (no Parry carrier) prices nothing.
+            if (context.IsMelee && parry != null)
+            {
+                float parried = ApplyParry(groups, parry);
+                NoteIf(parried > 0f, $"{weapon.Name}: Parry priced {parried:0.##} hit(s) ignored before the saves", notes);
+            }
+
             // --- CoverCheckStage stand-in: cover is a caller-supplied fact about the hypothetical
             // position; the ignore rules (Blast/Indirect/Takedown) are still the engine's own query.
             int coverBonus = !context.IsMelee && context.DefenderInCover && !ignoresPositiveDefense
@@ -570,8 +597,12 @@ namespace FDG.Ai.Tactician
                 if (bonusHits > 0f)
                 {
                     NoteIf(true, $"{weapon.Name}: Bloodthirsty follow-up priced first-order", notes);
+                    // #423: the follow-up batch is the same attack, so it draws on the same Parry pool (the engine's
+                    // ResolveBonusMeleeAttacksStage hands its child batch the parent's budget).
+                    List<SuccessfulHitInfo> bonusGroups = new List<SuccessfulHitInfo> { SingleGroupInfo(bonusHits) };
+                    if (context.IsMelee && parry != null) ApplyParry(bonusGroups, parry);
                     wounds += ResolveSaves(evaluator, atk, def, weapon,
-                        new List<SuccessfulHitInfo> { SingleGroupInfo(bonusHits) }, apReduction,
+                        bonusGroups, apReduction,
                         saveNet, coverBonus, context.IsMelee, notes, defenderModels: defenderModels,
                         carrier: carrier, distanceInches: context.DistanceInches, chargeOriginInches: chargeOrigin,
                         tally: tally, ignoresPositiveDefense: ignoresPositiveDefense);
@@ -796,13 +827,56 @@ namespace FDG.Ai.Tactician
         private static float SwingAllBatches(RuleEvaluator evaluator,
             DataBinding<UnitData> attacker, DataBinding<UnitData> defender,
             List<(Weapon Weapon, int Count)> batches, AttackContext context, List<string> notes,
-            Weapon? carrier = null, Tally? tally = null)
+            Weapon? carrier = null, Tally? tally = null, ParryBudget? parry = null)
         {
             float total = 0f;
             foreach ((Weapon weapon, int count) in batches)
                 total += EstimateVolleyCore(evaluator, attacker, defender, weapon, count, context, notes, carrier,
-                    tally);
+                    tally, parry);
             return total;
+        }
+
+        /// <summary>
+        /// #423: the defender's Parry pool against ONE enemy melee attack (B1: X x its living carriers, fixed when the
+        /// attack's first hits land), from the stage's own hits-taken evaluation and participants
+        /// (<see cref="ParryHitsStage{TMetadata}.HitsTakenParticipants"/>), read-only, so the AI's dice match the stage's.
+        /// Null when nobody on the defending side carries Parry, so the common case allocates nothing further. The pool
+        /// is priced at the defender's CURRENT strength (like its Ravage carriers): the carriers the first striker's
+        /// expected kills would remove are not subtracted. Public for the pin tests and for one-volley callers.
+        /// </summary>
+        public static ParryBudget? ParryBudgetFor(RuleEvaluator evaluator, UnitData attacker, UnitData defender)
+        {
+            IReadOnlyList<RuleOperation> ops = Ops(evaluator.EvaluateAllNamed(
+                new MeleeHitsTakenContext(attacker, defender, HitsTaken: 1f),
+                ParryHitsStage<ICombatMetadata>.HitsTakenParticipants(attacker, defender)));
+            if (ops.Count == 0) return null;
+
+            var sink = new ParrySink();
+            sink.ApplyFrom(ops);
+            if (sink.TotalDice <= 0) return null;
+
+            var pool = new ParryBudget();
+            pool.Set(sink.TotalDice);
+            return pool;
+        }
+
+        // #423: one hit group arrival against the attack's Parry pool - min(remaining, hits) dice, 1/6 of them a 6+,
+        // each removing a hit from the worst group first (the stage's own order, groups edited in place). Returns the
+        // hits removed; 0 with no pool, no hits or a spent pool.
+        private static float ApplyParry(List<SuccessfulHitInfo> groups, ParryBudget? pool)
+        {
+            if (pool == null) return 0f;
+
+            float hits = 0f;
+            for (int i = 0; i < groups.Count; i++) hits += groups[i].HitCount;
+            float dice = pool.Take(hits);
+            if (dice <= 0f) return 0f;
+
+            float sixes = Dice.Roll(dice).AtOrAbove(ParryHitsStage<ICombatMetadata>.SUCCESS_FACE);
+            IReadOnlyList<ParriedGroup> ignored = ParryHitsStage<ICombatMetadata>.RemoveWorstHitsFirst(groups, sixes);
+            float removed = 0f;
+            for (int i = 0; i < ignored.Count; i++) removed += ignored[i].Count;
+            return removed;
         }
 
         // #442 (#434): the striker's auto-wound pools (InvokeDealAutoWounds) from a charge-contact evaluation, rolled

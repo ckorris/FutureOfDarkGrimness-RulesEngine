@@ -694,6 +694,51 @@ namespace FDG.Tests
                 $"the Cumbersome brutes cannot charge, so standing 8\" from them is cheaper (cumbersome={cumbersome:F4}, plain={plain:F4})");
         }
 
+        // #442 (#446): standing in Dangerous terrain owes the "activates in it" test (one die per wound to destroy the
+        // unit, each 1 a wound) next activation - a Hold in lava scores lower than the same Hold on open ground, and a
+        // Flying unit, which ignores the test, pays nothing.
+        [TestCase(false, true)]
+        [TestCase(true, false)]
+        public void HoldInDangerousTerrain_PaysTheNextActivationsTest(bool flying, bool expectPenalty)
+        {
+            float lava = HoldScoreOn(ETerrainType.Dangerous, flying);
+            float open = HoldScoreOn(ETerrainType.None, flying);
+
+            if (expectPenalty)
+                Assert.That(lava, Is.LessThan(open - 0.001f), $"lava={lava:F4} open={open:F4}");
+            else
+                Assert.That(lava, Is.EqualTo(open).Within(0.0001f), "Flying ignores Dangerous terrain");
+        }
+
+        private static float HoldScoreOn(ETerrainType type, bool flying)
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var tableState = new TableState(store);
+            var us = new PlayerID(Guid.NewGuid());
+            var them = new PlayerID(Guid.NewGuid());
+            var models = new List<DataBinding<ModelData>>();
+            for (int i = 0; i < 4; i++)
+                models.Add(store.GetDataBinding<ModelData>(store.Create(new ModelData(0.5f,
+                    new List<Weapon> { Rifle() }, new Position(20f, 24f + i * 1.1f), store))));
+            var unit = store.GetDataBinding<UnitData>(store.Create(new UnitData(us, "Squad", 4, 4, modelBindings: models)));
+            store.Create(new ArmyData(us, new List<DataBinding<UnitData>> { unit }));
+            if (flying)
+                unit.GetValue().AttachRuleDefinition(new Rules.Dispatch.ResolvedRule("Flying",
+                    Rules.Dispatch.CoreRuleCatalog.Flying));
+            var foes = new List<DataBinding<ModelData>> { store.GetDataBinding<ModelData>(store.Create(
+                new ModelData(0.5f, new List<Weapon> { Rifle() }, new Position(40f, 25f), store))) };
+            var foe = store.GetDataBinding<UnitData>(store.Create(new UnitData(them, "Foe", 4, 4, modelBindings: foes)));
+            store.Create(new ArmyData(them, new List<DataBinding<UnitData>> { foe }));
+            store.Create(new TerrainData(type, new RectangularZone(18f, 22f, 22f, 30f)));
+
+            var planner = new TacticianPlanner(tableState, new RuleEvaluator(new ProbabilisticDiceRoller()));
+            planner.BeginActivation(unit);
+            MacroAction hold = MacroActionGenerator.Enumerate(new RuleEvaluator(new ProbabilisticDiceRoller()),
+                    tableState, unit)
+                .First(c => c.Intent == EMacroIntent.Hold);
+            return planner.Score(hold);
+        }
+
         private static float HoldScoreNextToBrutes(bool cumbersome)
         {
             var store = GameDataStore.GameDataStoreBuilder.GetDefault();

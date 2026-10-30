@@ -143,6 +143,41 @@ namespace FDG.Ai.Tactician
                 .Any(tagged => tagged.Op is RuleOperation.PassMoraleTest);
 
         /// <summary>
+        /// #442 (#446): whether <paramref name="unit"/> would END in Dangerous terrain - any living model's base, at the
+        /// end of its <paramref name="move"/> entry (or where it stands when it has none, a Hold), overlapping a
+        /// Dangerous piece: the "activates in it" test it then owes at the start of its next activation
+        /// (<c>MovementExecutor.RollActivationDangerousTerrain</c>, the same base-overlap test). Flying/Aircraft
+        /// ignore it, as there; the caller checks that.
+        /// </summary>
+        public static bool EndsInDangerousTerrain(IUnit unit, IReadOnlyList<ModelMoveEntry>? move,
+            IReadOnlyList<ITerrain> terrain)
+        {
+            List<ITerrain>? dangerous = null;
+            foreach (ITerrain piece in terrain)
+                if (piece.TerrainType.HasFlag(ETerrainType.Dangerous)) (dangerous ??= new()).Add(piece);
+            if (dangerous == null) return false;
+
+            Dictionary<IModel, Position>? ends = null;
+            if (move != null)
+            {
+                foreach (ModelMoveEntry entry in move)
+                    if (entry.Positions.Count > 0)
+                        (ends ??= new(ReferenceEqualityComparer.Instance))[entry.Model.GetValue()] = entry.Positions[^1];
+            }
+            foreach (IModel model in unit.Models)
+            {
+                if (!model.GetIsAlive()) continue;
+                Position at = ends != null && ends.TryGetValue(model, out Position end) ? end : model.Position;
+                var point = new Float2(at.x, at.z);
+                foreach (ITerrain piece in dangerous)
+                    if (SweptBaseGeometry.DoesSweptBaseIntersectZone(piece.Shape, point, point, model.BaseShape,
+                            model.Facing))
+                        return true;
+            }
+            return false;
+        }
+
+        /// <summary>
         /// #442 (#425 Cumbersome, "may only use Hold or Advance actions"): whether the unit may declare a Charge at
         /// all - the gate ChooseActionStage applies (<see cref="ActionRestrictionQueries.MayDeclare"/>). An ENEMY
         /// that may not charge is no charge threat, however good its melee weapons are; it still strikes back.

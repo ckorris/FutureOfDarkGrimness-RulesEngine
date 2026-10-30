@@ -1230,7 +1230,11 @@ namespace FDG.Ai.Tactician
                  // the wall the rear ranks halve their moves against; clearing it is what the M13
                  // SideStep candidates are for. Endpoint-only, so it compares candidates - the
                  // screen credit and marker deltas above outbid it whenever standing is real work.
-                 - TacticianWeights.MoveLaneBlock * LaneBlockValue(end);
+                 - TacticianWeights.MoveLaneBlock * LaneBlockValue(end)
+                 // #442 (#446): ending in Dangerous terrain costs a full-pool test (one die per wound to destroy the
+                 // unit, each 1 a wound) at the START of the next activation - a certain cost, so it is not
+                 // posture-scaled; priced in the retaliation currency. Flying / Aircraft are exempt.
+                 - TacticianWeights.MoveRetaliation * DangerousEndCost(candidate);
 
             // #264 issue 2: the reachable bonus is a TIE-BREAK between candidates that are already
             // worth something ("if two plans are worth the same, take the one that actually gets
@@ -1902,6 +1906,18 @@ namespace FDG.Ai.Tactician
         // (Grounded Speed) so the planner's numbers match the move resolver's.
         private List<ITerrain> TerrainSnapshot() =>
             _terrainSnapshot ??= _tableState.Terrain.Objects.ToList();
+
+        // #442 (#446): the expected wounds of the "activates in Dangerous terrain" test (WoundsToDestroy / 6) as a
+        // value fraction, when the candidate leaves the unit standing in a Dangerous piece; 0 otherwise.
+        private float DangerousEndCost(MacroAction candidate)
+        {
+            if (IgnoresAllTerrain) return 0f;
+            UnitData self = _activeUnit!.GetValue();
+            if (!TacticalAnalysis.EndsInDangerousTerrain(self,
+                    candidate.Intent == EMacroIntent.Hold ? null : candidate.Move, TerrainSnapshot()))
+                return 0f;
+            return ValueFraction(self.GetWoundsToDestroy() / 6f, self);
+        }
 
         // #384: what a SIGHT test must clear from a candidate endpoint - terrain, plus other
         // friendly units' bases when the see-through-allies house rule is off (official rules).

@@ -100,6 +100,25 @@ namespace FDG.Tests
                 "three models 1.2\" apart: 1.2\" from the middle one, plus a 0.5\" base");
         }
 
+        // #442 (#446): the end-position test reads each model's planned end (or where it stands), base overlap included.
+        [Test]
+        public void EndsInDangerousTerrain_ReadsThePlannedEnds_AndBaseOverlap()
+        {
+            var unit = MakeUnit(2, Blade(), atX: 20f, atZ: 20f); // models at (20,20), (20,21.2)
+            var lava = new List<ITerrain> { new TerrainData(ETerrainType.Dangerous, new RectangularZone(19f, 21f, 19f, 22f)) };
+            Assert.That(TacticalAnalysis.EndsInDangerousTerrain(unit.GetValue(), null, lava), Is.True, "standing in it");
+
+            var moveOut = unit.GetValue().ModelBindings
+                .Select((m, i) => new StageResolution.Requests.ModelMoveEntry(m,
+                    new List<Position> { new Position(30f, 20f + i * 1.2f) }))
+                .ToList();
+            Assert.That(TacticalAnalysis.EndsInDangerousTerrain(unit.GetValue(), moveOut, lava), Is.False, "moved out");
+
+            var edge = new List<ITerrain> { new TerrainData(ETerrainType.Dangerous, new RectangularZone(20.4f, 25f, 10f, 30f)) };
+            Assert.That(TacticalAnalysis.EndsInDangerousTerrain(unit.GetValue(), null, edge), Is.True,
+                "a 0.5\" base reaching 0.1\" into the piece counts, as the engine's swept-base test does");
+        }
+
         // --- Objective projection -----------------------------------------------------------------
 
         [Test]

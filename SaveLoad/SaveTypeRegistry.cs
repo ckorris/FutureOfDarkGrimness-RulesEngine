@@ -67,7 +67,7 @@ namespace FDG.SaveLoad
             Add(typeof(CircularZone), "zone.circular");
             Add(typeof(RotatedZoneWrapper), "zone.rotated");
             Add(typeof(CompositeZone), "zone.composite");
-            // #197 P17c: Reinforcement's "within 12\" of any table edge" arrival band.
+            // #197 P17c: Reinforcement's "within 9\" of any table edge" arrival band (12" before 3.6, #426).
             Add(typeof(TableEdgeBandZone), "zone.tableEdgeBand");
             // CompositeZone.Parts is IReadOnlyList<IZone> but always a List<IZone> at runtime; under
             // TypeNameHandling.Auto Newtonsoft records the collection's concrete type too, so register it as

@@ -181,12 +181,23 @@ namespace FDG.Stages
         }
 
         /// <summary>
+        /// Reinforcement's arrival band (Core Rules v3.6.0 book text, #426): "place a new copy of it fully
+        /// within 9" of any table edge, over 9" away from enemy units" (3.5: within 12" of any table edge, no
+        /// enemy clause).
+        /// </summary>
+        public const float ReinforcementEdgeBandInches = 9f;
+
+        /// <summary> Reinforcement's "over 9" away from enemy units" (#426). </summary>
+        public const float ReinforcementEnemyClearanceInches = 9f;
+
+        /// <summary>
         /// #197 P17c: places every queued Reinforcement copy (held in reserve with
         /// <see cref="TokenType.PendingReinforcementArrival"/> by the reinforce service) "fully within
-        /// 12\" of any table edge". MANDATORY - the "you may" was spent at the removal, so only the
-        /// spot is the player's - and running right after <see cref="BringOnReserves"/> is the rule's
-        /// own "after Ambushers have been deployed". The ArrivedFromReserve stamp IS the rule's
-        /// "can't seize or contest objectives on the round they deploy".
+        /// 9\" of any table edge, over 9\" away from enemy units" (#426, 3.6 numbers: the band and the flat
+        /// enemy minimum ride on the request, so every resolver reads them). MANDATORY - the "you may" was
+        /// spent at the removal, so only the spot is the player's - and running right after
+        /// <see cref="BringOnReserves"/> is the rule's own "after Ambushers have been deployed". The
+        /// ArrivedFromReserve stamp IS the rule's "can't seize or contest objectives on the round they deploy".
         /// </summary>
         private async Task PlaceReinforcements()
         {
@@ -201,9 +212,10 @@ namespace FDG.Stages
                     if (!unit.Tokens.HasToken(TokenType.PendingReinforcementArrival)) continue;
 
                     var zone = new TableEdgeBandZone(GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES,
-                        GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES, bandWidthInches: 12f);
+                        GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES, bandWidthInches: ReinforcementEdgeBandInches);
                     var request = new PlaceObjectsRequest<ModelData>(unit.PlayerID,
-                        $"Placing Reinforcements ({unit.Name})", zone, unit.ModelBindings);
+                        $"Placing Reinforcements ({unit.Name})", zone, unit.ModelBindings,
+                        minDistanceFromEnemiesInches: ReinforcementEnemyClearanceInches);
                     List<PlacedObjectEntry<ModelData>> placements = await PlacementCommitGuard
                         .RequestClearPlacement(GameContext, request);
 

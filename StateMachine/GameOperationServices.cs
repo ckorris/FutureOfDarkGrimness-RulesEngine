@@ -346,6 +346,12 @@ namespace FDG.Stages
             // adopts units carrying this marker at its own query seams and clears it.
             unit.Tokens.AddToken(TokenDefinitionCatalog.Create(
                 Rules.Foundation.TokenType.JoinsRoundInProgress));
+            // #426 (Core Rules v3.6.0 Spawn / Split): "Units placed via Spawn/Split can't seize or contest
+            // objectives on the round they are placed." Exactly Ambush's lockout, so the same marker:
+            // ReconcileObjectivesStage skips the unit this round and the RoundEnd sweep clears it after that
+            // check. Both rules (the only users of this service) carry the clause.
+            unit.Tokens.AddToken(TokenDefinitionCatalog.Create(
+                Rules.Foundation.TokenType.ArrivedFromReserve));
 
             await _gameContext.Announce($"{placer.Name} spawns {unit.Name}!", RecoveryBannerColor);
         }

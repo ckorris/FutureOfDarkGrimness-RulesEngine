@@ -1373,7 +1373,7 @@ public abstract record Effect
 
     /// <summary>
     /// The bearer is removed from the table as destroyed and a fresh full-strength copy of it deploys
-    /// within 12\" of any table edge at the start of the next round, after Ambushers (#197 P17c,
+    /// within 9\" of any table edge, over 9\" from enemies (#426, 3.6), at the start of the next round, after Ambushers (#197 P17c,
     /// <c>Reinforcement</c>). Authored at BOTH trigger moments — the bearer's own destruction
     /// (<see cref="Rules.Foundation.EHookID.Lifecycle_OnSelfDestroyed"/>) and the Shaken application
     /// (<see cref="Rules.Foundation.EHookID.Morale_OnShakenApplied"/>) — each gated on the

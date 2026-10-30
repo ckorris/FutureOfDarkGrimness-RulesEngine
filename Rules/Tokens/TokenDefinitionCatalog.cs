@@ -218,7 +218,7 @@ public static class TokenDefinitionCatalog
                 ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.ManualOnly()),
             new(TokenType.PENDING_REINFORCEMENT_ARRIVAL_ID, "Reinforcements inbound", EValence.Neutral,
                 ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.ManualOnly(),
-                Description: "A fresh copy of this unit deploys within 12\" of any table edge at the start of the next round."),
+                Description: "A fresh copy of this unit deploys within 9\" of any table edge, over 9\" away from enemy units, at the start of the next round."),
         };
 
         var dict = new Dictionary<string, TokenDefinition>(StringComparer.Ordinal);

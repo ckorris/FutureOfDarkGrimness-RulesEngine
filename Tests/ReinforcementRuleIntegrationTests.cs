@@ -14,7 +14,8 @@ namespace FDG.Tests
     // destroyed, you may remove it from the table as destroyed and place a new copy of it fully within
     // 12\" of any table edge at the beginning of the next round after Ambushers have been deployed.
     // Units that deploy via Reinforcement can't seize or contest objectives on the round they deploy,
-    // and this rule doesn't apply to the new copy of the unit."
+    // and this rule doesn't apply to the new copy of the unit." (#426: the 3.6.0 text places the copy
+    // "fully within 9\" of any table edge, over 9\" away from enemy units" - pinned below.)
     //
     // Two trigger arms meeting on one token: the Shaken moment (the new Morale_OnShakenApplied
     // evaluation) and the unit's own destruction (P17b's Lifecycle_OnSelfDestroyed). Accepting stamps
@@ -136,16 +137,82 @@ namespace FDG.Tests
 
             Assert.That(requester.PlaceRequest, Is.Not.Null, "the copy was placed");
             var band = requester.PlaceRequest!.DeploymentZone as TableEdgeBandZone;
-            Assert.That(band, Is.Not.Null, "'fully within 12\" of any table edge'");
-            Assert.That(band!.BandWidthInches, Is.EqualTo(12f).Within(0.001f));
+            Assert.That(band, Is.Not.Null, "'fully within 9\" of any table edge' (#426, 3.6; was 12\")");
+            Assert.That(band!.BandWidthInches, Is.EqualTo(9f).Within(0.001f));
             Assert.That(band.IsPointWithinZone(new Float2(2f, 2f)), Is.True, "a corner is in the band");
+            Assert.That(band.IsPointWithinZone(new Float2(36f, 10f)), Is.False,
+                "10\" in from the edge is outside the 3.6 band (inside the old 12\" one)");
             Assert.That(band.IsPointWithinZone(new Float2(36f, 24f)), Is.False, "mid-table is not");
+            Assert.That(requester.PlaceRequest.MinDistanceFromEnemiesInches, Is.EqualTo(9f).Within(0.001f),
+                "'over 9\" away from enemy units' (#426, 3.6) - every enemy, no exemption");
 
             Assert.That(ReserveRules.IsInReserve(copy), Is.False, "arrived");
             Assert.That(copy.Tokens.HasToken(TokenType.PendingReinforcementArrival), Is.False,
                 "the pending marker is spent by arriving");
             Assert.That(copy.Tokens.HasToken(TokenType.ArrivedFromReserve), Is.True,
                 "'can't seize or contest objectives on the round they deploy'");
+        }
+
+        // #426: the real AI resolver answering the 3.6 arrival - a picket line along the bottom edge blocks
+        // that band (every spot in it is within 9" of a picket), and two more pickets sit on the bot's
+        // natural spot (mid-height on the left edge), so the copy must search its way to a legal stretch.
+        [Test]
+        public async Task TheCopy_AiPlacement_StaysInTheNineInchBand_AndOverNineInchesFromEnemies()
+        {
+            (DataBinding<UnitData> stalkers, DataBinding<ArmyData> army) = MakeArmy();
+            await MoraleUtilities.ApplyShakenWithPresentation(
+                Ctx(new ReinforceRequester { Accept = true }), stalkers);
+            UnitData copy = army.GetValue().UnitBindings[1].GetValue();
+
+            var enemy = new PlayerID(System.Guid.NewGuid());
+            var pickets = new List<DataBinding<UnitData>>();
+            var spots = new List<Position> { new(4f, 20f), new(4f, 28f) };
+            for (float x = 3f; x < GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES; x += 6f) spots.Add(new Position(x, 4f));
+            foreach (Position spot in spots)
+            {
+                float x = spot.x;
+                var model = new ModelData(0.5f, new List<Weapon>(), spot, _store);
+                var picket = new UnitData(enemy, $"Picket {x},{spot.z}", quality: 4, defense: 4,
+                    modelBindings: new List<DataBinding<ModelData>>
+                    {
+                        _store.GetDataBinding<ModelData>(_store.Create(model)),
+                    });
+                pickets.Add(_store.GetDataBinding<UnitData>(_store.Create(picket)));
+            }
+            _store.Create(new ArmyData(enemy, pickets));
+
+            var ai = new Ai.Resolvers.AiPlaceObjectsResolver<ModelData>(new TableState(_store));
+            var ctx = Ctx(new AiPlacementRequester(ai));
+            var stage = new StartOfRoundExtraActionStage(ctx, new NoOpLayer<IMainPhaseContext>());
+            stage.OnFinished.Bind("done");
+            await stage.Enter(new TestMainPhaseContext(ctx, roundCount: 2));
+
+            var band = new TableEdgeBandZone(GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES,
+                GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES, bandWidthInches: 9f);
+            List<Position> enemyPositions = pickets.Select(p => p.GetValue().Models[0].Position).ToList();
+            foreach (IModel model in copy.Models)
+            {
+                Assert.That(band.IsPointWithinZone(new Float2(model.Position.x, model.Position.z)), Is.True,
+                    $"({model.Position.x:F1}, {model.Position.z:F1}) is within 9\" of a table edge.");
+                foreach (Position e in enemyPositions)
+                {
+                    Assert.That(Position.GetDistance2D(model.Position, e), Is.GreaterThanOrEqualTo(9f),
+                        "over 9\" away from enemy units.");
+                }
+            }
+        }
+
+        private sealed class AiPlacementRequester : IPlayerRequestByID
+        {
+            private readonly Ai.Resolvers.AiPlaceObjectsResolver<ModelData> _ai;
+            public AiPlacementRequester(Ai.Resolvers.AiPlaceObjectsResolver<ModelData> ai) => _ai = ai;
+
+            public async Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
+                where TRequest : IStageTaskRequest<TReply>
+            {
+                if (request is PlaceObjectsRequest<ModelData> place) return (TReply)(object)await _ai.Resolve(place);
+                throw new System.InvalidOperationException("Unexpected request: " + request.GetType());
+            }
         }
 
         // ── The transport-spillout arm (was DEFERRED; shipped 2026-07-30) ────────────────────────────────

@@ -178,7 +178,9 @@ public readonly record struct TokenType(string Id)
     /// Marks a unit that arrived from reserve (Ambush) this round. Engine-known because
     /// <c>ReconcileObjectivesStage</c> reads it to exclude the newcomer from seizing/contesting
     /// objectives the round it arrives. Granted with a <c>RoundEnd</c> clear trigger, so the
-    /// round-end token sweep removes it after that round's objective check.
+    /// round-end token sweep removes it after that round's objective check. Also stamped on a
+    /// Reinforcement copy, a returning Aircraft, and (#426, 3.6 text) a unit placed via Spawn or Split -
+    /// every "can't seize or contest objectives on the round they are placed" newcomer.
     /// </summary>
     public static readonly TokenType ArrivedFromReserve = new(ARRIVED_FROM_RESERVE_ID);
 

@@ -130,6 +130,14 @@ public readonly record struct TokenType(string Id)
     // at the start and end of every activation; RoundEnd is the catalog's backstop.
     public const string WOUNDS_TAKEN_THIS_ACTIVATION_ID = "WoundsTakenThisActivation";
 
+    // #446 (Core Rules v3.6.0 Dangerous Terrain: "Units with models moving across Dangerous terrain, or that
+    // activate in it, must roll ..."): this unit has already taken its Dangerous Terrain Test for the current
+    // activation, on either trigger - activating in it (ActivatedInDangerousTerrainStage) or a move across it
+    // (MovementExecutor.RollDangerousTerrain). A later trigger in the same activation does not test again
+    // (Rules.Dispatch.DangerousTerrainTestedThisActivation). A flag, no payload. Swept table-wide at the start
+    // and end of every activation, like the wound ledger above; RoundEnd is the catalog's backstop.
+    public const string DANGEROUS_TERRAIN_TESTED_THIS_ACTIVATION_ID = "DangerousTerrainTestedThisActivation";
+
 
     public static readonly TokenType Shaken = new(SHAKEN_ID);
     public static readonly TokenType Fatigued = new(FATIGUED_ID);
@@ -143,6 +151,7 @@ public readonly record struct TokenType(string Id)
     public static readonly TokenType RegenerativeStrengthSpent = new(REGENERATIVE_STRENGTH_SPENT_ID);
     public static readonly TokenType CountedWoundsTaken = new(COUNTED_WOUNDS_TAKEN_ID);
     public static readonly TokenType WoundsTakenThisActivation = new(WOUNDS_TAKEN_THIS_ACTIVATION_ID);
+    public static readonly TokenType DangerousTerrainTestedThisActivation = new(DANGEROUS_TERRAIN_TESTED_THIS_ACTIVATION_ID);
     public static readonly TokenType SpellTokens = new(SPELL_TOKENS_ID);
 
     /// <summary>

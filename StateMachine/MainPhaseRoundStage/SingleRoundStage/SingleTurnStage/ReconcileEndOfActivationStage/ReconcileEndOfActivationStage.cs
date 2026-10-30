@@ -61,10 +61,15 @@ namespace FDG.Stages
             // #419: the activation's wound ledger has the same scope ("wounds each unit took during this
             // activation") and the same table-wide reach; MainUnitActionStage clears it again as the next
             // activation starts.
+            //
+            // #446: so does the "one Dangerous Terrain Test per activation" marker - a unit moved across Dangerous
+            // terrain during this activation (its own, or a Harassing move in someone else's) tests afresh in
+            // the next one.
             if (GameContext.TableState?.Units != null)
             {
                 CountedWounds.SweepAll(GameContext.TableState.Units.Objects);
                 WoundsTakenThisActivation.SweepAll(GameContext.TableState.Units.Objects);
+                DangerousTerrainTestedThisActivation.SweepAll(GameContext.TableState.Units.Objects);
             }
 
             // Activation over -- clear the spotlight target so nothing is highlighted between activations.

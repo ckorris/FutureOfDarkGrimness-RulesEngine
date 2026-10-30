@@ -14,7 +14,8 @@ namespace FDG.Stages
 {
     /// <summary>
     /// #197 P5a — fires the previously dormant <see cref="Rules.Foundation.EHookID.Activation_OnActivationStart"/>,
-    /// the first thing that happens in a unit's activation, and resolves the "pick one effect until the end of
+    /// the first thing that happens in a unit's activation (after only #446's Dangerous Terrain Test for a unit
+    /// that activates standing in Dangerous terrain, <c>ActivatedInDangerousTerrainStage</c>), and resolves the "pick one effect until the end of
     /// the activation" rules the corpus hangs there (Versatile Attack, Watchborn, Versatile Reach).
     ///
     /// A rule contributes one <see cref="ActivatedAbility"/> per effect, all at this hook, each labelled;
@@ -46,8 +47,9 @@ namespace FDG.Stages
     /// single prompt. It never runs a child pipeline, which is why it can be a leaf stage rather than a
     /// ParentStage like <c>BeforeAttackActionStage</c>.
     ///
-    /// Runs exactly once per activation: it is <c>MainUnitActionStage</c>'s starting child, and every loop
-    /// back from Movement/Melee/Shoot returns to <c>ChooseActionStage</c>, not here.
+    /// Runs exactly once per activation: it follows <c>MainUnitActionStage</c>'s starting child (#446's
+    /// <c>ActivatedInDangerousTerrainStage</c>), and every loop back from Movement/Melee/Shoot returns to
+    /// <c>ChooseActionStage</c>, not here.
     /// </summary>
     public class ActivationStartStage : StageBase<IUnitActionContext>
     {

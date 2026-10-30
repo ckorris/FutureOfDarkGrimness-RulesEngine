@@ -34,8 +34,14 @@ namespace FDG.Stages
             // #419: a new activation starts with no unit having taken any wounds "during this activation" -
             // the melee result's scope. Cleared table-wide here (and again by ReconcileEndOfActivationStage) so
             // wounds taken between activations - round start/end effects, deployment - never count.
+            // #446: the same table-wide scope for the "one Dangerous Terrain Test per activation" marker, so the
+            // activation-start test below (ActivatedInDangerousTerrainStage) and this activation's moves start
+            // from "not tested yet".
             if (GameContext.TableState?.Units != null)
+            {
                 WoundsTakenThisActivation.SweepAll(GameContext.TableState.Units.Objects);
+                DangerousTerrainTestedThisActivation.SweepAll(GameContext.TableState.Units.Objects);
+            }
 
             await base.Enter(context);
         }
@@ -58,9 +64,14 @@ namespace FDG.Stages
             OnBackedOut = new StageBinding(this);
 
             Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
-                // #197 P5a — fires Activation_OnActivationStart before anything else, so the "pick one effect
-                // until the end of the activation" rules resolve before an action is chosen. Only ever entered
-                // as the starting child; every loop-back below returns to ChooseAction, so it runs once.
+                // #446 - "or that activate in it": a unit standing in Dangerous terrain takes its Dangerous
+                // Terrain Test before anything else in the activation (where it stands as the activation BEGINS,
+                // so ahead of the activation-start repositions). Only ever entered as the starting child.
+                .AddChild(new ActivatedInDangerousTerrainStage(GameContext, this), out var activatedInDangerous)
+                // #197 P5a — fires Activation_OnActivationStart before anything else but the #446 test above,
+                // so the "pick one effect until the end of the activation" rules resolve before an action is
+                // chosen. Only ever entered from the #446 stage; every loop-back below returns to ChooseAction,
+                // so it runs once.
                 .AddChild(new ActivationStartStage(GameContext, this), out var activationStart)
                 // #197 Surprise Attack — "the first time this unit is activated, pick one enemy within 6in
                 // in LoS and roll X dice". Mandatory, so it sits between activation start and the menu
@@ -93,7 +104,10 @@ namespace FDG.Stages
                 .AddSibling(nameof(OnBackedOut), OnBackedOut, out string backedOutEvent)
                 .Build();
 
-            startingChild = activationStart;
+            startingChild = activatedInDangerous;
+            activatedInDangerous.OnFinished.Bind(activationStart);
+            // #446: a unit the test destroys ends its activation without a prompt or an action menu.
+            activatedInDangerous.OnUnitDestroyed.Bind(toReconcileActivationEvent);
             // The burst (if any) resolves before the unit chooses what to do, so its 6in is measured from
             // where the activation started. Every loop-back below returns to ChooseAction, so it runs once.
             activationStart.OnFinished.Bind(surpriseAttack);

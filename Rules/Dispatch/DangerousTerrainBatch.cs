@@ -6,9 +6,9 @@ namespace FDG.Rules.Dispatch;
 /// #420 - the one place a 3.6 Dangerous terrain test is rolled and its wounds worked out. Core Rules
 /// v3.6.0: "Units with models moving across Dangerous terrain, or that activate in it, must roll as many
 /// dice as the number of wounds it would take to fully destroy them, and for each roll of 1 the unit takes
-/// one wound." The movement crossing, the forced Dangerous Terrain Debuff and a destroyed transport's
-/// spillout ("must take a Dangerous terrain test") all come through <see cref="Roll"/>; they differ only in
-/// WHEN the test is owed, never in how it is rolled.
+/// one wound." The movement crossing, activating in it (#446), the forced Dangerous Terrain Debuff and a
+/// destroyed transport's spillout ("must take a Dangerous terrain test") all come through <see cref="Roll"/>;
+/// they differ only in WHEN the test is owed, never in how it is rolled.
 /// <para>
 /// ROLL ONLY: the wounds come back pending, not applied, because a batched test must let its dice be read
 /// and each casualty animate as it falls (<c>CasualtyPresentation</c>, #299). The caller lands them.

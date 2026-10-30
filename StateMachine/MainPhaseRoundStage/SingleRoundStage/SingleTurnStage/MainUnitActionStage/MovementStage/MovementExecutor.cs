@@ -12,7 +12,8 @@ namespace FDG.Stages
     /// post-deploy repositions).
     /// <para>
     /// The normal movement stages delegate their bodies here so there is exactly one place
-    /// that rolls the dangerous-terrain test (<see cref="RollDangerousTerrain"/>) and
+    /// that rolls the dangerous-terrain test for a move (<see cref="RollDangerousTerrain"/>; its
+    /// "activates in it" sibling, <see cref="RollActivationDangerousTerrain"/>, lives beside it, #446) and
     /// one place that commits positions (<see cref="CommitPositions"/>). The two stay separate
     /// methods because the normal flow runs them as distinct stages — merging them would
     /// double-apply terrain effects.
@@ -39,17 +40,29 @@ namespace FDG.Stages
             /// the unit out, not only for the casualty beats. Null only on <see cref="None"/>.
             /// </summary>
             public readonly IUnit? Unit;
+            /// <summary>
+            /// #446: why the test was owed, when the reason is not the default "a move crossed it" - e.g.
+            /// <see cref="ACTIVATED_IN_TRIGGER"/>. Named on the dice row and the log line so a test that fires
+            /// before the unit has done anything reads as the rule, not as a phantom roll. Null for a move or
+            /// a forced test, whose rows read as before.
+            /// </summary>
+            public readonly string? Trigger;
 
             public DangerousTerrainResult(IDiceResults? roll, int diceCount, float wounds,
-                IReadOnlyList<PendingModelWound> pendingWounds, IUnit? unit)
+                IReadOnlyList<PendingModelWound> pendingWounds, IUnit? unit, string? trigger = null)
             {
                 Roll = roll; DiceCount = diceCount; Wounds = wounds;
-                PendingWounds = pendingWounds; Unit = unit;
+                PendingWounds = pendingWounds; Unit = unit; Trigger = trigger;
             }
             public bool AnyTested => DiceCount > 0 && Roll != null && Unit != null;
             public static DangerousTerrainResult None =>
                 new DangerousTerrainResult(null, 0, 0f, Array.Empty<PendingModelWound>(), null);
         }
+
+        /// <summary>#446: the trigger text for a unit that ACTIVATED standing in Dangerous terrain - shown on the
+        /// dice row ("Unit: activated in Dangerous terrain - 5 dice (wounds to destroy)") and the log line.
+        /// ASCII only (game text).</summary>
+        public const string ACTIVATED_IN_TRIGGER = "activated in Dangerous terrain";
 
         /// <summary>
         /// 3.6 (#420): "Units with models moving across Dangerous terrain ... must roll as many dice as the
@@ -65,6 +78,12 @@ namespace FDG.Stages
         /// at its destination instead of vanishing from the start line. Rolling here keeps the dice draw
         /// in its original place in the seeded stream. Out-of-band callers that only want the state
         /// change can land the batch with <see cref="CasualtyPresentation.ApplyOnly"/>.
+        /// </para>
+        /// <para>
+        /// #446: one test per activation on either trigger. A unit that has already tested this activation -
+        /// because it activated standing in Dangerous terrain, or on an earlier move - rolls nothing here
+        /// (<see cref="Rules.Dispatch.DangerousTerrainTestedThisActivation"/>, ruled in WorkItems/446 D2), and a
+        /// test rolled here marks it. A "counts as Dangerous" move is the same test and obeys the same marker.
         /// </para>
         /// </summary>
         public static DangerousTerrainResult RollDangerousTerrain(IGameContext gameContext,
@@ -96,7 +115,61 @@ namespace FDG.Stages
             }
             if (!anyModelCrosses) return DangerousTerrainResult.None;
 
-            return RollBatch(gameContext, unit);
+            if (Rules.Dispatch.DangerousTerrainTestedThisActivation.Has(unit))
+            {
+                gameContext.Log($"{unit.Name}: already took its dangerous terrain test this activation - " +
+                    "no second test for this move.");
+                return DangerousTerrainResult.None;
+            }
+
+            DangerousTerrainResult result = RollBatch(gameContext, unit);
+            if (result.AnyTested) Rules.Dispatch.DangerousTerrainTestedThisActivation.Mark(unit);
+            return result;
+        }
+
+        /// <summary>
+        /// #446 - the other half of the rule: "Units with models moving across Dangerous terrain, OR THAT
+        /// ACTIVATE IN IT, must roll as many dice as the number of wounds it would take to fully destroy
+        /// them". Called once at the very start of the unit's activation (<c>ActivatedInDangerousTerrainStage</c>):
+        /// if any LIVING model's base overlaps a Dangerous piece where it stands
+        /// (<see cref="MovementUtilities.IsModelInDangerousTerrain"/>, the move's own footprint test), the
+        /// unit rolls the same #420 pool once and is marked as tested for this activation, so moving out
+        /// across the piece afterwards does not test again (WorkItems/446 D2).
+        /// <para>
+        /// No test for: a unit with nothing alive; an embarked unit (its models are inside the transport, not
+        /// on the table - the transport tests for itself); an Aircraft that flew off the table; a unit that
+        /// ignores Dangerous terrain (Flying / Aircraft, the AllTerrain scope of
+        /// <see cref="Rules.Dispatch.MovementRuleQueries.IgnoresAllTerrain"/>; Strider is Difficult-only and
+        /// does test); a unit that has already tested this activation. A "counts as being in Dangerous
+        /// Terrain" grant is NOT a trigger here: it is hung on the unit's next MOVE and is read by
+        /// <see cref="RollDangerousTerrain"/> (WorkItems/446 D4).
+        /// </para>
+        /// Rolls only; the caller lands the wounds with <see cref="ResolveDangerousTerrain"/>.
+        /// </summary>
+        public static DangerousTerrainResult RollActivationDangerousTerrain(IGameContext gameContext, IUnit unit,
+            IEnumerable<ITerrain> terrain)
+        {
+            if (!unit.GetIsAlive()) return DangerousTerrainResult.None;
+            if (Rules.Dispatch.TransportUtilities.IsEmbarked(unit)) return DangerousTerrainResult.None;
+            if (unit.Tokens.HasToken(Rules.Foundation.TokenType.OffTableFromForcedMove))
+                return DangerousTerrainResult.None;
+
+            List<ITerrain> dangerous = terrain.Where(t => t.TerrainType.HasFlag(ETerrainType.Dangerous)).ToList();
+            if (dangerous.Count == 0) return DangerousTerrainResult.None;
+
+            bool anyModelInside = unit.Models.Any(model => model.GetIsAlive()
+                && MovementUtilities.IsModelInDangerousTerrain(model, dangerous));
+            if (!anyModelInside) return DangerousTerrainResult.None;
+
+            // Flying ignores the effects of Dangerous terrain - standing in it as much as crossing it.
+            if (Rules.Dispatch.MovementRuleQueries.IgnoresAllTerrain(unit, gameContext.RuleEvaluator))
+                return DangerousTerrainResult.None;
+
+            if (Rules.Dispatch.DangerousTerrainTestedThisActivation.Has(unit)) return DangerousTerrainResult.None;
+
+            DangerousTerrainResult result = RollBatch(gameContext, unit, ACTIVATED_IN_TRIGGER);
+            if (result.AnyTested) Rules.Dispatch.DangerousTerrainTestedThisActivation.Mark(unit);
+            return result;
         }
 
         /// <summary>
@@ -127,7 +200,7 @@ namespace FDG.Stages
         /// probabilistic spread and the wound assignment are <see cref="DangerousTerrainBatch"/>'s, shared
         /// with the transport spillout test; this just carries the result in the movement flow's shape.
         /// </summary>
-        private static DangerousTerrainResult RollBatch(IGameContext gameContext, IUnit unit)
+        private static DangerousTerrainResult RollBatch(IGameContext gameContext, IUnit unit, string? trigger = null)
         {
             Rules.Dispatch.DangerousTerrainBatch.Outcome test = Rules.Dispatch.DangerousTerrainBatch.Roll(unit, gameContext.DiceRoller,
                 gameContext.Settings.RandomnessType);
@@ -136,9 +209,10 @@ namespace FDG.Stages
             List<PendingModelWound> pending = test.PendingWounds
                 .Select(w => new PendingModelWound(w.Model, w.Wounds)).ToList();
 
-            gameContext.Log($"{unit.Name}: dangerous terrain test - {test.DiceCount} " +
+            string reason = trigger == null ? "" : $" ({trigger})";
+            gameContext.Log($"{unit.Name}: dangerous terrain test{reason} - {test.DiceCount} " +
                 $"{(test.DiceCount == 1 ? "die" : "dice")} (wounds to destroy), {test.Wounds:0.##} wound(s) dealt.");
-            return new DangerousTerrainResult(test.Roll, test.DiceCount, test.Wounds, pending, unit);
+            return new DangerousTerrainResult(test.Roll, test.DiceCount, test.Wounds, pending, unit, trigger);
         }
 
         /// <summary>
@@ -203,7 +277,7 @@ namespace FDG.Stages
                 : $"{result.Wounds:0.##} wound{(result.Wounds == 1f ? "" : "s")}";
             await gameContext.Presenter.Present(DiceRolledBeat.From(result.Roll!, successThreshold: 2,
                 gameContext.Settings.RandomnessType, "Dangerous Terrain", summary,
-                context: DescribeDice(unit, result.DiceCount)));
+                context: DescribeDice(unit, result.DiceCount, result.Trigger)));
 
             bool wasAlive = unit.GetIsAlive();
 
@@ -222,9 +296,11 @@ namespace FDG.Stages
 
         /// <summary>The "who and how many" line under a dangerous-terrain dice row (#420): the pool is the
         /// unit's wounds to destroy, and a player who sees nine dice for a three-model squad should be able
-        /// to read why. Shared with the spillout presentation.</summary>
-        public static string DescribeDice(IUnit unit, int diceCount) =>
-            $"{unit.Name}: {diceCount} {(diceCount == 1 ? "die" : "dice")} (wounds to destroy)";
+        /// to read why. Shared with the spillout presentation. #446: a non-move trigger is named before the
+        /// count ("Unit: activated in Dangerous terrain - 5 dice (wounds to destroy)").</summary>
+        public static string DescribeDice(IUnit unit, int diceCount, string? trigger = null) =>
+            $"{unit.Name}: {(trigger == null ? "" : trigger + " - ")}{diceCount} " +
+            $"{(diceCount == 1 ? "die" : "dice")} (wounds to destroy)";
 
         /// <summary>
         /// Move <paramref name="unit"/> along <paramref name="paths"/>, validated against a single

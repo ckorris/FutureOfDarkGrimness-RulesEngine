@@ -201,6 +201,12 @@ public static class TokenDefinitionCatalog
                 ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.RoundEnd(),
                 Description: "Wounds this unit has taken during the current activation (used by the melee result)."),
 
+            // #446: one Dangerous Terrain Test per activation, on either trigger (activating in it / moving across
+            // it). Swept table-wide at the start and end of every activation; RoundEnd is the backstop.
+            new(TokenType.DANGEROUS_TERRAIN_TESTED_THIS_ACTIVATION_ID, "Tested Dangerous terrain", EValence.Neutral,
+                ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.RoundEnd(),
+                Description: "Has taken its Dangerous Terrain Test this activation - it does not test again until its next one."),
+
             new(TokenType.OFF_TABLE_FROM_FORCED_MOVE_ID, "Off table (forced move)", EValence.Neutral,
                 ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.ManualOnly()),
 

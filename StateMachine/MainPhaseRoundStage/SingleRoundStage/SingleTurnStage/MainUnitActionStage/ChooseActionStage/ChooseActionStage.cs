@@ -898,7 +898,7 @@ namespace FDG.Stages
             }
 
             if (!ChooseRangedAttackStage.HasAnyFireableTarget(context.ActivatingUnit, context.GameContext,
-                    markedTargetsOnly))
+                    markedTargetsOnly, attackerMoved: context.HasMoved))
             {
                 if (markedTargetsOnly)
                 {

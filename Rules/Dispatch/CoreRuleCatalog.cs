@@ -129,34 +129,34 @@ public static class CoreRuleCatalog
         Description: "Beyond 9\", this unit gets +1 to hit when shooting, and enemies shooting it take -2 to hit.");
 
     /// <summary>
-    /// Indirect: -1 to hit when the unit moved this activation (shooting only — the AfterMoving gate is
-    /// joined with Not(IsMelee) so a charge, which sets HasMoved, doesn't wrongly penalise melee swings),
-    /// and the weapon may fire at targets out of line of sight as if in LoS, ignoring cover. The LoS- and
-    /// cover-ignore facets queue <see cref="RuleOperation.IgnoreLineOfSight"/> /
-    /// <see cref="RuleOperation.IgnoreCover"/> at <see cref="EHookID.Shooting_OnSaveRollModifier"/>, read
-    /// by the targeting/occlusion/cover stages (and surfaced to the resolvers) via
-    /// <see cref="Rules.Dispatch.SightRuleQueries"/>.
+    /// Indirect (#425, Core Rules v3.6.0): "When using Hold actions and shooting, may target enemies that are not
+    /// in line of sight as if in line of sight, and ignores Cover from Sight Blockers." Both facets are gated on
+    /// the Hold action - Not(AfterMoving): the attacker has not moved this activation (a 0" Advance is a move,
+    /// #425 D1) - and queue <see cref="RuleOperation.IgnoreLineOfSight"/> /
+    /// <see cref="RuleOperation.IgnoreSightBlockerCover"/> at <see cref="EHookID.Shooting_OnSaveRollModifier"/>,
+    /// read by the targeting/occlusion/cover stages (and surfaced to the resolvers) via
+    /// <see cref="Rules.Dispatch.SightRuleQueries"/> with the shooter's move fact. After an Advance the weapon
+    /// needs line of sight and the target keeps its cover like any other shot. Cover from Cover terrain is never
+    /// ignored (3.5 ignored all cover). The 3.5 "-1 to hit after moving" is gone; Quick Throw (book rule) lifts
+    /// the Hold gate for the line-of-sight facet only.
     /// </summary>
     public static SpecialRuleDefinition Indirect { get; } = new SpecialRuleDefinition("Indirect",
         new[]
         {
-            new HookEntry(EHookID.Shooting_OnHitRollModifier,
-                new Condition.And(new Condition.AfterMoving(), new Condition.Not(new Condition.IsMelee())),
-                new Effect.RollModifier(ERollKind.Hit, Delta: -1),
-                ELifetime.ThisAttack),
             new HookEntry(EHookID.Shooting_OnSaveRollModifier,
-                new Condition.Always(),
+                new Condition.Not(new Condition.AfterMoving()),
                 new Effect.IgnoreLineOfSight(),
                 ELifetime.ThisAttack),
             new HookEntry(EHookID.Shooting_OnSaveRollModifier,
-                new Condition.Always(),
-                new Effect.IgnoreCover(),
+                new Condition.Not(new Condition.AfterMoving()),
+                new Effect.IgnoreSightBlockerCover(),
                 ELifetime.ThisAttack),
         },
         Array.Empty<ActivatedAbility>(),
         ERuleScope.Weapon,
         Valence: EValence.Positive,
-        Description: "Fires at targets out of line of sight and ignores cover; -1 to hit if the unit moved this activation.");
+        Description: "When using Hold actions and shooting, may target enemies that are not in line of sight as if " +
+            "in line of sight, and ignores Cover from Sight Blockers.");
 
     /// <summary> Weapon rule ("models attacks at Quality 2+ with this weapon"): base Quality is treated as 2+ (still modifiable). </summary>
     public static SpecialRuleDefinition Reliable { get; } = new SpecialRuleDefinition("Reliable",

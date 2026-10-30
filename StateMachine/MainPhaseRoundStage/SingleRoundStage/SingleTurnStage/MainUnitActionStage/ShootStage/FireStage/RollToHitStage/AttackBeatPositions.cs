@@ -28,7 +28,7 @@ namespace FDG.Stages
             // Non-consuming query (BuildTargetListStage's own evaluation drives the actual rule), so
             // reading it here for both the shooter filter and the target side is safe.
             bool ignoresLineOfSight = !metaData.IsMelee && SightRuleQueries.IgnoresTerrain(
-                metaData.AttackingUnit.GetValue(), metaData.WeaponType, evaluator);
+                metaData.AttackingUnit.GetValue(), metaData.WeaponType, evaluator, metaData.AttackerMoved);
 
             List<Position> from = metaData.IsMelee
                 ? MeleeFiringModels(metaData.AttackingUnit, metaData.DefendingUnit, metaData.WeaponType)

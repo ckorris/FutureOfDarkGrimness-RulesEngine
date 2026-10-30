@@ -209,9 +209,15 @@ namespace FDG.StageResolution.Requests
     /// (Indirect, Takedown). <see cref="CoverIgnoreRule"/> / <see cref="LineOfSightIgnoreRule"/> carry the
     /// alias-aware display name of the responsible rule (null when none), so the movement overlay can
     /// attribute the effect on each fire-line label, e.g. "Huge Gun (Indirect ignores line of sight)".
+    /// <para>
+    /// #425: built for the shot AFTER the move (Indirect's line-of-sight bypass is Hold-only, so a moving
+    /// Indirect weapon reports <see cref="IgnoresTerrain"/> false unless Quick Throw lifts the gate).
+    /// <see cref="IgnoresSightBlockerCover"/> says whether a line-of-sight-ignoring weapon also ignores the cover a
+    /// Sight Blocker grants; when it does not, a blocked line the weapon still fires along previews as cover.
+    /// </para>
     /// </summary>
     public record WeaponSightProfile(Weapon Weapon, bool IgnoresCover, bool IgnoresTerrain,
-        string? CoverIgnoreRule = null, string? LineOfSightIgnoreRule = null);
+        string? CoverIgnoreRule = null, string? LineOfSightIgnoreRule = null, bool IgnoresSightBlockerCover = false);
 
     /// <summary>
     /// The effective shooting range (inches) of one of the mover's ranged weapons against one specific enemy

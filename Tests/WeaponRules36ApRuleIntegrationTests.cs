@@ -253,7 +253,7 @@ namespace FDG.Tests
             Assert.That(await CoverBonus(attacker, defender, WeaponWith(CoverRule(rule))), Is.EqualTo(0),
                 $"{rule} ignores it");
             Assert.That(SightRuleQueries.CoverIgnoreSource(attacker.GetValue(), WeaponWith(CoverRule(rule)),
-                _ctx.RuleEvaluator), Is.EqualTo(rule), "and the targeting overlays name the rule");
+                _ctx.RuleEvaluator, attackerMoved: false), Is.EqualTo(rule), "and the targeting overlays name the rule");
         }
 
         // --- Imprecise ------------------------------------------------------------------------------------------

@@ -586,7 +586,7 @@ namespace FDG.Tests
         {
             float distance = Distance(attacker, defender);
             int coverBonus = defenderInCover && !isMelee
-                && !SightRuleQueries.IgnoresCover(attacker.GetValue(), weapon, _ctx.RuleEvaluator) ? 1 : 0;
+                && !SightRuleQueries.IgnoresCover(attacker.GetValue(), weapon, _ctx.RuleEvaluator, attackerMoved) ? 1 : 0;
 
             // Engine side.
             var metadata = new CombatMetadata(_ctx, attacker, defender, weapon, weaponCount,

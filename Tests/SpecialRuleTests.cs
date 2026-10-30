@@ -593,12 +593,14 @@ namespace FDG.Tests
             saveOps.HasOperation<RuleOperation.ApplyRollModifier>(op => op.Roll == ERollKind.Save && op.Delta == -1);
         }
 
-        // Indirect (core) — -1 to hit when shooting after moving.
+        // The AfterMoving condition driving a shoot-after-move penalty. (This was 3.5 Indirect's -1; Core Rules
+        // v3.6.0 dropped it - #425 - so the definition here is a stand-in named for what it is, kept because the
+        // condition still gates live rules: Indirect's Hold-only facets and Artillery's +1 read Not(AfterMoving).)
         [Test]
-        public void Indirect_WhenShootingAfterMoving_AppliesMinus1ToHit()
+        public void AfterMovingCondition_WhenShootingAfterMoving_AppliesMinus1ToHit()
         {
             var harness = new TestRuleHarness();
-            harness.Register(new SpecialRuleDefinition("Indirect",
+            harness.Register(new SpecialRuleDefinition("Moving Penalty",
                 new[]
                 {
                     new HookEntry(EHookID.Shooting_OnHitRollModifier,
@@ -608,7 +610,7 @@ namespace FDG.Tests
                 },
                 NoAbilities));
 
-            IUnit attacker = harness.BuildUnit("P1", modelCount: 3, "Indirect");
+            IUnit attacker = harness.BuildUnit("P1", modelCount: 3, "Moving Penalty");
             IUnit target = harness.BuildUnit("P2", modelCount: 5);
 
             var ops = harness.Evaluate(attacker, ERuleSeat.Actor,

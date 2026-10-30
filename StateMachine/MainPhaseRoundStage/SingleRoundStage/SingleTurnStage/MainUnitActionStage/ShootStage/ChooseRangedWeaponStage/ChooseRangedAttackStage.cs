@@ -120,7 +120,7 @@ namespace FDG.Stages
             List<ITerrain> terrainSnapshot = context.GameContext.TableState.Terrain.Objects.ToList();
 
             List<WeaponOption> weaponOptions = BuildWeaponOptions(context.AttackingUnit, context.AvailableWeapons,
-                context.GameContext, terrainSnapshot, context.AttackedDefenderRefs);
+                context.GameContext, terrainSnapshot, context.AttackedDefenderRefs, context.AttackerMoved);
 
             // #325: price every fireable row BEFORE the request goes out - the resolvers cannot (weapon
             // rules never cross the wire). Here and not in BuildWeaponOptions, because HasAnyFireableTarget
@@ -632,10 +632,12 @@ namespace FDG.Stages
         /// Returns true if the attacker has at least one ranged weapon that, ignoring any
         /// per-shoot-action target limit, can hit some enemy unit (i.e. some model with the
         /// weapon has both line of sight and range). Used by ChooseActionStage to gray out
-        /// Shoot when there is nothing to shoot at.
+        /// Shoot when there is nothing to shoot at. #425: <paramref name="attackerMoved"/> is the unit's
+        /// HasMoved - Indirect ignores line of sight only on a Hold, so the gate must ask with the same move
+        /// fact the stage will (#200: the gate and the stage never disagree).
         /// </summary>
         public static bool HasAnyFireableTarget(DataBinding<UnitData> attackingUnit, IGameContext gameContext,
-            bool markedTargetsOnly = false)
+            bool markedTargetsOnly = false, bool attackerMoved = false)
         {
             UnitData unitValue = attackingUnit.GetValue();
             List<Weapon> rangedWeapons = unitValue.GetRangedWeapons();
@@ -651,7 +653,7 @@ namespace FDG.Stages
             List<ITerrain> terrainSnapshot = gameContext.TableState.Terrain.Objects.ToList();
             // #191 search perf pass 8: the gate reads only "any fireable option"; cover is never consulted.
             List<WeaponOption> options = BuildWeaponOptions(attackingUnit, availableWeapons, gameContext,
-                terrainSnapshot, Array.Empty<DataReference>(), wantCover: false);
+                terrainSnapshot, Array.Empty<DataReference>(), attackerMoved, wantCover: false);
 
             // The stage's own gating pipeline, verbatim (#200): the gate must answer exactly what the
             // stage will conclude, or a deterministic AI ping-pongs between Choose Action and Shoot.
@@ -662,7 +664,7 @@ namespace FDG.Stages
         private static List<WeaponOption> BuildWeaponOptions(DataBinding<UnitData> attackingUnit,
             IReadOnlyDictionary<Weapon, int> availableWeapons, IGameContext gameContext,
             IReadOnlyList<ITerrain> terrain, IReadOnlyCollection<DataReference> attackedDefenderRefs,
-            bool wantCover = true)
+            bool attackerMoved, bool wantCover = true)
         {
             // #191 search perf pass 8: the sight blockers every enemy unit shares, built once here rather
             // than once per enemy unit (each build allocated a zone per model on the table).
@@ -683,6 +685,10 @@ namespace FDG.Stages
             // can hit targets it has no clear line to, so enumeration must not require LoS for it.
             Dictionary<string, bool> weaponIgnoresLineOfSight =
                 new Dictionary<string, bool>(StringComparer.Ordinal);
+            // #425: and how its shot treats Sight Blockers in the cover test - Indirect on a Hold reads cover past
+            // them and ignores theirs, so the targeting panel's cover flag is per weapon, not per target.
+            Dictionary<string, ESightBlockerCover> weaponSightBlockers =
+                new Dictionary<string, ESightBlockerCover>(StringComparer.Ordinal);
 
             foreach(Weapon weapon in availableWeapons.Keys)
             {
@@ -691,10 +697,15 @@ namespace FDG.Stages
                 // cover-/LoS-blocked target is still shootable and attribute it to the player ("(Blast
                 // ignores cover)"). Derived from the attacker's rules via the shared query (same source the
                 // cover and occlusion stages use; the *Source variants are non-logging).
+                // #425: asked with the shooter's move fact - Indirect's LoS bypass is Hold-only (Core Rules v3.6.0).
                 string? coverIgnoreRule = Rules.Dispatch.SightRuleQueries.CoverIgnoreSource(
-                    attackingUnit.GetValue(), weapon, gameContext.RuleEvaluator);
+                    attackingUnit.GetValue(), weapon, gameContext.RuleEvaluator, attackerMoved);
                 string? losIgnoreRule = Rules.Dispatch.SightRuleQueries.LineOfSightIgnoreSource(
-                    attackingUnit.GetValue(), weapon, gameContext.RuleEvaluator);
+                    attackingUnit.GetValue(), weapon, gameContext.RuleEvaluator, attackerMoved);
+                ESightBlockerCover sightBlockers = losIgnoreRule == null
+                    ? ESightBlockerCover.BlocksSight
+                    : Rules.Dispatch.SightRuleQueries.SightBlockerCoverFor(
+                        attackingUnit.GetValue(), weapon, gameContext.RuleEvaluator, attackerMoved);
                 // TryAdd, not Add: the pool is already profile-grouped, so a repeat means the caller
                 // handed us an ungrouped list - folding the copies into one option is what grouping
                 // would have done anyway, and is never worth throwing over.
@@ -719,6 +730,7 @@ namespace FDG.Stages
                         individualTargetRule, availableWeapons[weapon])))
                 {
                     weaponIgnoresLineOfSight.Add(profileKey, losIgnoreRule != null);
+                    weaponSightBlockers.Add(profileKey, sightBlockers);
                 }
             }
 
@@ -745,7 +757,8 @@ namespace FDG.Stages
 
                 Dictionary<string, WeaponTargetStats> weaponToStats =
                     BuildAttacksForEnemyUnit(attackingUnit, enemyUnit, optionsByProfile.Keys,
-                        terrain, gameContext, weaponIgnoresLineOfSight, blockerSet, wantCover, unselectableReason);
+                        terrain, gameContext, weaponIgnoresLineOfSight, weaponSightBlockers, blockerSet, wantCover,
+                        unselectableReason);
 
                 foreach (KeyValuePair<string, WeaponTargetStats> kvp in weaponToStats)
                 {
@@ -768,6 +781,7 @@ namespace FDG.Stages
         private static Dictionary<string, WeaponTargetStats> BuildAttacksForEnemyUnit(DataBinding<UnitData> attackingUnit,
             DataBinding<UnitData> enemyUnit, IEnumerable<string> weaponProfileKeys, IReadOnlyList<ITerrain> terrain,
             IGameContext gameContext, IReadOnlyDictionary<string, bool> weaponIgnoresLineOfSight,
+            IReadOnlyDictionary<string, ESightBlockerCover> weaponSightBlockers,
             LineOfSightUtilities.ModelBlockerSet blockerSet, bool wantCover,
             string? unselectableReason = null)
         {
@@ -780,15 +794,29 @@ namespace FDG.Stages
             // #055/#045 truthfulness: this feeds the targeting UI's cover flag, so it is the SAME
             // computation CoverCheckStage rolls (#385: CoverMajority) - including the #158 dead-model
             // exclusion and the #201 proximity exceptions.
-            bool hasCover = wantCover && CoverMajority.Evaluate(attackingUnit, enemyUnit, allTerrain,
-                gameContext.Settings.CoverProximityExceptionsEnabled).HasCover;
+            // #425: once per Sight-Blocker treatment in use (almost always just the ordinary one), shared by every
+            // weapon row with that treatment.
+            var coverByTreatment = new Dictionary<ESightBlockerCover, bool>();
+            bool HasCoverFor(ESightBlockerCover treatment)
+            {
+                if (!wantCover) return false;
+                if (!coverByTreatment.TryGetValue(treatment, out bool covered))
+                {
+                    covered = CoverMajority.Evaluate(attackingUnit, enemyUnit, allTerrain,
+                        gameContext.Settings.CoverProximityExceptionsEnabled, treatment).HasCover;
+                    coverByTreatment[treatment] = covered;
+                }
+                return covered;
+            }
 
             foreach (string weaponProfileKey in weaponProfileKeys)
             {
+                ESightBlockerCover treatment = weaponSightBlockers.TryGetValue(weaponProfileKey, out ESightBlockerCover t)
+                    ? t : ESightBlockerCover.BlocksSight;
                 weaponToStats[weaponProfileKey] = new WeaponTargetStats(enemyUnit,
                     new HashSet<DataBinding<ModelData>>(),
                     new HashSet<DataBinding<ModelData>>(),
-                    hasCover,
+                    HasCoverFor(treatment),
                     unselectableReason);
             }
 

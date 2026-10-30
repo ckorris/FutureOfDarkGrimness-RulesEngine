@@ -22,9 +22,14 @@ namespace FDG.Stages
             // panel's cover flag, so the preview and this roll cannot disagree. Dead models are
             // excluded on both sides there (#158); this stage used to count them. The #201
             // proximity exceptions ride the same call.
+            // #425: a shot that ignores line of sight reads cover past the Sight Blockers - Indirect on a Hold
+            // also ignores the cover THEY grant (Cover terrain still counts); Quick Throw after moving does not.
+            ESightBlockerCover sightBlockers = SightRuleQueries.SightBlockerCoverFor(
+                metaData.AttackingUnit.GetValue(), metaData.WeaponType, GameContext.RuleEvaluator,
+                metaData.AttackerMoved);
             CoverMajority.Result majority = CoverMajority.Evaluate(
                 metaData.AttackingUnit, metaData.DefendingUnit, terrain,
-                GameContext.Settings.CoverProximityExceptionsEnabled);
+                GameContext.Settings.CoverProximityExceptionsEnabled, sightBlockers);
 
             // Majority rule: more than half of the living defending models in cover → +1 defense bonus.
             int bonus = majority.HasCover ? 1 : 0;
@@ -33,11 +38,16 @@ namespace FDG.Stages
             // rules via the shared query so the cover stage, targeting options, and movement options agree.
             // #431: Anti-Cover, Demolish and Pierce ignore it too, so the log names the rule that did.
             if (bonus > 0 && SightRuleQueries.CoverIgnoreSource(
-                    metaData.AttackingUnit.GetValue(), metaData.WeaponType, GameContext.RuleEvaluator) is string ignoredBy)
+                    metaData.AttackingUnit.GetValue(), metaData.WeaponType, GameContext.RuleEvaluator,
+                    metaData.AttackerMoved) is string ignoredBy)
             {
                 GameContext.Log($"Cover ignored by {metaData.AttackingUnit.GetValue().Name}'s weapon ({ignoredBy}).");
                 bonus = 0;
             }
+
+            if (sightBlockers == ESightBlockerCover.Ignored)
+                GameContext.Log($"Cover from sight blockers ignored by {metaData.AttackingUnit.GetValue().Name}'s weapon " +
+                    $"({SightRuleQueries.SightBlockerCoverIgnoreSource(metaData.AttackingUnit.GetValue(), metaData.WeaponType, GameContext.RuleEvaluator, metaData.AttackerMoved)}).");
 
             if (bonus > 0)
                 GameContext.Log($"Cover: {majority.ModelsInCover}/{majority.LivingDefenders} defending models in cover. Defense +{bonus}.");

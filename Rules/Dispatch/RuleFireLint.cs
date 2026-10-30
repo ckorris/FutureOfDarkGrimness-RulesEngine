@@ -350,7 +350,8 @@ public static class RuleFireLint
 
             // SightRuleQueries reads the attacker's weapon-sight flags off CoverIgnoreContext.
             EHookID.Shooting_OnSaveRollModifier =>
-                op is RuleOperation.IgnoreCover or RuleOperation.IgnoreLineOfSight,
+                op is RuleOperation.IgnoreCover or RuleOperation.IgnoreLineOfSight
+                    or RuleOperation.IgnoreSightBlockerCover,
 
             // AssignWoundsStage: the save reroll, injected wounds, the wound-ignore threshold, and
             // the earned follow-up attacks (#376 Bloodthirsty; consumed by the melee swing chain).
@@ -733,7 +734,9 @@ public static class RuleFireLint
                 }
                 break;
             case EHookID.Shooting_OnSaveRollModifier:
-                yield return new CoverIgnoreContext(attacker);
+                // #425: both sides of the Hold gate (Indirect's facets fire only when the attacker has not moved).
+                yield return new CoverIgnoreContext(attacker, AttackerMoved: false);
+                yield return new CoverIgnoreContext(attacker, AttackerMoved: true);
                 break;
             case EHookID.Shooting_OnSaveRollComplete:
                 foreach (bool isMelee in new[] { false, true })

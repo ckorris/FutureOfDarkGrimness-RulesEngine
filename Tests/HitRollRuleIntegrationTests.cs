@@ -156,20 +156,24 @@ namespace FDG.Tests
                 "Artillery attacker +1 (−1 threshold) and Artillery defender −2 (+2 threshold) stack: 4 − 1 + 2 = 5.");
         }
 
-        // Indirect is an attacker-seat rule: -1 to hit when the unit moved this activation,
-        // which RAISES the threshold. The condition reads AttackerMoved off the metadata —
-        // this exercises the HasMoved → CombatMetadata threading, not just a distance check.
+        // #425 - replaces IndirectAttacker_AfterMoving_RaisesHitThreshold. Core Rules v3.6.0 dropped Indirect's
+        // "-1 to hit when shooting after moving": the rule now only grants its line-of-sight and Sight-Blocker-cover
+        // facets on a Hold (IndirectLineOfSightRuleIntegrationTests). Shooting after an Advance is therefore at the
+        // plain threshold - through the REAL stage with AttackerMoved threaded in, so a reintroduced penalty on any
+        // hook this stage reads would show here. Melee (a charge also sets HasMoved) is unaffected either way.
         [Test]
-        public async Task IndirectAttacker_AfterMoving_RaisesHitThreshold()
+        public async Task IndirectAttacker_AfterMoving_NoHitPenalty()
         {
             DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
             DataBinding<UnitData> defender = MakeUnit(FarPos);
             AttachIndirect(attacker);
 
-            DetermineHitRollResults result = await RunStage(attacker, defender, attackerMoved: true);
+            DetermineHitRollResults shot = await RunStage(attacker, defender, attackerMoved: true);
+            Assert.That(shot.HitRollNeeded, Is.EqualTo(4),
+                "3.6: no -1 to hit after moving - an Indirect weapon that Advanced hits on the plain 4+.");
 
-            Assert.That(result.HitRollNeeded, Is.EqualTo(5),
-                "base 4, raised by 1 because Indirect applies -1 to hit after the attacker moved.");
+            DetermineHitRollResults swing = await RunStage(attacker, defender, attackerMoved: true, isMelee: true);
+            Assert.That(swing.HitRollNeeded, Is.EqualTo(4), "and nothing in melee either.");
         }
 
         [Test]
@@ -182,23 +186,7 @@ namespace FDG.Tests
             DetermineHitRollResults result = await RunStage(attacker, defender, attackerMoved: false);
 
             Assert.That(result.HitRollNeeded, Is.EqualTo(4),
-                "Indirect's AfterMoving condition fails when the attacker held, so no modifier is applied.");
-        }
-
-        // Indirect's -1 is gated on Not(IsMelee): a charge sets HasMoved, so without the gate an Indirect
-        // carrier would wrongly take -1 on its melee swings. In melee (even after moving) the penalty must
-        // not apply — it's a shooting rule.
-        [Test]
-        public async Task IndirectAttacker_InMelee_NoPenalty()
-        {
-            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
-            DataBinding<UnitData> defender = MakeUnit(FarPos);
-            AttachIndirect(attacker);
-
-            DetermineHitRollResults result = await RunStage(attacker, defender, attackerMoved: true, isMelee: true);
-
-            Assert.That(result.HitRollNeeded, Is.EqualTo(4),
-                "Indirect is a shooting rule; its -1-after-moving must not apply to a melee (charge) swing.");
+                "Indirect never modifies the hit roll; on a Hold it changes what can be targeted and the cover, not the dice.");
         }
 
         // Reliable is an attacker-seat rule that FLOORS the base quality to 2+ before per-roll

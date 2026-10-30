@@ -87,6 +87,8 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(IgnoreEnemyMovementBlock), "ignoreEnemyMovementBlock")]
 [JsonDerivedType(typeof(IgnoreCover), "ignoreCover")]
 [JsonDerivedType(typeof(IgnoreLineOfSight), "ignoreLineOfSight")]
+// #425: Indirect 3.6 "ignores Cover from Sight Blockers" (Hold only) - not all cover, unlike IgnoreCover.
+[JsonDerivedType(typeof(IgnoreSightBlockerCover), "ignoreSightBlockerCover")]
 [JsonDerivedType(typeof(DeferDeployment), "deferDeployment")]
 [JsonDerivedType(typeof(Disembark), "disembark")]
 [JsonDerivedType(typeof(Embark), "embark")]
@@ -1551,7 +1553,8 @@ public abstract record Effect
 
     /// <summary>
     /// The bearer's attack ignores intervening terrain for line of sight — it may fire at targets it has
-    /// no clear line to, as if in line of sight. Covers Indirect's "target non-LoS as if LoS" facet.
+    /// no clear line to, as if in line of sight. Covers Indirect's "target non-LoS as if LoS" facet (Hold only
+    /// since #425 - the condition, not this effect, carries the gate) and Quick Throw's "always".
     /// (Takedown does NOT grant it - see #314.) Read by the ranged-target enumeration and the occlusion
     /// stage (so the shot isn't blocked) and surfaced per-weapon to the movement + ranged-target resolver
     /// requests, so they can represent that LoS-blocked targets are still shootable with this weapon.
@@ -1561,6 +1564,22 @@ public abstract record Effect
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.IgnoreLineOfSight());
+        }
+    }
+
+    /// <summary>
+    /// #425: the bearer's attack ignores cover granted by Sight Blockers, and only that - Core Rules v3.6.0
+    /// Indirect's "ignores Cover from Sight Blockers" (Cover terrain still counts, unlike
+    /// <see cref="IgnoreCover"/>, which drops every cover bonus). Meaningful together with
+    /// <see cref="IgnoreLineOfSight"/>: only a shot that ignores line of sight can be resolved against a model
+    /// behind a Sight Blocker. Read by <c>SightRuleQueries.SightBlockerCoverFor</c> into the cover verdict
+    /// (<see cref="ESightBlockerCover.Ignored"/>).
+    /// </summary>
+    public sealed record IgnoreSightBlockerCover : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.IgnoreSightBlockerCover());
         }
     }
 

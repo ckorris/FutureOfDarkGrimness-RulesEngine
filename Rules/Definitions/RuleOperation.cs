@@ -1031,6 +1031,16 @@ public abstract record RuleOperation
     }
 
     /// <summary>
+    /// #425: the attack ignores cover from Sight Blockers (not Cover terrain). A marker read by
+    /// <c>SightRuleQueries.SightBlockerCoverFor</c> into the cover verdict. Resolution of
+    /// <see cref="Effect.IgnoreSightBlockerCover"/> (Indirect on a Hold).
+    /// </summary>
+    public sealed record IgnoreSightBlockerCover : RuleOperation
+    {
+        public override string Describe() => "ignored cover from sight blockers";
+    }
+
+    /// <summary>
     /// Limit the bearer's declarable actions to <see cref="Allowed"/>. Resolution of
     /// <see cref="Effect.RestrictActions"/> (Immobile, Cumbersome).
     /// </summary>

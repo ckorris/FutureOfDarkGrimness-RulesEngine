@@ -653,8 +653,9 @@ public abstract record Condition
     }
 
     /// <summary>
-    /// True if the attacking unit moved before this attack. Used by Indirect
-    /// (-1 to hit when shooting after moving).
+    /// True if the attacking unit moved before this attack (any move action this activation, a 0" Advance
+    /// included). Not(AfterMoving) is "using Hold actions" when shooting: Indirect's two facets and Artillery's
+    /// +1 (#425) gate on it.
     /// </summary>
     public sealed record AfterMoving : CapabilityCondition<IHasAttackerMoved>
     {

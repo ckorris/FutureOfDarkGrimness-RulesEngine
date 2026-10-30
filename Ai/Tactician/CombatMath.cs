@@ -119,8 +119,10 @@ namespace FDG.Ai.Tactician
                 // position-free. Indirect keeps firing at full value; the query only runs when the
                 // lane is not clear, so clear-lane estimates cost exactly what they always did.
                 float sight = Math.Clamp(context.SightFactor, 0f, 1f);
+                // #425: Indirect ignores line of sight only on a Hold - the context's AttackerMoved is the
+                // candidate's action, so an Advance plan's Indirect volley needs the lane like any other.
                 if (sight < 1f
-                    && SightRuleQueries.IgnoresTerrain(attacker.GetValue(), weapon, evaluator))
+                    && SightRuleQueries.IgnoresTerrain(attacker.GetValue(), weapon, evaluator, context.AttackerMoved))
                 {
                     sight = 1f;
                 }
@@ -409,7 +411,7 @@ namespace FDG.Ai.Tactician
             // --- CoverCheckStage stand-in: cover is a caller-supplied fact about the hypothetical
             // position; the ignore rules (Blast/Indirect/Takedown) are still the engine's own query.
             int coverBonus = !context.IsMelee && context.DefenderInCover
-                && !SightRuleQueries.IgnoresCover(atk, weapon, evaluator) ? 1 : 0;
+                && !SightRuleQueries.IgnoresCover(atk, weapon, evaluator, context.AttackerMoved) ? 1 : 0;
             global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.VolleyHit, __hitProbe);
 
             var bonusAttacks = new BonusAttackSink();

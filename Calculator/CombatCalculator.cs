@@ -192,7 +192,7 @@ namespace FDG.Calculator
             // Cover is geometry, which this world does not have, so it is seeded exactly as
             // CoverCheckStage would have produced it - including the engine's own ignore-cover query.
             int coverBonus = !melee && situation.DefenderInCover
-                && !SightRuleQueries.IgnoresCover(attackingUnit, weapon, context.RuleEvaluator)
+                && !SightRuleQueries.IgnoresCover(attackingUnit, weapon, context.RuleEvaluator, situation.AttackerMoved)
                 ? 1
                 : 0;
 

@@ -35,6 +35,16 @@ namespace FDG.Tests
             System.Array.Empty<ActivatedAbility>(), Valence: EValence.Negative,
             Description: "Gets -1 to hit when attacking.");
 
+        // A weapon's own shoot-after-move penalty (the shape 3.5 Indirect had, #425): -1 to hit after moving.
+        private static readonly SpecialRuleDefinition MovingPenalty = new("Moving Penalty",
+            new[]
+            {
+                new HookEntry(EHookID.Shooting_OnHitRollModifier,
+                    new Condition.And(new Condition.AfterMoving(), new Condition.Not(new Condition.IsMelee())),
+                    new Effect.RollModifier(ERollKind.Hit, -1), ELifetime.ThisAttack),
+            },
+            System.Array.Empty<ActivatedAbility>(), ERuleScope.Weapon, Valence: EValence.Negative);
+
         // The unit-level mirror of an enemy spell's debuff (Corrode Weapons): a rule the shooter is GRANTED that
         // costs its shot 1 AP. What the grant's source is - the shooter's own rules or an enemy caster - decides
         // whether Unstoppable ignores it.
@@ -66,19 +76,20 @@ namespace FDG.Tests
         [Test]
         public void Unstoppable_KeepsThePenaltiesFromTheBearersOwnRules()
         {
-            // "which are not from this model's special rules": a unit rule, a weapon's own rule, and the
-            // Indirect-after-moving penalty are all the shooter's own, so all of them stay.
+            // "which are not from this model's special rules": a unit rule, a weapon's own rule, and a
+            // shoot-after-move penalty are all the shooter's own, so all of them stay. (The third was 3.5 Indirect's
+            // -1, dropped by Core Rules v3.6.0 - #425 - so a weapon-scoped stand-in carries the same shape.)
             var h = Harness();
             (IUnit attacker, IUnit defender, Weapon gun) = Pair(h, attackerRules: new[] { "Bad Shot" },
                 defenderRules: new[] { "Stealth" });
             h.AttachWeaponRule(gun, WeaponRules36Definitions.Imprecise);
-            h.AttachWeaponRule(gun, CoreRuleCatalog.Indirect);
+            h.AttachWeaponRule(gun, MovingPenalty);
             h.AttachWeaponRule(gun, CoreRuleCatalog.Unstoppable);
 
             IReadOnlyList<RuleOperation> ops = HitOps(h, attacker, defender, gun, distance: 12f, moved: true);
 
             Assert.That(HitNet(ops), Is.EqualTo(-3),
-                "Bad Shot -1, Imprecise -1, Indirect (moved) -1 stay; the target's Stealth -1 is ignored");
+                "Bad Shot -1, Imprecise -1, the moving penalty -1 stay; the target's Stealth -1 is ignored");
         }
 
         [Test]
@@ -291,7 +302,7 @@ namespace FDG.Tests
             foreach (SpecialRuleDefinition rule in new[]
                      {
                          CoreRuleCatalog.Stealth, CoreRuleCatalog.Evasive, CoreRuleCatalog.Fortified,
-                         CoreRuleCatalog.Indirect, CoreRuleCatalog.Precise, BadShot,
+                         CoreRuleCatalog.Indirect, CoreRuleCatalog.Precise, BadShot, MovingPenalty,
                      })
             {
                 h.Register(rule);

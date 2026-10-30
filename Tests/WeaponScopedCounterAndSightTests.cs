@@ -115,15 +115,19 @@ namespace FDG.Tests
             DataBinding<UnitData> attacker = MakeUnit(mortar, rifle);
             var evaluator = new RuleEvaluator(new FixedDiceRoller(4));
 
-            Assert.That(SightRuleQueries.IgnoresTerrain(attacker.GetValue(), mortar, evaluator), Is.True,
+            // #425: asked for a Hold (Indirect's facets are Hold-only in Core Rules v3.6.0).
+            Assert.That(SightRuleQueries.IgnoresTerrain(attacker.GetValue(), mortar, evaluator, attackerMoved: false), Is.True,
                 "the Indirect mortar ignores line-of-sight terrain.");
-            Assert.That(SightRuleQueries.LineOfSightIgnoreSource(attacker.GetValue(), mortar, evaluator),
+            Assert.That(SightRuleQueries.LineOfSightIgnoreSource(attacker.GetValue(), mortar, evaluator, attackerMoved: false),
                 Is.EqualTo("Indirect"), "the effect is attributed to its rule by name.");
-            Assert.That(SightRuleQueries.IgnoresTerrain(attacker.GetValue(), rifle, evaluator), Is.False,
+            Assert.That(SightRuleQueries.IgnoresTerrain(attacker.GetValue(), rifle, evaluator, attackerMoved: false), Is.False,
                 "the same unit's plain rifle doesn't.");
-            Assert.That(SightRuleQueries.IgnoresCover(attacker.GetValue(), mortar, evaluator), Is.True,
-                "Indirect also ignores cover.");
-            Assert.That(SightRuleQueries.IgnoresCover(attacker.GetValue(), rifle, evaluator), Is.False);
+            Assert.That(SightRuleQueries.SightBlockerCoverFor(attacker.GetValue(), mortar, evaluator, attackerMoved: false),
+                Is.EqualTo(ESightBlockerCover.Ignored), "the mortar ignores cover from sight blockers...");
+            Assert.That(SightRuleQueries.IgnoresCover(attacker.GetValue(), mortar, evaluator, attackerMoved: false), Is.False,
+                "...but not all cover (3.6).");
+            Assert.That(SightRuleQueries.SightBlockerCoverFor(attacker.GetValue(), rifle, evaluator, attackerMoved: false),
+                Is.EqualTo(ESightBlockerCover.BlocksSight));
         }
 
         private async Task<CombatActionContext> RunStrikeOrderStage(DataBinding<UnitData> charger,

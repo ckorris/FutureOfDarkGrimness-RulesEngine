@@ -17,9 +17,11 @@ namespace FDG.Stages
             // #042 Indirect: a weapon that ignores intervening terrain for LoS may fire at a
             // target out of line of sight, so the occlusion gate must not cancel the shot. Same shared
             // query the enumeration and cover stages use, so they agree. (Takedown is NOT such a weapon -
-            // #314; it re-scopes the attack to one model and is occluded like any other shot.)
+            // #314; it re-scopes the attack to one model and is occluded like any other shot.) #425: only on
+            // a Hold (Core Rules v3.6.0) - a shooter that moved needs line of sight unless Quick Throw lifts it.
             if (Rules.Dispatch.SightRuleQueries.IgnoresTerrain(
-                    metaData.AttackingUnit.GetValue(), metaData.WeaponType, GameContext.RuleEvaluator))
+                    metaData.AttackingUnit.GetValue(), metaData.WeaponType, GameContext.RuleEvaluator,
+                    metaData.AttackerMoved))
             {
                 await onFinished(new OcclusionCheckResults(isOccluded: false));
                 return;

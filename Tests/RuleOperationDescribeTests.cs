@@ -171,6 +171,8 @@ namespace FDG.Tests
             yield return Case(new RuleOperation.InflictSelfWounds(1.5f),
                 "took 1.5 wounds from its own attack");
             yield return Case(new RuleOperation.RepositionModels(3f), "repositioned its models up to 3\"");
+            yield return Case(new RuleOperation.RepositionModels(9f, 9f, "Vanguard"),
+                "repositioned its models up to 9\", over 9\" from non-Vanguard enemy units");
             yield return Case(new RuleOperation.PassMoraleTest(1),
                 "passed a failed morale test, self-wounding on rolls of 1 or less");
 

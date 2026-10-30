@@ -16,7 +16,7 @@ namespace FDG.Stages
     /// <para>Two stages resolve choices through here. <c>ActivationStartStage</c> (Versatile Attack,
     /// Versatile Reach, Watchborn, Versatile Defense) treats every group as a mandatory pick — the corpus
     /// says "pick one effect", not "you may". <c>DeployUnitStage</c> keeps its own Yes/No prompt for the
-    /// single-ability offers whose text IS optional (Vanguard's reposition move, Fanatic's placement) and
+    /// single-ability offers whose text IS optional (Vanguard's and Fanatic's placement) and
     /// routes only the multi-ability groups here.</para>
     ///
     /// Logging stays with the caller: the two stages word their lines differently and their tests pin those

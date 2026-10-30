@@ -387,10 +387,18 @@ public abstract record RuleOperation
     /// Blink unit that also has Rapid Blink Boost emits two), and executing each would prompt the player twice.
     /// <c>ActivationStartStage</c> sums them into a single placement instead — the same "the stage folds it"
     /// shape <c>BeforeAttackActionStage</c> uses for DealHits.</para>
+    /// <para>#426: <see cref="EnemyClearanceInches"/> / <see cref="ExemptEnemyRule"/> carry Vanguard 3.6's
+    /// "over 9" away from non-Vanguard enemy units" (see <see cref="Effect.RepositionOnDeploy"/>); 0 / null for
+    /// every activation-time reposition.</para>
     /// </summary>
-    public sealed record RepositionModels(float MaxInches) : RuleOperation
+    public sealed record RepositionModels(float MaxInches, float EnemyClearanceInches = 0f,
+        string? ExemptEnemyRule = null) : RuleOperation
     {
-        public override string Describe() => $"repositioned its models up to {MaxInches:0.##}\"";
+        public override string Describe() => $"repositioned its models up to {MaxInches:0.##}\"" +
+            (EnemyClearanceInches > 0f
+                ? $", over {EnemyClearanceInches:0.##}\" from " +
+                  (ExemptEnemyRule != null ? $"non-{ExemptEnemyRule} enemy units" : "enemy units")
+                : "");
     }
 
     /// <summary>

@@ -71,7 +71,8 @@ namespace FDG.Tests
 
             DataBinding<UnitData> unit = MakeUnit(new Position(0f, 0f), new Position(0f, 1f));
 
-            // Vanguard: after deploying, may move up to 9" once per game (test 17's ability shape).
+            // Vanguard: after deploying, may move up to 9" once per game (test 17's ability shape). The SEAM is
+            // what is under test - the catalog's Vanguard is a placement since #426 (VanguardRuleIntegrationTests).
             var ability = new ActivatedAbility(EHookID.Deployment_OnUnitDeployed, new Cost.OncePerGame(),
                 new TargetSelector(0f, 1, 1, ETargetAffinity.Self, false),
                 new Effect.TriggeredMove(MaxInches: 9f, IsOptional: true), new Condition.Always());

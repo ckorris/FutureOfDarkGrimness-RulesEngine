@@ -184,7 +184,7 @@ namespace FDG.Stages
         /// Lands a rolled dangerous-terrain batch: the whole roll as a single <see cref="DiceRolledBeat"/>
         /// (one d6 per wound the unit would need to be destroyed: 2+ safe/green, a 1 a wound), then the wounds themselves, each
         /// model's death or flinch animating as its wound lands (<see cref="CasualtyPresentation"/>).
-        /// Shared by the normal-move stage and the out-of-band (triggered) move so a Vanguard / forced
+        /// Shared by the normal-move stage and the out-of-band (triggered) move so a Harassing / forced
         /// move shows the same sequence the player sees on a normal move.
         /// <para>
         /// Called AFTER the move has been animated, so a casualty falls at the destination it walked to.
@@ -239,7 +239,7 @@ namespace FDG.Stages
             dangerResult = DangerousTerrainResult.None;
             List<ITerrain> relevantTerrain = new List<ITerrain>(gameContext.TableState.Terrain.Objects);
 
-            // #090: an out-of-band move (e.g. Vanguard) is enemy-aware like a normal move — it may not pass
+            // #090: an out-of-band move (e.g. Harassing) is enemy-aware like a normal move — it may not pass
             // through or end stacked on an enemy unless the unit may move through enemies (Strafing fly-over).
             List<EnemyModelFootprint> enemyFootprints = MovementUtilities.GetEnemyModelFootprints(unit, gameContext);
             // #205: a triggered move (Harassing / Hit & Run / forced move) may not end stacked on a friendly.

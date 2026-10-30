@@ -1711,19 +1711,24 @@ public abstract record Effect
 
     /// <summary>
     /// A FLAT-distance reposition placement, no dice — the deploy-time twin of
-    /// <see cref="RepositionAtActivation"/>. Covers Fanatic (#197 P21): "after this model is deployed, it
-    /// may be placed anywhere fully within <see cref="MaxInches"/>in of its position." Emits the same
+    /// <see cref="RepositionAtActivation"/>. Covers Fanatic (#197 P21) and, since #426, Vanguard and the AoF
+    /// Drakesworn: "After this model is deployed, it may be placed anywhere fully within 9" of its position,
+    /// over 9" away from non-Vanguard enemy units." (Core Rules v3.6.0 added the enemy clause.) Emits the same
     /// <see cref="RuleOperation.RepositionModels"/> op, so the placement machinery is shared — but folded by
     /// the deployment stage (<c>DeployUnitStage</c>) rather than <c>ActivationStartStage</c>, since it fires
     /// at <see cref="Rules.Foundation.EHookID.Deployment_OnUnitDeployed"/>. Flat rather than reusing
     /// <see cref="RepositionAtActivation"/> with a degenerate die because every <c>DiceExpression</c> rolls
     /// at least one die; the corpus' deploy reposition is a fixed range.
+    /// <para><see cref="EnemyClearanceInches"/> &gt; 0 keeps every placed model over that far from each enemy
+    /// unit, except enemy units carrying <see cref="ExemptEnemyRule"/> (the text's "non-Vanguard"); null
+    /// exempts nobody.</para>
     /// </summary>
-    public sealed record RepositionOnDeploy(float MaxInches) : Effect
+    public sealed record RepositionOnDeploy(float MaxInches, float EnemyClearanceInches = 0f,
+        string? ExemptEnemyRule = null) : Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
-            operations.Add(new RuleOperation.RepositionModels(MaxInches));
+            operations.Add(new RuleOperation.RepositionModels(MaxInches, EnemyClearanceInches, ExemptEnemyRule));
         }
     }
 

@@ -94,7 +94,7 @@ namespace FDG.Stages
             }
 
             // Land the dangerous-terrain test now the models are in place, same as the normal-move stage —
-            // a triggered move (Vanguard, forced move, etc.) that crosses dangerous terrain shows the roll
+            // a triggered move (Harassing, forced move, etc.) that crosses dangerous terrain shows the roll
             // and animates its casualties, not just the wound.
             await MovementExecutor.ResolveDangerousTerrain(_gameContext, dangerResult);
         }

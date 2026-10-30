@@ -18,7 +18,7 @@ public interface IOperationServices
     /// <summary>
     /// Move <paramref name="unit"/> up to <paramref name="maxInches"/>, acquiring the destination
     /// from <paramref name="controller"/> (the player who directs the move) — defaulting to the
-    /// unit's own owner when null, which is every self-move (Vanguard/Harassing). A cross-unit
+    /// unit's own owner when null, which is every self-move (Harassing, Drakesworn pre-#426). A cross-unit
     /// forced move (e.g. a "reposition an enemy unit" spell) passes the rule's bearer instead, so
     /// the caster directs the displacement rather than the victim. When <paramref name="isOptional"/>
     /// the player may decline by submitting a no-op move. Resolution of

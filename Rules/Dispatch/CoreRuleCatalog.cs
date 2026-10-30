@@ -1600,31 +1600,41 @@ public static class CoreRuleCatalog
         Valence: EValence.Neutral,
         Description: "Once per activation, before attacking, place each model fully within 6\" of its position.");
 
-    // Triggered-move primitive (DeployUnitStage offer -> MovementExecutor) --------
+    // Deploy-time reposition placements (DeployUnitStage offer -> RepositionPlacement) --------
+
+    /// <summary> Canonical name of the Vanguard rule - also the exemption in its own enemy clause. </summary>
+    public const string VanguardRuleName = "Vanguard";
 
     /// <summary>
-    /// Vanguard: once per game, after this unit deploys it may immediately move up to 9".
-    /// An activated ability offered at <see cref="EHookID.Deployment_OnUnitDeployed"/>; accepting
-    /// it queues an <see cref="RuleOperation.InvokeTriggeredMove"/> the engine enacts via the
-    /// movement subsystem.
+    /// Vanguard (Core Rules v3.6.0 book rule, #426): "After this model is deployed, it may be placed anywhere
+    /// fully within 9" of its position, over 9" away from non-Vanguard enemy units." A PLACEMENT, as the text
+    /// has said since 3.5 - until #426 the engine moved the unit up to 9" instead (a triggered move), which
+    /// had no way to express the new enemy clause. Now Fanatic's shape: an activated ability offered at
+    /// <see cref="EHookID.Deployment_OnUnitDeployed"/> (once per game), whose
+    /// <see cref="Effect.RepositionOnDeploy"/> <c>DeployUnitStage</c> folds into a per-model-radius placement
+    /// with keep-out discs around every enemy unit that does not itself have Vanguard.
     /// </summary>
-    public static SpecialRuleDefinition Vanguard { get; } = new SpecialRuleDefinition("Vanguard",
+    public static SpecialRuleDefinition Vanguard { get; } = new SpecialRuleDefinition(VanguardRuleName,
         Array.Empty<HookEntry>(),
         new[]
         {
             new ActivatedAbility(EHookID.Deployment_OnUnitDeployed, new Cost.OncePerGame(),
                 new TargetSelector(0f, 1, 1, ETargetAffinity.Self, false),
-                new Effect.TriggeredMove(MaxInches: 9f, IsOptional: true),
-                // #267: the post-deploy move carries every model, so most models must have Vanguard (#428).
+                new Effect.RepositionOnDeploy(MaxInches: 9f, EnemyClearanceInches: 9f,
+                    ExemptEnemyRule: VanguardRuleName),
+                // #267: the whole unit is re-placed, so most models must have Vanguard (#428).
                 new Condition.MostModelsHaveThisRule()),
         },
         Valence: EValence.Positive,
-        Description: "Once per game, immediately after deploying, this unit may move up to 9\".");
+        Description: "After this model is deployed, it may be placed anywhere fully within 9\" of its position, " +
+                     "over 9\" away from non-Vanguard enemy units.");
 
     /// <summary>
-    /// Fanatic (#197 P21): after this unit deploys, it may be PLACED anywhere fully within 9" of its
-    /// position. Vanguard's deploy-hook shape, but a placement rather than a move (the owner's
-    /// reposition-is-a-placement ruling, and the corpus word "placed"): the effect emits a
+    /// Fanatic (#197 P21; Core Rules v3.6.0 text, #426): "After this model is deployed, it may be placed
+    /// anywhere fully within 9" of its position, over 9" away from non-Vanguard enemy units." Word for word
+    /// Vanguard's text - including "non-Vanguard", which is implemented as written (an enemy unit with
+    /// Vanguard does not push a Fanatic unit back; an enemy Fanatic unit does). A placement rather than a move
+    /// (the owner's reposition-is-a-placement ruling, and the corpus word "placed"): the effect emits a
     /// <see cref="RuleOperation.RepositionModels"/> that <c>DeployUnitStage</c> folds into a
     /// per-model-radius <see cref="StageResolution.Requests.PlaceObjectsRequest{T}"/>. Gated
     /// <see cref="Cost.OncePerGame"/> like Vanguard - deployment happens once, so the gate is naturally
@@ -1636,12 +1646,16 @@ public static class CoreRuleCatalog
         {
             new ActivatedAbility(EHookID.Deployment_OnUnitDeployed, new Cost.OncePerGame(),
                 new TargetSelector(0f, 1, 1, ETargetAffinity.Self, false),
-                new Effect.RepositionOnDeploy(MaxInches: 9f),
+                new Effect.RepositionOnDeploy(MaxInches: 9f, EnemyClearanceInches: 9f,
+                    ExemptEnemyRule: VanguardRuleName),
                 // #267: the whole unit is re-placed, so most of the unit must have Fanatic (#428).
                 new Condition.MostModelsHaveThisRule()),
         },
         Valence: EValence.Positive,
-        Description: "After deploying, this unit may be placed anywhere fully within 9\" of its position.");
+        Description: "After this model is deployed, it may be placed anywhere fully within 9\" of its position, " +
+                     "over 9\" away from non-Vanguard enemy units.");
+
+    // Triggered-move primitive (stage offer -> MovementExecutor) --------
 
     /// <summary>
     /// Harassing: after this unit shoots — or after it is in melee, in EITHER role (#391; the text is

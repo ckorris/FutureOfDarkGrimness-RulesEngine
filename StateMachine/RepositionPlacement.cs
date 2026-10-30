@@ -15,17 +15,29 @@ namespace FDG.Stages
     /// CLI/AI resolvers do by default.
     ///
     /// Two stages fold repositions through here: <c>ActivationStartStage</c> (Wolfborn / Bounding / Rapid
-    /// Blink, at activation start) and <c>DeployUnitStage</c> (Fanatic, at deployment). Both sum their
+    /// Blink, at activation start) and <c>DeployUnitStage</c> (Vanguard, Fanatic and Drakesworn at deployment,
+    /// which since #426 also carry an enemy keep-out). Both sum their
     /// <see cref="RuleOperation.RepositionModels"/> ops into a single call so a unit that stacks two
     /// reposition rules gets one prompt for the combined radius, not two.
     /// </summary>
     public static class RepositionPlacement
     {
         /// <summary>
+        /// #426: the TaskName of the DEPLOY-time reposition (Vanguard / Fanatic / Drakesworn), the AI's
+        /// discriminator - it advances such a unit, while it declines an activation-time reposition it has no
+        /// way to value. Game wording stays in the display name.
+        /// </summary>
+        public const string DeployRepositionTaskName = "Reposition After Deploying";
+
+        /// <summary>
         /// Offers the placement for the living models of <paramref name="unit"/> up to
         /// <paramref name="maxInches"/>. A no-op when the radius is not positive or no models are alive.
+        /// <para>#426: <paramref name="enemyClearanceInches"/> &gt; 0 adds Vanguard 3.6's enemy clause as keep-out
+        /// discs (<see cref="Rules.Dispatch.EnemyKeepOutRules"/>) around every enemy unit that does not carry
+        /// <paramref name="exemptEnemyRule"/>, with the reason worded from the same numbers.</para>
         /// </summary>
-        public static async Task Offer(IGameContext gameContext, UnitData unit, float maxInches)
+        public static async Task Offer(IGameContext gameContext, UnitData unit, float maxInches,
+            float enemyClearanceInches = 0f, string? exemptEnemyRule = null, string? taskName = null)
         {
             if (maxInches <= 0f) return;
 
@@ -39,10 +51,23 @@ namespace FDG.Stages
             var wholeTable = new RectangularZone(0f, GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES,
                 0f, GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES);
 
+            IReadOnlyList<PlacementDisc> keepOut = Rules.Dispatch.EnemyKeepOutRules.Discs(unit,
+                gameContext.TableState, enemyClearanceInches,
+                enemy => exemptEnemyRule != null && Rules.Dispatch.EnemyKeepOutRules.CarriesRuleNamed(enemy, exemptEnemyRule));
+            string keepOutNote = enemyClearanceInches <= 0f
+                ? ""
+                : exemptEnemyRule != null
+                    ? $"Too close to a non-{exemptEnemyRule} enemy unit - must be placed over " +
+                      $"{enemyClearanceInches:0.##}\" away from them."
+                    : $"Too close to an enemy unit - must be placed over {enemyClearanceInches:0.##}\" away.";
+
             var request = new PlaceObjectsRequest<ModelData>(unit.PlayerID,
-                $"Repositioning {unit.Name}",
+                taskName ?? $"Repositioning {unit.Name}",
                 wholeTable, livingModels, allowCancel: true, maxDistanceFromStartInches: maxInches,
-                cancelHint: "Cancel the reposition. Every model stays where it is.");
+                enemyKeepOutDiscs: keepOut,
+                cancelHint: "Cancel the reposition. Every model stays where it is.",
+                displayName: $"Repositioning {unit.Name}",
+                enemyKeepOutNote: keepOutNote);
 
             CancellableResult<List<PlacedObjectEntry<ModelData>>> result = await gameContext.PlayerRequester
                 .RequestDecision<PlaceObjectsRequest<ModelData>, CancellableResult<List<PlacedObjectEntry<ModelData>>>>(request);
@@ -72,13 +97,21 @@ namespace FDG.Stages
 
         /// <summary>
         /// Sums the <see cref="RuleOperation.RepositionModels"/> ops in <paramref name="operations"/> and,
-        /// if the total radius is positive, offers the placement for <paramref name="unit"/>.
+        /// if the total radius is positive, offers the placement for <paramref name="unit"/>. #426: the
+        /// strictest enemy clause among them (largest clearance, with its exemption) rides along.
         /// </summary>
         public static Task OfferFromOperations(IGameContext gameContext, UnitData unit,
-            IReadOnlyList<RuleOperation> operations)
+            IReadOnlyList<RuleOperation> operations, string? taskName = null)
         {
-            float inches = operations.OfType<RuleOperation.RepositionModels>().Sum(op => op.MaxInches);
-            return Offer(gameContext, unit, inches);
+            List<RuleOperation.RepositionModels> repositions =
+                operations.OfType<RuleOperation.RepositionModels>().ToList();
+            float inches = repositions.Sum(op => op.MaxInches);
+            RuleOperation.RepositionModels? clause = repositions
+                .Where(op => op.EnemyClearanceInches > 0f)
+                .OrderByDescending(op => op.EnemyClearanceInches)
+                .FirstOrDefault();
+            return Offer(gameContext, unit, inches, clause?.EnemyClearanceInches ?? 0f, clause?.ExemptEnemyRule,
+                taskName);
         }
 
         /// <summary>

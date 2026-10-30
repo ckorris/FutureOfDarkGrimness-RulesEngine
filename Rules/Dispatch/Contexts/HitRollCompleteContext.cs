@@ -35,6 +35,12 @@ namespace FDG.Rules.Dispatch.Contexts
     /// Slayer / Ranged Slayer give their AP(+2) "when using Hold actions and shooting", and AP folds at this hook, so
     /// the Hold test (<see cref="Condition.AfterMoving"/>, Artillery's and Indirect's) must be answerable here too.
     /// Synthetic hits (spells, abilities) never moved and keep the default.</param>
+    /// <param name="HitRollNeeded">#433: the roll a hit needed on these dice - the attacker's Quality after every
+    /// modifier, clamped to the die (2..6), the same number <c>RollToHitStage</c> splits successes from failures with.
+    /// Read through <see cref="IHasHitRollNeeded"/> by rules that trigger only on a SUCCESSFUL natural face (OPR 3.6's
+    /// "extra attacks on successful unmodified hit results of 5-6"). 0 (the default) means no threshold: every rolled
+    /// die is a hit - the synthetic-hit pipeline's dice are hits by construction, and a forecast's empty histogram has
+    /// nothing to gate. Every live hit roll (RollToHitStage, the AI's CombatMath) passes its real threshold.</param>
     public sealed record HitRollCompleteContext(
         IUnit Attacker, IUnit Target, IDiceResults UnmodifiedHitRolls,
         float DistanceInches = 0f, bool IsMelee = false, bool IsCharging = false, bool IsSpell = false,
@@ -42,10 +48,11 @@ namespace FDG.Rules.Dispatch.Contexts
         EUnpredictableBranch UnpredictableBranch = EUnpredictableBranch.None,
         IReadOnlyList<ITerrain>? TerrainPieces = null,
         bool SixesCountForSpecialRules = true,
-        bool AttackerMoved = false)
+        bool AttackerMoved = false,
+        int HitRollNeeded = 0)
         : IHookContext, IHasUnmodifiedHitRolls, IHasDistance, IHasCombatKind, IHasCharging, IHasTarget,
             IHasIsSpell, IHasAttackOriginDistance, IHasUnpredictableBranch, IHasTerrain, IHasShootChargeDistance,
-            IHasAttackerMoved
+            IHasAttackerMoved, IHasHitRollNeeded
     {
         public EHookID Hook => EHookID.Shooting_OnHitRollComplete;
 

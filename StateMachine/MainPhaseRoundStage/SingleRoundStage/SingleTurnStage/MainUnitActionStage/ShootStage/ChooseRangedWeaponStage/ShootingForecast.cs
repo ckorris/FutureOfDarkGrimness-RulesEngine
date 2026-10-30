@@ -137,7 +137,9 @@ namespace FDG.Stages
                         TerrainPieces: terrain,
                         SixesCountForSpecialRules: FatigueUtilities.SixesCountForSpecialRules(attacker,
                             isMelee: false),
-                        AttackerMoved: attackerMoved),
+                        AttackerMoved: attackerMoved,
+                        // #433: parity with the stage; an empty histogram has no 5s to gate anyway.
+                        HitRollNeeded: DiceUtilities.ClampSuccessRollNeeded(hitNeeded)),
                     actor, subject);
             List<RuleOperation> completeOps = completeNamed.Select(n => n.Op).ToList();
 

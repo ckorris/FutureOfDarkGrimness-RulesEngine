@@ -1,5 +1,6 @@
 using System.Linq;
 using System.Text.Json.Serialization;
+using FDG.Rules.Dispatch;
 using FDG.Rules.Foundation;
 using FDG.Rules.Tokens;
 
@@ -40,6 +41,8 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(WeaponHasRule), "weaponHasRule")]
 [JsonDerivedType(typeof(ActionTypeIs), "actionTypeIs")]
 [JsonDerivedType(typeof(UnmodifiedRollEquals), "unmodifiedRollEquals")]
+// #433: the OPR 3.6 "Enhanced X" family's "extra attacks on SUCCESSFUL unmodified hit results of 5-6".
+[JsonDerivedType(typeof(UnmodifiedRollHits), "unmodifiedRollHits")]
 [JsonDerivedType(typeof(DistanceGreaterThan), "distanceGreaterThan")]
 [JsonDerivedType(typeof(AttackedFromOverInches), "attackedFromOverInches")]
 [JsonDerivedType(typeof(StatGreaterOrEqualTo), "statGreaterOrEqualTo")]
@@ -89,18 +92,71 @@ public abstract record Condition
     }
 
     /// <summary>
-    /// True if the unit the rule is attached to has another named rule.
-    /// Used for unit-composition gates like Harassing Boost ("if this unit has
-    /// Harassing, apply X").
+    /// True if the bearer unit has another named rule - the unit-composition gate of every "If this model has X,
+    /// ..." rule (OPR 3.6's Enhanced X family, #433; the catalog's Harassing Boost before it).
+    /// <para>
+    /// "Has" is read everywhere the unit can carry a rule, because the army-load paths scatter them: a unit-level
+    /// rule sits on <see cref="IUnit.RuleDefinitions"/>; a Weapon-scope rule named at unit level (Infected, Mischievous
+    /// - "on its weapons") is re-homed onto the unit's weapons and is NOT on the unit list; a joined hero's rules are
+    /// relocated onto the hero's model; an aura or "gains rule X" grant is a <see cref="TokenType.RuleGrant"/> token
+    /// (Lustbound Aura, the Versatile Warrior pick's one-activation helpers). So the test is: the unit's own list, any
+    /// grant token, any living model's list, or any living model's weapon. Before #433 only the unit list was read,
+    /// which made "Enhanced Lustbound" inert beside a Lustbound that arrived by aura or sat on a joined hero.
+    /// </para>
+    /// Case-insensitive, matching the resolver: "has Bane when Shooting" is true for a unit carrying the rule
+    /// registered as "Bane when shooting"; an alias matches by its requested name too.
     /// </summary>
     public sealed record UnitHasRule(string RuleName) : Condition
     {
-        // Case-insensitive, matching the resolver: "has Bane when Shooting" is true for a unit carrying
-        // the rule registered as "Bane when shooting".
-        public override bool Evaluate(RuleInvocation invocation) =>
-            invocation.Bearer.RuleDefinitions.Any(
-                r => string.Equals(r.Definition.Name, RuleName, StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(r.RequestedName, RuleName, StringComparison.OrdinalIgnoreCase));
+        public override bool Evaluate(RuleInvocation invocation) => Holds(invocation.Bearer, RuleName);
+
+        /// <summary> THE predicate - see the type summary for what counts as having a rule. </summary>
+        public static bool Holds(IUnit unit, string ruleName)
+        {
+            if (Carries(unit.RuleDefinitions, ruleName) || RuleGrantQueries.UnitHasGrantedRule(unit, ruleName))
+            {
+                return true;
+            }
+
+            bool anyAlive = unit.Models.Any(m => m.GetIsAlive());
+            foreach (IModel model in unit.Models)
+            {
+                if (anyAlive && !model.GetIsAlive())
+                {
+                    continue;
+                }
+
+                if (Carries(model.RuleDefinitions, ruleName))
+                {
+                    return true;
+                }
+
+                foreach (IWeapon weapon in model.Weapons)
+                {
+                    if (Carries(weapon.RuleDefinitions, ruleName))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private static bool Carries(IReadOnlyList<ResolvedRule> rules, string ruleName)
+        {
+            for (int i = 0; i < rules.Count; i++)
+            {
+                ResolvedRule r = rules[i];
+                if (string.Equals(r.Definition.Name, ruleName, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(r.RequestedName, ruleName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
 
     /// <summary>
@@ -287,6 +343,37 @@ public abstract record Condition
         protected override bool EvaluateCore(IHasUnmodifiedHitRolls context)
         {
             return context.SpecialRuleHitRolls.At(DieValue) > 0;
+        }
+    }
+
+    /// <summary>
+    /// #433: <see cref="UnmodifiedRollEquals"/> for a face that must also have HIT - true if some hit die came up
+    /// exactly <see cref="DieValue"/> (as special rules see it, <see cref="IHasUnmodifiedHitRolls.SpecialRuleHitRolls"/>)
+    /// AND that face is at or above the roll the attack needed (<see cref="IHasHitRollNeeded.HitRollNeeded"/>). OPR
+    /// 3.6's Enhanced Bloodborn / Clan Warrior / Primal / Predator / Royal Warrior: "extra attacks on successful
+    /// unmodified hit results of 5-6 (instead of only on 6)" - the 5s are the new face, and a 5 only counts when it
+    /// hit: Quality 5+ or better after modifiers, never under a -1 that needs 6s, never for a Fatigued melee swing
+    /// (which hits only on 6s - and #418 strips its 6s from the special-rule view, so such a unit gets nothing from 5s
+    /// or 6s). A needed roll of 0 means every rolled die is a hit (synthetic hits, forecasts). The base rules' 6s need
+    /// no such gate: a natural 6 always hits. JSON <c>{"kind": "unmodifiedRollHits", "dieValue": 5}</c>.
+    /// </summary>
+    public sealed record UnmodifiedRollHits(int DieValue) : Condition
+    {
+        public override IReadOnlyCollection<Type> RequiredCapabilities =>
+            [typeof(IHasUnmodifiedHitRolls), typeof(IHasHitRollNeeded)];
+
+        public override bool Evaluate(RuleInvocation invocation)
+        {
+            if (invocation.Hook is not IHasUnmodifiedHitRolls rolls || invocation.Hook is not IHasHitRollNeeded needed)
+            {
+                throw new InvalidOperationException(
+                    $"{nameof(UnmodifiedRollHits)} requires {nameof(IHasUnmodifiedHitRolls)} and " +
+                    $"{nameof(IHasHitRollNeeded)}, but the firing context " +
+                    $"({invocation.Hook?.GetType().Name ?? "null"}) does not provide both.");
+            }
+
+            return rolls.SpecialRuleHitRolls.At(DieValue) > 0
+                && (needed.HitRollNeeded <= 0 || DieValue >= needed.HitRollNeeded);
         }
     }
 

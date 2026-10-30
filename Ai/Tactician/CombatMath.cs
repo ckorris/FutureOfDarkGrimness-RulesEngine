@@ -480,14 +480,17 @@ namespace FDG.Ai.Tactician
 
             // --- RollToHitStage mirror.
             IDiceResults rolls = Dice.Roll(attackCount);
-            IDiceResults successful = rolls.SubsetAtOrAbove(DiceUtilities.ClampSuccessRollNeeded(hitRollNeeded));
+            int clampedHitRollNeeded = DiceUtilities.ClampSuccessRollNeeded(hitRollNeeded);
+            IDiceResults successful = rolls.SubsetAtOrAbove(clampedHitRollNeeded);
 
             // #418: the same fatigue decision the engine stamps on its hit context, so a fatigued melee
             // volley's 6s price no Furious/Surge extra hits and no Rending AP, exactly as they will roll.
+            // #433: and the same hit threshold, so an Enhanced unit's "successful 5s" price as they will roll.
             var hitContext = new HitRollCompleteContext(atk, def, rolls, context.DistanceInches,
                 context.IsMelee, context.IsCharging, ChargeOriginDistanceInches: chargeOrigin,
                 SixesCountForSpecialRules: FatigueUtilities.SixesCountForSpecialRules(atk, context.IsMelee),
-                AttackerMoved: context.AttackerMoved);
+                AttackerMoved: context.AttackerMoved,
+                HitRollNeeded: clampedHitRollNeeded);
 
             var __completeProbe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
             IReadOnlyList<RuleOperation> completeOps = Ops(carrier == null

@@ -94,7 +94,10 @@ namespace FDG.Stages
                 TerrainPieces: GameContext.TableState.Terrain.Objects.ToList(),
                 SixesCountForSpecialRules: FatigueUtilities.SixesCountForSpecialRules(attacker, metaData.IsMelee),
                 // #434: Slayer / Ranged Slayer's "when using Hold actions and shooting" reads it here.
-                AttackerMoved: metaData.AttackerMoved);
+                AttackerMoved: metaData.AttackerMoved,
+                // #433: the Enhanced family's "successful unmodified hit results of 5-6" reads the same threshold the
+                // successes above were split with.
+                HitRollNeeded: hitRollNeeded);
 
             // #204: the LIVE named evaluation - spends grants / narrates exactly like EvaluateAll, but also
             // pairs each op with the alias-aware rule name so the save presentation can say "+1 (Furious)",

@@ -19,12 +19,16 @@ internal static class RuleGrantQueries
     /// are matched by canonical name — the alias-aware resolver the dispatcher uses for read-back isn't
     /// available in here, and core auras grant the canonical name.
     /// </summary>
-    internal static bool UnitHasGrantedRule(IUnit unit, SpecialRuleDefinition definition)
+    internal static bool UnitHasGrantedRule(IUnit unit, SpecialRuleDefinition definition) =>
+        UnitHasGrantedRule(unit, definition.Name);
+
+    /// <summary> The same test by rule NAME - what <see cref="Condition.UnitHasRule"/> holds (#433). </summary>
+    internal static bool UnitHasGrantedRule(IUnit unit, string ruleName)
     {
         foreach (Token token in unit.Tokens.GetAllTokens(TokenType.RuleGrant))
         {
             if (token.Payload is TokenPayload.RuleGrant grant
-                && string.Equals(grant.RuleName, definition.Name, StringComparison.OrdinalIgnoreCase))
+                && string.Equals(grant.RuleName, ruleName, StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }

@@ -26,6 +26,10 @@ public interface IOperationServices
     /// </summary>
     Task MoveUnit(IUnit unit, float maxInches, bool isOptional, PlayerID? controller = null);
 
+    /// <summary>#434: a game-log line from an executable operation that decided to do nothing (Mind Control's
+    /// once-per-round refusal). A no-op by default, so test doubles need not implement it.</summary>
+    void Log(string message) { }
+
     /// <summary>
     /// Fatigue <paramref name="unit"/> for the rest of the round (the #020 melee penalty). Resolution of
     /// <see cref="RuleOperation.InvokeApplyFatigue"/>; delegates to the engine's fatigue authority so the

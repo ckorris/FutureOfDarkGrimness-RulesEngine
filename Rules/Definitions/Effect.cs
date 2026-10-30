@@ -839,12 +839,16 @@ public abstract record Effect
     /// forced move the bearer is the caster, so the caster directs where the
     /// enemy is displaced rather than the victim choosing for itself.
     /// </summary>
-    public sealed record TriggeredMove(float MaxInches, bool IsOptional) : Effect
+    /// <para>#434: <see cref="OncePerRoundKey"/> - OPR 3.6 Mind Control's "Units may only be moved once per round in
+    /// this way" (see <see cref="RuleOperation.InvokeTriggeredMove.OncePerRoundKey"/>). Null (the default, what old data
+    /// parses to) is unrestricted.</para>
+    public sealed record TriggeredMove(float MaxInches, bool IsOptional, string? OncePerRoundKey = null) : Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.InvokeTriggeredMove(
-                ruleInvocation.EffectiveTarget, MaxInches, IsOptional, ruleInvocation.Bearer.PlayerID));
+                ruleInvocation.EffectiveTarget, MaxInches, IsOptional, ruleInvocation.Bearer.PlayerID,
+                OncePerRoundKey));
         }
     }
 

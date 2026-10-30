@@ -99,6 +99,8 @@ namespace FDG.Stages
             await MovementExecutor.ResolveDangerousTerrain(_gameContext, dangerResult);
         }
 
+        public void Log(string message) => _gameContext.Log(message);
+
         public Task ApplyFatigue(IUnit unit)
         {
             FatigueUtilities.ApplyFatigued(unit);

@@ -289,13 +289,42 @@ public abstract record RuleOperation
     /// of <see cref="Effect.TriggeredMove"/>. Depends on the engine refactor that
     /// exposes movement as a callable subsystem (item #042 engine work).
     /// </summary>
+    /// <para>#434: <see cref="OncePerRoundKey"/> - OPR 3.6 Mind Control's "Units may only be moved once per round in
+    /// this way": a unit already moved this round under the same key is not moved again, and a unit that actually
+    /// moved (a declined or zero-length move does not count) is stamped for the rest of the round
+    /// (<see cref="OncePerRoundMoveToken"/>, RoundEnd clear). Null for every other triggered move.</para>
     public sealed record InvokeTriggeredMove(IUnit Unit, float MaxInches, bool IsOptional,
-        PlayerID? Controller = null) : ExecutableOperation
+        PlayerID? Controller = null, string? OncePerRoundKey = null) : ExecutableOperation
     {
-        public override Task Execute(IOperationServices services)
+        public override async Task Execute(IOperationServices services)
         {
-            return services.MoveUnit(Unit, MaxInches, IsOptional, Controller);
+            if (OncePerRoundKey == null)
+            {
+                await services.MoveUnit(Unit, MaxInches, IsOptional, Controller);
+                return;
+            }
+
+            TokenType stamp = OncePerRoundMoveToken(OncePerRoundKey);
+            if (Unit.Tokens.HasToken(stamp))
+            {
+                services.Log($"{Unit.Name} was already moved by {OncePerRoundKey} this round - it may only be " +
+                    "moved once per round in this way.");
+                return;
+            }
+
+            List<Position> before = Unit.Models.Select(model => model.Position).ToList();
+            await services.MoveUnit(Unit, MaxInches, IsOptional, Controller);
+            bool moved = Unit.Models.Select(model => model.Position).Where((now, i) => i < before.Count
+                && (System.Math.Abs(now.x - before[i].x) > 0.001f || System.Math.Abs(now.z - before[i].z) > 0.001f))
+                .Any();
+            if (moved)
+            {
+                Unit.Tokens.AddToken(new Token(stamp, 1, new TokenClearTrigger.RoundEnd()));
+            }
         }
+
+        /// <summary>The per-key "moved this round in this way" marker #434's Mind Control gate stamps.</summary>
+        public static TokenType OncePerRoundMoveToken(string key) => new($"MovedOncePerRound:{key}");
 
         public override string Describe()
         {

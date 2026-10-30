@@ -36,12 +36,22 @@ namespace FDG
         /// global default.
         /// </summary>
         public string? EffectKey { get; }
+
+        /// <summary>
+        /// #424 (B1): the effect-set key for this weapon's MELEE use - the army's melee default, resolved at load
+        /// exactly like <see cref="EffectKey"/> and carried by every weapon (a rifle never reads it; it never
+        /// swings). A weapon that is both ranged and melee (Assault) emits <see cref="EffectKey"/> for its shot and
+        /// this for its swing, so a pistol swing does not play the gunshot. For a weapon with no printed range the
+        /// two keys coincide, so an entry's explicit <c>EffectSet</c> on a sword keeps applying to its swing. No
+        /// per-weapon authoring: nothing in any army, book or weapon file names this key.
+        /// </summary>
+        public string? MeleeEffectKey { get; }
     }
 
     public class WeaponComparer : IEqualityComparer<IWeapon>
     {
-        // #239: EffectKey is deliberately excluded — it is presentation data, and batch grouping
-        // must not split on it (same-name weapons share a key in practice anyway).
+        // #239: EffectKey (and #424's MeleeEffectKey) is deliberately excluded — it is presentation data, and
+        // batch grouping must not split on it (same-name weapons share a key in practice anyway).
         public bool Equals(IWeapon x, IWeapon y)
         {
             return x.Name == y.Name && x.RangeInches == y.RangeInches
@@ -264,6 +274,9 @@ namespace FDG
         /// <inheritdoc cref="IWeapon.EffectKey"/>
         public string? EffectKey { get; }
 
+        /// <inheritdoc cref="IWeapon.MeleeEffectKey"/>
+        public string? MeleeEffectKey { get; }
+
         private readonly List<ResolvedRule> _ruleDefinitions = new();
 
         /// <summary>
@@ -294,13 +307,16 @@ namespace FDG
         internal bool RolesResolved => _grantedRoles.HasValue;
 
         public Weapon(string name, float rangeInches, int attacks, int armorPenetration,
-            string? effectKey = null)
+            string? effectKey = null, string? meleeEffectKey = null)
         {
             Name = name;
             RangeInches = rangeInches;
             Attacks = attacks;
             ArmorPenetration = armorPenetration;
             EffectKey = effectKey;
+            // #424 B1: a weapon with no printed range has no shot, so its one key IS its swing key (an explicit set
+            // on a sword keeps applying to its swing); only a weapon that also shoots needs the second, melee-default key.
+            MeleeEffectKey = rangeInches > 0f ? meleeEffectKey : (effectKey ?? meleeEffectKey);
         }
 
         /// <summary>
@@ -314,6 +330,7 @@ namespace FDG
             Attacks = source.Attacks;
             ArmorPenetration = source.ArmorPenetration;
             EffectKey = source.EffectKey;
+            MeleeEffectKey = source.MeleeEffectKey;
             _ruleDefinitions.AddRange(source._ruleDefinitions);
             _ruleDefinitionsJson = source._ruleDefinitionsJson;
             _grantedRoles = source._grantedRoles;

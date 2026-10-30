@@ -55,11 +55,13 @@ namespace FDG.Stages
                 // Each volley fires every weapon at once; the weapon's Attacks is the volley count.
                 // #239: the weapon's effect key + the natural hit share ride along so the front-end
                 // picks the right visual/sounds and lands only the shots that hit.
+                // #424 B1: picked by the ATTACK's kind - a weapon that is both ranged and melee (Assault) plays
+                // its shot with the ranged key and its swing with the melee one.
                 await GameContext.Presenter.Present(new AttackBeat(metaData.IsMelee,
                     attackerPositions, targetPositions,
                     volleyCount: metaData.WeaponType.Attacks,
                     armorPenetration: metaData.WeaponType.ArmorPenetration,
-                    weaponEffect: metaData.WeaponType.EffectKey,
+                    weaponEffect: metaData.IsMelee ? metaData.WeaponType.MeleeEffectKey : metaData.WeaponType.EffectKey,
                     hitCount: successfulResults.TotalRolls,
                     attackCount: attacks));
             }

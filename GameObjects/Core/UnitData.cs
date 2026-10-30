@@ -196,13 +196,19 @@ namespace FDG
 
                 // #239: the entry's explicit effect-set key, else the army default for the weapon's
                 // kind. Resolved once here so beat emission just reads Weapon.EffectKey.
+                // #424 B1: every weapon also carries the army's MELEE default as its second, derived key
+                // (Weapon.MeleeEffectKey) - a weapon that is both ranged and melee (Assault) emits the first for its
+                // shot and the second for its swing. Picked by the PRINTED range on purpose: the keys describe the
+                // shot and the swing, and a weapon with no printed range has no shot (the Weapon constructor folds
+                // its one key over both). The explicit EffectSet stays with the ranged use, as before; no field in
+                // WeaponFileEntry / .fdgarmy / .fdgbook names the melee key.
                 string? effectKey = weaponEntry.EffectSet
                     ?? (weaponEntry.RangeInches > 0 ? defaultRangedEffectSet : defaultMeleeEffectSet);
 
                 for (int q = 0; q < weaponEntry.Quantity; q++)
                 {
                     Weapon weapon = new Weapon(weaponEntry.Name, weaponEntry.RangeInches, weaponEntry.Attacks,
-                            weaponEntry.ArmorPenetration, effectKey);
+                            weaponEntry.ArmorPenetration, effectKey, meleeEffectKey: defaultMeleeEffectSet);
 
                     foreach (ResolvedRule rule in weaponRuleDefinitions)
                     {

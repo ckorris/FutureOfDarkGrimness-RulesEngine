@@ -657,6 +657,45 @@ namespace FDG.Tests
                 "a failed morale test fatigues the target");
         }
 
+        // #421 - OPR 3.6 Hero: "units within 6\" of friendly Heroes with Tough(9) or higher may use the Hero's
+        // Quality for Morale Tests". A spell's morale test reads the same seam as every other one
+        // (MoraleUtilities.ResolveMoraleQuality): the Quality-6 target fails a 4 on its own, but beside its own
+        // side's Tough(9) Quality-4 Hero the 4 passes. The Hero stands out of the spell's 18" so it is never the
+        // pick; at 7" from the target it is out of the aura and the target is Fatigued as before.
+        [TestCase(5f, false)]
+        [TestCase(7f, true)]
+        public async Task CastSpellStage_ConditionalSpell_TargetUsesAFriendlyToughNineHerosQuality(float heroGap,
+            bool expectFatigued)
+        {
+            var enemyPlayer = new PlayerID(System.Guid.NewGuid());
+            var ctx = new TriggeredMoveTestContext(_store, new CannedCastRequester(), new FixedFaceDiceRoller(4));
+
+            RuntimeSpell fury = new RuntimeSpell(
+                new SpellDefinition("Terrifying Fury", 1,
+                    new TargetSelector(18f, 1, 1, ETargetAffinity.Foe, RequireLineOfSight: false),
+                    new Effect.MoraleTestThen(new Effect.ApplyFatigue())),
+                System.Array.Empty<ResolvedRule>());
+            DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 2,
+                new[] { fury }, new Position(10f, 10f));
+            DataBinding<UnitData> enemy = MakeEnemyUnit(enemyPlayer, new Position(25f, 10f), quality: 6); // 14" edge
+            DataBinding<UnitData> hero = MakeEnemyUnitBinding(enemyPlayer, "Warlord",
+                new Position(25f + heroGap + 1f, 10f));                                                   // 19"+ from the caster
+            hero.GetValue().Quality = 4;
+            hero.GetValue().AttachRuleDefinition(new ResolvedRule("Hero", CoreRuleCatalog.Hero));
+            hero.GetValue().AttachRuleDefinition(new ResolvedRule("Tough", CoreRuleCatalog.Tough,
+                new RuleArgument[] { new RuleArgument.Int(9) }));
+            _store.Create(new ArmyData(enemyPlayer, new List<DataBinding<UnitData>> { hero }));
+
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(unitCtx);
+
+            Assert.That(hero.GetValue().Tokens.HasToken(TokenType.Fatigued), Is.False, "the Hero was never the target");
+            Assert.That(enemy.GetValue().Tokens.HasToken(TokenType.Fatigued), Is.EqualTo(expectFatigued),
+                $"the target's Tough(9) Hero is {heroGap}\" away");
+        }
+
         // The on-fail effect lands ONLY on a failure: with a fixed face of 6 the Quality-6 target passes its
         // morale test (cast also passes), so Terrifying Fury leaves it un-fatigued.
         [Test]

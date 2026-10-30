@@ -9,7 +9,7 @@ namespace FDG.Rules.Dispatch;
 /// all the per-unit machinery; these three helpers are the only points where the hero's own stats diverge
 /// from the rank and file, each read by exactly one resolution stage:
 /// <list type="bullet">
-///   <item><see cref="GetMoraleQuality"/> — <c>DetermineMoraleSaveNeededStage</c> / wound-driven morale
+///   <item><see cref="GetMoraleQuality"/> — every morale test, through <c>MoraleUtilities.ResolveMoraleQuality</c>
 ///         (slice C): the unit tests morale at the hero's Quality while the hero lives and isn't Shaken (#421).</item>
 ///   <item><see cref="GetSaveDefense"/> — <c>DetermineSaveRollsNeededStage</c> (slice D): the hero uses
 ///         the unit's Defense until it is the sole survivor, then its own.</item>
@@ -18,6 +18,11 @@ namespace FDG.Rules.Dispatch;
 /// </list>
 ///
 /// All three helpers are implemented and wired into their stages; HeroStatRulesTests pins the behavior.
+/// <para>
+/// #421 adds the one hero effect that reaches OTHER units: the 3.6 Tough(9)+ morale aura
+/// (<see cref="TryGetMoraleAuraHero"/>), which <c>MoraleUtilities.ResolveMoraleQuality</c> weighs against the
+/// testing unit's own and joined-hero Quality.
+/// </para>
 /// </summary>
 public static class HeroStatRules
 {
@@ -44,6 +49,121 @@ public static class HeroStatRules
         }
 
         return unit.Quality;
+    }
+
+    /// <summary>#421: the Tough a Hero needs before it lends its Quality to the units around it - 3.6 Hero,
+    /// "units within 6\" of friendly Heroes with Tough(9) or higher".</summary>
+    public const int MoraleAuraMinTough = 9;
+
+    /// <summary>#421: the reach of that aura, base to base from the Hero to the testing unit's closest
+    /// living model.</summary>
+    public const float MoraleAuraRangeInches = 6f;
+
+    /// <summary>
+    /// #421: a Hero that may lend its Quality to friendly units within <see cref="MoraleAuraRangeInches"/> when
+    /// they take a Morale Test: the hero's model (the point the 6" is measured from), its Quality, and the name a
+    /// log line or roll chip gives it.
+    /// </summary>
+    public readonly record struct MoraleAuraHero(IModel Model, int Quality, string Name);
+
+    /// <summary>
+    /// #421: whether <paramref name="unit"/> holds a Hero that projects the 3.6 morale aura right now, and which.
+    /// OPR 3.6 Hero: "The Hero's unit, and units within 6\" of friendly Heroes with Tough(9) or higher, may use
+    /// the Hero's Quality for Morale Tests as long as the Hero isn't Shaken." All of these must hold:
+    /// <list type="bullet">
+    ///   <item>the unit carries a living Hero - a standalone unit with the Hero rule (Unique Hero attaches it
+    ///         too, #430), or a host with a joined hero's model (<see cref="UnitData.HeroAttachment"/>);</item>
+    ///   <item>that Hero has Tough(<see cref="MoraleAuraMinTough"/>) or higher, read from the Tough rule's
+    ///         ARGUMENT (<see cref="GetToughValue"/>), so a wounded Tough(9) hero still projects. The join cap is
+    ///         Tough(6) (<see cref="HeroJoinResolver.MaxHeroToughForJoin"/>), so in practice only standalone
+    ///         heroes ever qualify; the joined branch is kept so the reading does not depend on that cap;</item>
+    ///   <item>the Hero's unit is not Shaken (a unit token - see <see cref="GetMoraleQuality"/>);</item>
+    ///   <item>the Hero's unit is on the table (<see cref="IUnitExtensions.GetIsOnBattlefield"/>: not in reserve,
+    ///         not embarked, not pushed off the table) - a Hero that is not on the table is "within" nothing
+    ///         (#421 D3, owner review).</item>
+    /// </list>
+    /// Whether the testing unit is friendly and within range is the caller's question
+    /// (<c>MoraleUtilities.ResolveMoraleQuality</c>).
+    /// </summary>
+    public static bool TryGetMoraleAuraHero(IUnit unit, out MoraleAuraHero hero)
+    {
+        hero = default;
+        if (!unit.GetIsAlive() || unit.Tokens.HasToken(TokenType.Shaken) || !unit.GetIsOnBattlefield())
+        {
+            return false;
+        }
+
+        if (unit is UnitData { HeroAttachment: { } attachment } host)
+        {
+            IModel? joined = host.GetHeroModel();
+            if (joined == null || !joined.GetIsAlive() || GetToughValue(unit, joined) < MoraleAuraMinTough)
+            {
+                return false;
+            }
+
+            hero = new MoraleAuraHero(joined, attachment.Quality, attachment.Name ?? "Hero");
+            return true;
+        }
+
+        if (!unit.RuleDefinitions.Any(rule => rule.Definition == CoreRuleCatalog.Hero))
+        {
+            return false;
+        }
+
+        // A standalone Hero unit: every model is the Hero (in the corpus it is one model). The toughest
+        // living one stands for it, so the 6" is measured from a model that actually qualifies.
+        IModel? toughest = null;
+        int toughestValue = 0;
+        foreach (IModel model in unit.Models)
+        {
+            if (!model.GetIsAlive()) continue;
+            int tough = GetToughValue(unit, model);
+            if (toughest == null || tough > toughestValue)
+            {
+                toughest = model;
+                toughestValue = tough;
+            }
+        }
+
+        if (toughest == null || toughestValue < MoraleAuraMinTough)
+        {
+            return false;
+        }
+
+        hero = new MoraleAuraHero(toughest, unit.Quality, unit.Name);
+        return true;
+    }
+
+    /// <summary>
+    /// #421: one model's Tough(X) as printed - the Tough rule's argument, never its max or remaining wounds (a
+    /// wounded Tough(9) hero is still a Tough(9) hero). A native model has the higher of the unit's Tough and a
+    /// Tough of its own (#407 per-model grants, e.g. a one-model Weapon Team's Tough(3)); a joined hero has only
+    /// its own, which the join relocated onto its model (#006 slice F) - the host's Tough is the rank and file's.
+    /// 0 when no Tough rule applies.
+    /// </summary>
+    public static int GetToughValue(IUnit unit, IModel model)
+    {
+        int own = MaxToughArgument(model.RuleDefinitions);
+        if (unit is UnitData { HeroAttachment: { } hero } && model.ID == hero.HeroModelId)
+        {
+            return own;
+        }
+
+        return Math.Max(own, MaxToughArgument(unit.RuleDefinitions));
+    }
+
+    private static int MaxToughArgument(IReadOnlyList<ResolvedRule> rules)
+    {
+        int max = 0;
+        foreach (ResolvedRule rule in rules)
+        {
+            if (rule.Definition == CoreRuleCatalog.Tough && rule.Arguments.Count > 0
+                && rule.Arguments[0] is RuleArgument.Int tough && tough.Value > max)
+            {
+                max = tough.Value;
+            }
+        }
+        return max;
     }
 
     /// <summary>

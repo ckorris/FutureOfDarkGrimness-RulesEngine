@@ -42,7 +42,7 @@ namespace FDG.Stages
             // #432: a loser that was the CHARGED unit carries the charge distance it received, for the 3.6
             // "charged from over 6\"" morale rules (Hive Bond, Hold the Line, Valiant); a losing charger carries none.
             MoraleUtilities.MoraleTestOutcome outcome = await MoraleUtilities.TakeMoraleTest(
-                GameContext, testingUnit, determineMoraleSaveNeededResult.RollNeeded,
+                GameContext, testingUnit, determineMoraleSaveNeededResult.Quality,
                 failureCausesShakenOrRout: true,
                 chargedFromInches: context.ChargedFromInchesFor(testingUnit));
 

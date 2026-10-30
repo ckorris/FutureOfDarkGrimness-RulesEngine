@@ -50,6 +50,102 @@ namespace FDG.Stages
             }
         }
 
+        /// <summary>#421: where the Quality a morale test is taken at came from.</summary>
+        public enum EMoraleQualitySource
+        {
+            /// <summary>The testing unit's own Quality.</summary>
+            Unit = 0,
+            /// <summary>The living, un-Shaken hero joined to the testing unit (#006).</summary>
+            JoinedHero = 1,
+            /// <summary>A friendly Tough(9)+ Hero within 6" of the testing unit (3.6).</summary>
+            HeroAura = 2,
+        }
+
+        /// <summary>
+        /// #421: the Quality a unit takes a Morale Test at and where it came from - the testing unit's own, its
+        /// joined hero's, or a nearby Tough(9)+ Hero's (<see cref="ResolveMoraleQuality"/>). <see cref="HeroName"/>
+        /// names the lending hero for the log line and the roll chip; null for <see cref="EMoraleQualitySource.Unit"/>.
+        /// </summary>
+        public readonly record struct MoraleQuality(int Quality, EMoraleQualitySource Source, string? HeroName = null)
+        {
+            /// <summary>A test at the unit's own (or a caller-chosen) Quality - no hero involved.</summary>
+            public static MoraleQuality Own(int quality) => new(quality, EMoraleQualitySource.Unit);
+        }
+
+        /// <summary>
+        /// #421: THE seam every morale test reads its Quality from - the melee loser's (<c>DetermineMoraleSaveNeededStage</c>),
+        /// the wound-driven one (<see cref="ResolveWoundDrivenMorale"/>), a spell's (<c>CastSpellStage</c>) and a
+        /// rule's (<c>GameOperationServices.MoraleTestThen</c>: Mind Control, Fatigue Debuff, Spell Drain).
+        /// <para>
+        /// OPR 3.6 Hero: "The Hero's unit, and units within 6\" of friendly Heroes with Tough(9) or higher, may use
+        /// the Hero's Quality for Morale Tests as long as the Hero isn't Shaken." "May use" is a benefit, so the
+        /// engine takes the best Quality on offer with no prompt (#421 D2): the unit's own, its joined hero's
+        /// (<see cref="HeroStatRules.GetMoraleQuality"/>: alive and not Shaken), and that of every friendly
+        /// (team-aware) Tough(9)+ Hero that projects (<see cref="HeroStatRules.TryGetMoraleAuraHero"/>: alive, not
+        /// Shaken, on the table) whose model is within <see cref="HeroStatRules.MoraleAuraRangeInches"/> of the
+        /// testing unit's closest living model. Lower is better; a tie keeps the unit's own, then the joined hero,
+        /// then the nearer aura hero, so a hero is only named when it actually changed the number.
+        /// </para>
+        /// <para>
+        /// Measured when the test is taken, base to base in 3D (<see cref="UnitCompareUtilities.MinDistanceFromModelToUnit"/>,
+        /// the same measure as the casting-support "friendly units within 12\"" scan and every shooting range gate;
+        /// #421 D4). A testing unit that is not on the table is within 6" of nothing and gets no aura.
+        /// </para>
+        /// </summary>
+        public static MoraleQuality ResolveMoraleQuality(IGameContext gameContext, IUnit testingUnit)
+        {
+            MoraleQuality best = MoraleQuality.Own(testingUnit.Quality);
+
+            if (testingUnit is UnitData { HeroAttachment: { } attachment } host)
+            {
+                int joined = HeroStatRules.GetMoraleQuality(host);
+                if (joined < best.Quality)
+                {
+                    best = new MoraleQuality(joined, EMoraleQualitySource.JoinedHero, attachment.Name ?? "Hero");
+                }
+            }
+
+            if (BestAuraQuality(gameContext.TableState, testingUnit) is { } aura && aura.Quality < best.Quality)
+            {
+                best = aura;
+            }
+
+            return best;
+        }
+
+        // The best Quality a friendly Tough(9)+ Hero within 6" lends the testing unit, or null when none does.
+        private static MoraleQuality? BestAuraQuality(ITableState tableState, IUnit testingUnit)
+        {
+            if (!testingUnit.GetIsOnBattlefield())
+            {
+                return null;
+            }
+
+            MoraleQuality? best = null;
+            float bestDistance = float.PositiveInfinity;
+            List<ITeam> teams = tableState.Teams.Objects.ToList();
+            foreach (IUnit other in tableState.Units.Objects)
+            {
+                // The testing unit's own Hero is "the Hero's unit" - its own Quality, already the baseline.
+                if (ReferenceEquals(other, testingUnit) || other.ID.Equals(testingUnit.ID)) continue;
+                if (!ITeamExtensions.AreAllied(teams, testingUnit.PlayerID, other.PlayerID)) continue;
+                if (!HeroStatRules.TryGetMoraleAuraHero(other, out HeroStatRules.MoraleAuraHero hero)) continue;
+
+                float distance = UnitCompareUtilities.MinDistanceFromModelToUnit(hero.Model, testingUnit,
+                    includeVertical: true);
+                if (distance > HeroStatRules.MoraleAuraRangeInches) continue;
+
+                if (best == null || hero.Quality < best.Value.Quality
+                    || (hero.Quality == best.Value.Quality && distance < bestDistance))
+                {
+                    best = new MoraleQuality(hero.Quality, EMoraleQualitySource.HeroAura, hero.Name);
+                    bestDistance = distance;
+                }
+            }
+
+            return best;
+        }
+
         /// <summary>
         /// Take a morale test for <paramref name="testingUnit"/> against <paramref name="baseRollNeeded"/>
         /// (its Quality), applying morale special rules. Fires <see cref="EHookID.Morale_OnPreMoraleTest"/>
@@ -66,10 +162,22 @@ namespace FDG.Stages
         /// triggered (spells, Mind Control, a charger losing its own melee).
         /// </para>
         /// </summary>
-        public static async Task<MoraleTestOutcome> TakeMoraleTest(IGameContext gameContext, IUnit testingUnit,
+        public static Task<MoraleTestOutcome> TakeMoraleTest(IGameContext gameContext, IUnit testingUnit,
             int baseRollNeeded, bool failureCausesShakenOrRout = false, float? shotFromInches = null,
             float? chargedFromInches = null)
+            => TakeMoraleTest(gameContext, testingUnit, MoraleQuality.Own(baseRollNeeded), failureCausesShakenOrRout,
+                shotFromInches, chargedFromInches);
+
+        /// <summary>
+        /// #421: <see cref="TakeMoraleTest(IGameContext, IUnit, int, bool, float?, float?)"/> at a Quality the
+        /// caller resolved through <see cref="ResolveMoraleQuality"/>, which also says where it came from.
+        /// </summary>
+        public static async Task<MoraleTestOutcome> TakeMoraleTest(IGameContext gameContext, IUnit testingUnit,
+            MoraleQuality quality, bool failureCausesShakenOrRout = false, float? shotFromInches = null,
+            float? chargedFromInches = null)
         {
+            int baseRollNeeded = quality.Quality;
+
             // A Shaken unit always fails its morale tests (GF v3.5.1) — no die is rolled. This is what
             // escalates a Shaken unit that loses a later melee at half strength into a Rout, and keeps an
             // already-Shaken unit Shaken on any other failed test. Checked before the roll so a lucky die
@@ -311,10 +419,10 @@ namespace FDG.Stages
             if (!unit.GetIsAlive()) return null;                              // wiped out outright — no test
             if (!WoundsLeftUnitAtHalfStrength(remainingWoundsBefore, unit, countedWounds)) return null;
 
-            // #006: a living joined hero takes morale on behalf of the unit (its Quality).
+            // #421: the best Quality on offer - the unit's own, its joined hero's, or a Tough(9)+ Hero's within 6".
             // failureCausesShakenOrRout: this test's failure Shakens the unit, so a conversion rule
             // (#197 P7 No Retreat) may rescue it.
-            if ((await TakeMoraleTest(gameContext, unit, HeroStatRules.GetMoraleQuality(unitBinding.GetValue()),
+            if ((await TakeMoraleTest(gameContext, unit, ResolveMoraleQuality(gameContext, unit),
                     failureCausesShakenOrRout: true, shotFromInches: shotFromInches)).Passed) return true;
 
             await ApplyShakenWithPresentation(gameContext, unitBinding);

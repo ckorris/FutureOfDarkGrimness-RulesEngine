@@ -148,8 +148,10 @@ namespace FDG.Stages
                 return;
             }
 
+            // #421: the best Quality on offer (own, joined hero's, a Tough(9)+ Hero's within 6") - the 3.6 Hero
+            // text covers every Morale Test, so a rule-forced one (Spell Drain's victim) gets the aura too.
             MoraleUtilities.MoraleTestOutcome outcome = await MoraleUtilities.TakeMoraleTest(
-                _gameContext, unitData, HeroStatRules.GetMoraleQuality(unitData));
+                _gameContext, unitData, MoraleUtilities.ResolveMoraleQuality(_gameContext, unitData));
 
             if (outcome.Passed)
             {

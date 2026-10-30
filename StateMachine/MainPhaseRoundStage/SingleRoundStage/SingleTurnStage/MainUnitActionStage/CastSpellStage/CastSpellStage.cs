@@ -383,7 +383,8 @@ namespace FDG.Stages
             return _pendingRun;
         }
 
-        // #034 #5 — each target takes a morale test (its morale Quality, rule-aware via MoraleUtilities);
+        // #034 #5 — each target takes a morale test (its morale Quality - #421: the best of its own, its joined
+        // hero's and a nearby Tough(9)+ Hero's, MoraleUtilities.ResolveMoraleQuality - rule-aware via MoraleUtilities);
         // the spell's on-fail effect is applied only to targets that fail. Deep Hypnosis (move on fail) and
         // Terrifying Fury (fatigue on fail) share this shape.
         private async Task ResolveConditionalSpell(IUnit caster, RuntimeSpell spell,
@@ -398,7 +399,7 @@ namespace FDG.Stages
             {
                 UnitData targetUnit = target.GetValue();
                 MoraleUtilities.MoraleTestOutcome outcome = await MoraleUtilities.TakeMoraleTest(
-                    GameContext, targetUnit, HeroStatRules.GetMoraleQuality(targetUnit));
+                    GameContext, targetUnit, MoraleUtilities.ResolveMoraleQuality(GameContext, targetUnit));
 
                 if (outcome.Passed)
                 {

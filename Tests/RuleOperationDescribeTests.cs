@@ -185,6 +185,13 @@ namespace FDG.Tests
                 "cancelled 1 impact die from the charge");
             yield return Case(new RuleOperation.ChargeImpactHits(-3),
                 "cancelled 3 impact dice from the charge");
+            // #447: Impact (and Brace) sum X over the models carrying them, and say so.
+            yield return Case(new RuleOperation.ChargeImpactHits(5, Models: 5),
+                "rolled 5 impact dice on the charge (5 models x 1)");
+            yield return Case(new RuleOperation.ChargeImpactHits(3, ArmorPenetration: 1, Models: 1),
+                "rolled 3 impact dice on the charge at AP(1) (1 model x 3)");
+            yield return Case(new RuleOperation.ChargeImpactHits(-6, Models: 3),
+                "cancelled 6 impact dice from the charge (3 models x 2)");
 
             // Both branches of each operation that reads differently per mode.
             yield return Case(new RuleOperation.IgnoreTerrainEffects(ETerrainIgnoreScope.DifficultOnly),

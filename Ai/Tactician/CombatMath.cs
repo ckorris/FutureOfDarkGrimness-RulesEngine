@@ -222,12 +222,14 @@ namespace FDG.Ai.Tactician
             // --- ResolveImpactHitsStage mirror: charger's Impact(X) minus the defender's Brace(X), each
             // die a hit on 2+, resolved as a synthetic AP-0 attack before any swing. Both rules' 3.6 Fatigue
             // clauses (#422) are entry conditions, so the shared evaluation below already drops a Fatigued
-            // charger's dice and a Fatigued defender's Brace - nothing to mirror by hand.
+            // charger's dice and a Fatigued defender's Brace - nothing to mirror by hand. #447: the charger
+            // joins with its living models, as in the stage (ChargerParticipant), so Impact sums per model -
+            // a joined hero's own Impact included - through the same effect the stage runs.
             float impactWounds = 0f;
             // #191 search perf pass 5: the defender's melee participants once (two dispatches read them).
             RuleParticipant[] defenderMelee = DetermineStrikeOrderStage.SubjectWithMeleeWeapons(def);
             var contactParticipants = new RuleParticipant[defenderMelee.Length + 1];
-            contactParticipants[0] = RuleParticipant.Actor(atk);
+            contactParticipants[0] = ResolveImpactHitsStage.ChargerParticipant(atk);
             Array.Copy(defenderMelee, 0, contactParticipants, 1, defenderMelee.Length);
             IReadOnlyList<RuleOperation> contactOps = Ops(evaluator.EvaluateAllNamed(
                 new ChargeContactContext(atk, def), contactParticipants));

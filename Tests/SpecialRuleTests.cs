@@ -833,9 +833,10 @@ namespace FDG.Tests
             ops.HasOperation<RuleOperation.MultiplyHits>(op => op.Multiplier == 3);
         }
 
-        // Impact(X) (core) — rolls X impact dice on the charge.
+        // Impact(X) (core) — rolls X impact dice per carrying model on the charge (#447: a 3-model unit's
+        // Impact(2) is 6 dice, not 2).
         [Test]
-        public void Impact_OnCharge_RollsArgumentImpactDice()
+        public void Impact_OnCharge_RollsArgumentImpactDicePerModel()
         {
             var harness = new TestRuleHarness();
             var impact = new SpecialRuleDefinition("Impact",
@@ -855,7 +856,7 @@ namespace FDG.Tests
 
             var ops = harness.Evaluate(attacker, ERuleSeat.Actor, new ChargeContactContext(attacker, defender));
 
-            ops.HasOperation<RuleOperation.ChargeImpactHits>(op => op.DiceCount == 2);
+            ops.HasOperation<RuleOperation.ChargeImpactHits>(op => op.DiceCount == 6 && op.Models == 3);
         }
 
         // Fear(X) (core) — counts as +X wounds when deciding who won melee.

@@ -795,9 +795,12 @@ public abstract record RuleOperation
 
     /// <summary>
     /// Roll <see cref="DiceCount"/> impact dice (each 2+ a hit) on the charge.
-    /// Resolution of <see cref="Effect.ChargeImpactHits"/> (Impact).
+    /// Resolution of <see cref="Effect.ChargeImpactHits"/> (Impact) and, negative, of
+    /// <see cref="Effect.CancelImpactDice"/> (Brace). <see cref="Models"/> (#447) is how many models the count
+    /// sums over - X per model, so <c>DiceCount / Models</c> is the X - or 0 when the source is not per model.
     /// </summary>
-    public sealed record ChargeImpactHits(int DiceCount, int ArmorPenetration = 0) : SinkOperation<IImpactSink>
+    public sealed record ChargeImpactHits(int DiceCount, int ArmorPenetration = 0, int Models = 0)
+        : SinkOperation<IImpactSink>
     {
         public override void ApplyTo(IImpactSink sink)
         {
@@ -814,9 +817,13 @@ public abstract record RuleOperation
             // Not RollTags.Count: it pluralizes by appending "s", and "dice" has no regular plural.
             string dice = DiceTally(Math.Abs(DiceCount), "impact");
             return DiceCount < 0
-                ? $"cancelled {dice} from the charge"
-                : $"rolled {dice} on the charge{ApSuffix(ArmorPenetration)}";
+                ? $"cancelled {dice} from the charge{PerModelSuffix()}"
+                : $"rolled {dice} on the charge{ApSuffix(ArmorPenetration)}{PerModelSuffix()}";
         }
+
+        // " (5 models x 1)": the per-model sum behind the count (#447), or nothing for a source that is not.
+        private string PerModelSuffix() =>
+            Models > 0 ? $" ({Models} model{(Models == 1 ? "" : "s")} x {Math.Abs(DiceCount) / Models})" : string.Empty;
     }
 
     /// <summary>

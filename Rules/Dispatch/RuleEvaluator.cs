@@ -154,6 +154,20 @@ public sealed class RuleEvaluator
     }
 
     /// <summary>
+    /// <see cref="EvaluateAllNamedLive(IHookContext, RuleParticipant[])"/> that narrates only the surviving
+    /// operations <paramref name="narrate"/> accepts; everything else about the live evaluation - the one-shot
+    /// grants it spends, the trace, the returned queue - is unchanged. For a stage whose participants reach
+    /// rules it does not resolve: #447's impact stage walks the charger's models so a joined hero's Impact
+    /// fires, which also reaches that hero's Ravage - a rule ResolveRavageWoundsStage resolves (and narrates)
+    /// on its own, so the impact stage must not print it as though it had been rolled.
+    /// </summary>
+    public IReadOnlyList<(RuleOperation Op, string RuleName)> EvaluateAllNamedLive(IHookContext context,
+        Func<RuleOperation, bool> narrate, params RuleParticipant[] participants)
+    {
+        return NamedOpsOf(CollectSurviving(context, log: true, participants, narrate));
+    }
+
+    /// <summary>
     /// Collects every participant's matching operations, runs the suppression first-pass (a queued
     /// <see cref="RuleOperation.SuppressRule"/>("X") removes every op whose origin rule's canonical name
     /// is "X" — alias-renamed victims included, since it matches <c>Definition.Name</c>), and returns the
@@ -180,7 +194,7 @@ public sealed class RuleEvaluator
     }
 
     private List<TaggedOperation> CollectSurviving(IHookContext context, bool log,
-        params RuleParticipant[] participants)
+        RuleParticipant[] participants, Func<RuleOperation, bool>? narrate = null)
     {
             var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
             try
@@ -253,7 +267,7 @@ public sealed class RuleEvaluator
             List<TaggedOperation> kept = ApplyNegativeModifierImmunity(tagged, log, trace);
             if (log)
             {
-                foreach (TaggedOperation t in kept) Log(t);
+                foreach (TaggedOperation t in kept) LogIf(narrate, t);
             }
             if (grantsToConsume != null)
             {
@@ -275,7 +289,7 @@ public sealed class RuleEvaluator
             {
                 // The suppressor is internal machinery a stage never applies. Log the action
                 // ("X ignored Y"), then drop it from the queue handed back.
-                if (log) Log(t);
+                if (log) LogIf(narrate, t);
                 continue;
             }
 
@@ -303,7 +317,7 @@ public sealed class RuleEvaluator
         result = ApplyNegativeModifierImmunity(result, log, trace);
         if (log)
         {
-            foreach (TaggedOperation t in result) Log(t);
+            foreach (TaggedOperation t in result) LogIf(narrate, t);
         }
 
         // #101 consume-on-occurrence: spend each one-shot grant whose hook+seat fired this event, removing
@@ -762,6 +776,12 @@ public sealed class RuleEvaluator
             }
         }
         return false;
+    }
+
+    // #447: the narration filter of EvaluateAllNamedLive(context, narrate, ...); null narrates everything.
+    private void LogIf(Func<RuleOperation, bool>? narrate, TaggedOperation t)
+    {
+        if (narrate == null || narrate(t.Op)) Log(t);
     }
 
     private void Log(TaggedOperation t)

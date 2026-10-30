@@ -267,7 +267,8 @@ namespace FDG.GameModel
         //#407: rules only some models have (a one-model Weapon Team's Tough(3)) attach to the unit's LAST
         //models, so the automatic wound order (WoundAllocation.Order: unit-list order) reaches them last.
         //Which model it is matters for nothing else - weapons are not distributed per model either.
-        //UnitCreationRules then reads each model's own Tough. A grant naming more models than the unit has
+        //UnitCreationRules then reads each model's own Tough; #447's per-model Impact counts the living models
+        //carrying it, so a granted Impact leaves with its model. A grant naming more models than the unit has
         //is clamped; only unit-scoped rules are model-carried today, so anything else is warned and dropped.
         private static void AttachModelGrants(UnitData unitData, UnitFileEntry unitEntry, IRuleResolver ruleResolver)
         {

@@ -248,15 +248,14 @@ namespace FDG.Calculator
             UnitData defendingUnit = defender.GetValue();
 
             // Ask what the charge brings using the READ-ONLY evaluation (no logging, no one-shot grants
-            // spent) - the stage below does the real, live one. Same question, asked twice on purpose.
-            var participants = new List<RuleParticipant> { RuleParticipant.Actor(attackingUnit) };
-            participants.AddRange(DetermineStrikeOrderStage.SubjectWithMeleeWeapons(defendingUnit));
+            // spent) - the stage below does the real, live one. Same question, asked twice on purpose, with
+            // the stage's own participants (#447: the charger's living models, so Impact sums per model).
+            var named = context.RuleEvaluator.EvaluateAllNamed(
+                new ChargeContactContext(attackingUnit, defendingUnit),
+                ResolveImpactHitsStage.ChargeContactParticipants(attackingUnit, defendingUnit));
 
             var sink = new ImpactSink();
-            sink.ApplyFrom(context.RuleEvaluator
-                .EvaluateAllNamed(new ChargeContactContext(attackingUnit, defendingUnit), participants.ToArray())
-                .Select(named => named.Op)
-                .ToList());
+            sink.ApplyFrom(named.Select(n => n.Op).ToList());
 
             if (sink.TotalDice <= 0)
             {
@@ -279,7 +278,8 @@ namespace FDG.Calculator
             var weapon = new Weapon("Impact", rangeInches: 0f, attacks: 0, armorPenetration: sink.ArmorPenetration);
 
             return new VolleyReport(weapon, Copies: 1, InRange: true, EffectiveRangeInches: 0f,
-                AttackDice: sink.TotalDice, HitRollNeeded: 2, HitTags: new[] { "Impact, hits on 2+" },
+                AttackDice: sink.TotalDice, HitRollNeeded: 2,
+                HitTags: new[] { "Impact, hits on 2+", ResolveImpactHitsStage.DescribeDicePool(named) },
                 ExpectedHits: expectedHits, Saves: Array.Empty<SaveBucket>(),
                 SaveTags: Array.Empty<string>(), ExpectedWounds: dealt,
                 Notes: new[] { "Auto-hits on the charge, before any weapon swings." });

@@ -1,4 +1,5 @@
 using FDG.Ai.Tactician;
+using FDG.SaveLoad;
 using FDG.Data;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
@@ -453,9 +454,9 @@ namespace FDG.Tests
 
             MeleeEstimate estimate = CombatMath.EstimateMelee(_ctx.RuleEvaluator, attacker, defender);
 
-            // Impact(4): 4 dice at 2+ -> 4 * 5/6 hits; D4 save at AP0 -> half fail.
-            // Swings: 2 blades x 2 attacks at Q4 -> 2 hits -> 1 wound. Total 2.667 + margin for exactness.
-            float impactWounds = 4f * (5f / 6f) * 0.5f;
+            // Impact(4) on 2 models (#447: per model): 8 dice at 2+ -> 8 * 5/6 hits; D4 save at AP0 -> half fail.
+            // Swings: 2 blades x 2 attacks at Q4 -> 2 hits -> 1 wound. Total 4.333 + margin for exactness.
+            float impactWounds = 8f * (5f / 6f) * 0.5f;
             float swingWounds = 2f * 2f * 0.5f * 0.5f;
             Assert.That(estimate.AttackerAttack.ExpectedWounds,
                 Is.EqualTo(impactWounds + swingWounds).Within(0.001f));
@@ -510,7 +511,7 @@ namespace FDG.Tests
         {
             var attacker = MakeUnit(2, Blade(), atX: 0f);
             attacker.GetValue().AttachRuleDefinition(new ResolvedRule("Impact", CoreRuleCatalog.Impact,
-                new RuleArgument[] { new RuleArgument.Int(4) }));
+                new RuleArgument[] { new RuleArgument.Int(2) }));
             var spear = new Weapon("Spear", rangeInches: 0f, attacks: 0, armorPenetration: 0);
             spear.AttachRuleDefinition(new ResolvedRule("Brace", CoreRuleCatalog.Brace,
                 new RuleArgument[] { new RuleArgument.Int(1) }));
@@ -518,8 +519,37 @@ namespace FDG.Tests
 
             MeleeEstimate estimate = CombatMath.EstimateMelee(_ctx.RuleEvaluator, attacker, defender);
 
-            // Impact(4) - Brace(1) x 3 spearmen = 1 die at 2+, half saved; swings 2 x 2 at Q4, half saved.
+            // Impact(2) x 2 models (#447) - Brace(1) x 3 spearmen = 1 die at 2+, half saved; swings 2 x 2 at Q4,
+            // half saved. (Brace subtracts from the per-model total.)
             float impactWounds = 1f * (5f / 6f) * 0.5f;
+            float swingWounds = 2f * 2f * 0.5f * 0.5f;
+            Assert.That(estimate.AttackerAttack.ExpectedWounds,
+                Is.EqualTo(impactWounds + swingWounds).Within(0.001f));
+        }
+
+        // #447 - Impact(X) is per model, and the estimate runs the stage's own charge-contact participants
+        // (ResolveImpactHitsStage.ChargerParticipant), so a joined hero's own Impact adds its dice too.
+        [Test]
+        public void EstimateMelee_ImpactDice_SumPerModel_AJoinedHerosImpactAdds()
+        {
+            var attacker = MakeUnit(2, Blade(), atX: 0f);
+            attacker.GetValue().AttachRuleDefinition(new ResolvedRule("Impact", CoreRuleCatalog.Impact,
+                new RuleArgument[] { new RuleArgument.Int(1) }));
+            var hero = MakeUnit(1, null, atX: 0f);
+            hero.GetValue().AttachRuleDefinition(new ResolvedRule("Hero", CoreRuleCatalog.Hero));
+            hero.GetValue().AttachRuleDefinition(new ResolvedRule("Impact", CoreRuleCatalog.Impact,
+                new RuleArgument[] { new RuleArgument.Int(3) }));
+            HeroJoinResolver.Apply(new List<(UnitFileEntry, UnitData)>
+            {
+                (new UnitFileEntry { Id = "host" }, attacker.GetValue()),
+                (new UnitFileEntry { JoinsUnitId = "host" }, hero.GetValue()),
+            });
+            var defender = MakeUnit(10, null, atX: 1f);
+
+            MeleeEstimate estimate = CombatMath.EstimateMelee(_ctx.RuleEvaluator, attacker, defender);
+
+            // 2 x Impact(1) + the hero's Impact(3) = 5 dice at 2+, half saved; swings 2 x 2 at Q4, half saved.
+            float impactWounds = 5f * (5f / 6f) * 0.5f;
             float swingWounds = 2f * 2f * 0.5f * 0.5f;
             Assert.That(estimate.AttackerAttack.ExpectedWounds,
                 Is.EqualTo(impactWounds + swingWounds).Within(0.001f));

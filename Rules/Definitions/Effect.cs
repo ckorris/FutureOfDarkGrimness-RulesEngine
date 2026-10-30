@@ -1017,16 +1017,79 @@ public abstract record Effect
     }
 
     /// <summary>
-    /// On a charge, rolls <see cref="DiceCount"/> impact dice (each 2+ a hit) before
-    /// strikes. Covers Impact(X) — the dice count is the rule's argument — and, with
-    /// <see cref="ArmorPenetration"/> &gt; 0, Heavy Impact ("Impact(X) with hits that have AP(1)").
+    /// On a charge, rolls impact dice (each 2+ a hit) before either unit attacks. Covers Impact(X) - X is the
+    /// rule's argument, <see cref="DiceCount"/> - and, with <see cref="ArmorPenetration"/> &gt; 0, Heavy Impact
+    /// ("Counts as having Impact(X) with hits that have AP(1)").
+    /// <para>
+    /// #447: X is PER MODEL. Impact is a "this model" rule like every rule a model carries, so a 5-model unit with
+    /// Impact(1) rolls 5 dice. The effect emits X x the living models carrying THIS attachment
+    /// (<see cref="RuleInvocation.Attachment"/>, #422), so the dice sum across sources without double counting:
+    /// </para>
+    /// <list type="bullet">
+    ///   <item>attached to the unit (its profile): every living NATIVE model - a joined hero does not inherit the
+    ///         host's rules (the #006 merge relocated the hero's own rules onto its model);</item>
+    ///   <item>attached to models (a joined hero's own Impact, a #407 per-model grant such as "replace one CCW
+    ///         with Rotor Blade Attack (Impact(3))"): the living models carrying that attachment;</item>
+    ///   <item>granted to the unit by a token (an aura or "gains Impact" buff, never statically attached): every
+    ///         living model, hero included, as grants cover the current unit (#183's rule);</item>
+    ///   <item>an argument-less copy (a literal X, the only shape a grant can carry) fires once per bearer whatever
+    ///         the attachment count (the evaluator's dedup), so it counts every carrier of the definition.</item>
+    /// </list>
+    /// <para>
+    /// One attachment shared by several models (a fresh army's model grant) fires once and counts them all; a
+    /// resumed game rehydrates one attachment per model and fires once per model, counting one each - the same
+    /// total. Only living models count, so casualties taken before the charge (a Dangerous terrain test at the
+    /// start of the activation, #446) shrink the pool. Models out of melee range still count: the 3.6 text has no
+    /// reach condition (#447 D1, owner review). The op carries the carrier count so the stage can show the sum.
+    /// </para>
     /// </summary>
     public sealed record ChargeImpactHits(ValueSource DiceCount, int ArmorPenetration = 0) : Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
-            operations.Add(new RuleOperation.ChargeImpactHits(
-                DiceCount.Resolve(ruleInvocation), ArmorPenetration));
+            int perModel = DiceCount.Resolve(ruleInvocation);
+            int carriers = CountCarriers(ruleInvocation);
+            if (perModel <= 0 || carriers <= 0)
+            {
+                // Nobody carrying this copy is left alive (e.g. the host's Impact once only its joined hero
+                // stands): it brings no dice. Tracing reports "condition passed but ... produced no operations".
+                return;
+            }
+
+            operations.Add(new RuleOperation.ChargeImpactHits(perModel * carriers, ArmorPenetration, carriers));
+        }
+
+        private static int CountCarriers(RuleInvocation invocation)
+        {
+            IUnit unit = invocation.Bearer;
+            Dispatch.ResolvedRule? attachment = invocation.Attachment;
+            SpecialRuleDefinition? definition = invocation.Definition;
+            if (attachment == null || definition == null)
+            {
+                // Off the passive dispatch path (a hand-built invocation): treat it as unit-wide.
+                return unit.Models.Count(m => m.GetIsAlive());
+            }
+
+            ModelID? heroId = unit.JoinedHeroModelId;
+            bool IsJoinedHero(IModel model) => heroId is ModelID hid && model.ID == hid;
+            bool argless = attachment.Arguments.Count == 0;
+            bool Matches(Dispatch.ResolvedRule rule) => argless ? rule.Definition == definition : rule.Equals(attachment);
+
+            if (invocation.Weapon != null)
+            {
+                // No core Impact rides a weapon (the stage passes no charger weapons), but a charge-contact rule
+                // that did would count the models wielding a weapon carrying it.
+                return unit.Models.Count(m => m.GetIsAlive() && m.Weapons.Any(w => w.RuleDefinitions.Any(Matches)));
+            }
+
+            bool onUnit = unit.RuleDefinitions.Any(Matches);
+            bool onAnyModel = unit.Models.Any(m => m.RuleDefinitions.Any(Matches));
+            bool granted = argless
+                ? RuleGrantQueries.UnitHasGrantedRule(unit, definition)
+                : !onUnit && !onAnyModel; // an argumented copy found on no carrier came from somewhere unit-wide
+
+            return unit.Models.Count(m => m.GetIsAlive()
+                && (granted || m.RuleDefinitions.Any(Matches) || (onUnit && !IsJoinedHero(m))));
         }
     }
 
@@ -1059,7 +1122,7 @@ public abstract record Effect
             int dice = DicePerModel.Resolve(ruleInvocation) * carriers;
             if (dice > 0)
             {
-                operations.Add(new RuleOperation.ChargeImpactHits(-dice));
+                operations.Add(new RuleOperation.ChargeImpactHits(-dice, Models: carriers));
             }
         }
 

@@ -474,13 +474,15 @@ namespace FDG.ArmyBuilding
         }
 
         /// <summary>
-        /// #407: rules that describe the model that bought them rather than the unit. Tough is the only one
-        /// routed today (owner's call, 2026-10-28): it is the one the corpus actually gets wrong - 16
-        /// "Weapon Team" sites in HDF and AoF Ratmen. Shielded, Caster, Fear and the like still fold
-        /// unit-wide from a one-model item; deciding each of those is follow-up work.
+        /// #407: rules that describe the model that bought them rather than the unit. Tough was the first one
+        /// routed (owner's call, 2026-10-28): it is the one the corpus actually gets wrong - 16
+        /// "Weapon Team" sites in HDF and AoF Ratmen. #447 added Impact and Heavy Impact: the engine now sums
+        /// Impact(X) per model carrying it, so a one-model item ("Replace one CCW: Rotor Blade Attack
+        /// (Impact(3))" on 3 Hover Bikers) folded unit-wide would roll 9 dice instead of 3. Shielded, Caster,
+        /// Fear and the like still fold unit-wide from a one-model item; deciding each of those is follow-up work.
         /// </summary>
         private static readonly HashSet<string> ModelPersonalRuleNames =
-            new(StringComparer.OrdinalIgnoreCase) { "Tough" };
+            new(StringComparer.OrdinalIgnoreCase) { "Tough", "Impact", "Heavy Impact" };
 
         // #407: a One/Any section's items belong to the models that bought them. An All section, or a
         // section that adds models, keeps the unit-wide fold.

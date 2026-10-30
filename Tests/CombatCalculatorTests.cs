@@ -284,6 +284,45 @@ namespace FDG.Tests
             });
         }
 
+        // #447: Impact(X) is per model - the calculator asks with the stage's own participants and runs the real
+        // stage, so a 5-model Impact(1) unit brings 5 dice, and the row says where they came from.
+        [Test]
+        public void AMultiModelImpactUnit_RollsOneDiePerModel()
+        {
+            CombatReport charging = CombatCalculator.Run(
+                Army(Unit("Riders", 5, 4, 4, new[] { "Impact(1)" }, Blade(5))),
+                Army(Unit("Targets", 10, 4, 4)),
+                new CombatSituation(Mode: ECombatMode.Melee, AttackerCharging: true));
+
+            VolleyReport impact = charging.Volleys[0];
+            Assert.Multiple(() =>
+            {
+                Assert.That(impact.Weapon.Name, Is.EqualTo("Impact"));
+                Assert.That(impact.AttackDice, Is.EqualTo(5f).Within(Tolerance), "5 models x Impact(1)");
+                Assert.That(impact.ExpectedWounds, Is.EqualTo(5f * 5f / 6f * 0.5f).Within(Tolerance));
+                Assert.That(impact.HitTags, Does.Contain("5 models x Impact(1)"));
+            });
+        }
+
+        [Test]
+        public void AJoinedHerosImpact_AddsItsDiceToTheHosts()
+        {
+            UnitFileEntry knights = Unit("Knights", 3, 4, 4, new[] { "Impact(1)" }, Blade(3));
+            knights.Id = "host";
+            UnitFileEntry hero = Unit("Hero", 1, 4, 4, new[] { "Hero", "Impact(3)" }, Blade(1));
+            hero.JoinsUnitId = "host";
+
+            CombatReport charging = CombatCalculator.Run(Army(knights, hero), Army(Unit("Targets", 10, 4, 4)),
+                new CombatSituation(Mode: ECombatMode.Melee, AttackerCharging: true));
+
+            VolleyReport impact = charging.Volleys[0];
+            Assert.Multiple(() =>
+            {
+                Assert.That(impact.AttackDice, Is.EqualTo(6f).Within(Tolerance), "3 x Impact(1) + the hero's Impact(3)");
+                Assert.That(impact.HitTags, Does.Contain("3 models x Impact(1) + 1 model x Impact(3)"));
+            });
+        }
+
         // #422: the calculator runs the real ResolveImpactHitsStage, so a fatigued charger's Impact rolls no
         // dice there either ("..., unless this unit is Fatigued") and no Impact row appears.
         [Test]

@@ -15,7 +15,7 @@ namespace FDG.Rules.Dispatch
     /// re-labelled copy quietly become a free extra melee weapon.</para>
     ///
     /// <para>The restriction is load-bearing rather than cosmetic. Every corpus strafe weapon has range 0,
-    /// and <c>IWeapon.IsMelee()</c> is defined as "range 0", so without this filter a Bomber Plane dragged
+    /// and <c>IWeapon.IsMelee()</c> is "range 0 or grants melee use" (#424), so without this filter a Bomber Plane dragged
     /// into melee would swing its Flame Bombs as a close-combat weapon - Blast(3) and all.</para>
     /// </summary>
     public static class StrafingRules

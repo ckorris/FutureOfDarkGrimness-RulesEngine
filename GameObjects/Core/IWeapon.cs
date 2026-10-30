@@ -220,12 +220,14 @@ namespace FDG
 
         /// <summary>
         /// Returns human-readable text about a weapon that would read like it would on a data sheet.
+        /// #424: <paramref name="includeRange"/> false prints the weapon's MELEE line - a weapon that is both
+        /// (Assault) shows its range where it is fired and only its attacks/AP where it is swung.
         /// </summary>
-        public static string GetWeaponNameAndStats(this IWeapon weapon)
+        public static string GetWeaponNameAndStats(this IWeapon weapon, bool includeRange = true)
         {
             StringBuilder sb = new StringBuilder();
             sb.Append($"{weapon.Name} - ");
-            if (weapon.IsRanged())
+            if (includeRange && weapon.IsRanged())
             {
                 sb.Append(weapon.RangeInches + "\", ");
             }
@@ -243,9 +245,9 @@ namespace FDG
         /// Returns human-readable text about a weapon that would read like it would on a data sheet, including
         /// how many weapons there are, which you supply as a parameter.
         /// </summary>
-        public static string GetWeaponNameAndStats(this IWeapon weapon, int weaponCount)
+        public static string GetWeaponNameAndStats(this IWeapon weapon, int weaponCount, bool includeRange = true)
         {
-            return $"{weaponCount}x {weapon.GetWeaponNameAndStats()}";
+            return $"{weaponCount}x {weapon.GetWeaponNameAndStats(includeRange)}";
         }
     }
 

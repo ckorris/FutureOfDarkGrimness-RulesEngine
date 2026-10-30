@@ -309,7 +309,9 @@ namespace FDG.Stages
         /// </summary>
         private static string BuildUniqueLabel(Weapon weapon, int count, HashSet<string> usedLabels)
         {
-            string label = weapon.GetWeaponNameAndStats(count);
+            // #424: the MELEE line - an Assault pistol is swung here, so its 12" is not part of this pick (the
+            // shoot panel prints it). Its attacks, AP and rules are the same weapon's, and so is the object.
+            string label = weapon.GetWeaponNameAndStats(count, includeRange: false);
             if (usedLabels.Add(label)) return label;
 
             for (int suffix = 2; ; suffix++)

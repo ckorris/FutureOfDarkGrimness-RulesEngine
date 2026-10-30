@@ -239,7 +239,10 @@ namespace FDG
 
         // #197 Strafing: "this weapon may only be used in this way" - a strafe weapon is excluded from BOTH
         // attack pools. The melee exclusion is the one that bites: every corpus strafe weapon has range 0,
-        // and IsMelee() is defined as "range 0", so a bomb rack would otherwise be swung in close combat.
+        // and IsMelee() is "range 0 or grants melee use", so a bomb rack would otherwise be swung in close combat.
+        // #424 Assault: one weapon can be in BOTH pools - the same Weapon object, with the same attacks, AP and
+        // rules, is fired by the shooting flow and swung by the melee flow. Nothing here tests the range directly;
+        // IWeaponExtensions.IsMelee / IsRanged is the one classification seam.
         public static List<Weapon> GetMeleeWeapons(this IUnit unit)
         {
             return unit.AllWeapons(u => u.IsMelee() && !Rules.Dispatch.StrafingRules.IsStrafeOnly(u));

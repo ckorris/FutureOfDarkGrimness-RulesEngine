@@ -372,7 +372,7 @@ public static class RuleFireLint
             EHookID.Morale_OnMoraleTestComplete =>
                 op is RuleOperation.ApplyReroll { Roll: ERollKind.Morale } or RuleOperation.PassMoraleTest,
 
-            // ReduceImpactDicePerModel folds into the same ChargeImpactHits sink, as a negative dice count.
+            // Brace's CancelImpactDice folds into the same ChargeImpactHits sink, as a negative dice count.
             // #197 P10: Ravage queues InvokeDealAutoWounds here, rolled by ResolveRavageWoundsStage.
             EHookID.Melee_OnChargeContact =>
                 op is RuleOperation.ChargeImpactHits or RuleOperation.InvokeDealAutoWounds,
@@ -528,6 +528,11 @@ public static class RuleFireLint
                 break;
             case Condition.TokenPresent token when positive:
                 SeedTokens(world.Bearer, token.TType, token.MinCount);
+                break;
+            case Condition.CountsAsFatiguedInMelee when positive:
+                // #422: no corpus rule fires only WHILE Fatigued (Impact/Counter/Brace gate on the negation,
+                // which the default empty state satisfies), but a positive leaf must still be reachable.
+                SeedTokens(world.Bearer, TokenType.Fatigued, 1);
                 break;
         }
     }
@@ -787,6 +792,16 @@ public static class RuleFireLint
         /// <summary> The bearer's carrying weapon for weapon-scoped rules; null for unit rules. </summary>
         public Weapon? Weapon { get; private init; }
 
+        private static readonly IReadOnlySet<EHookID> MeleeHooks = new HashSet<EHookID>
+        {
+            EHookID.Melee_OnChargeContact, EHookID.Melee_OnCounterTrigger,
+            EHookID.Melee_OnMeleeResolution, EHookID.Melee_OnPostMelee,
+        };
+
+        private static bool IsMeleeOnly(SpecialRuleDefinition definition) =>
+            definition.Passive.Count > 0 && definition.Activated.Count == 0
+            && definition.Passive.All(entry => MeleeHooks.Contains(entry.HookID));
+
         public static LintWorld Build(SpecialRuleDefinition definition)
         {
             var store = GameDataStore.GameDataStoreBuilder.GetDefault();
@@ -794,7 +809,11 @@ public static class RuleFireLint
             Weapon? weapon = null;
             if (definition.Scope == ERuleScope.Weapon)
             {
-                weapon = new Weapon("Lint weapon", rangeInches: 24f, attacks: 1, armorPenetration: 0);
+                // #422: a weapon rule that only ever acts in the melee pipeline (Brace counts the models whose
+                // MELEE weapons carry it) is carried on a melee weapon, as in play; everything else keeps the
+                // ranged lint weapon it always had.
+                float range = IsMeleeOnly(definition) ? 0f : 24f;
+                weapon = new Weapon("Lint weapon", rangeInches: range, attacks: 1, armorPenetration: 0);
                 weapon.AttachRuleDefinition(
                     new ResolvedRule(definition.Name, definition, ArgumentsFor(definition)));
             }

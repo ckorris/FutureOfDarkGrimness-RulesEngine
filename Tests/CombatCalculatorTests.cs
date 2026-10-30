@@ -284,6 +284,19 @@ namespace FDG.Tests
             });
         }
 
+        // #422: the calculator runs the real ResolveImpactHitsStage, so a fatigued charger's Impact rolls no
+        // dice there either ("..., unless this unit is Fatigued") and no Impact row appears.
+        [Test]
+        public void AFatiguedImpactCharger_GetsNoImpactRow()
+        {
+            CombatReport tired = CombatCalculator.Run(
+                Army(Unit("Ram", 1, 4, 4, new[] { "Impact(6)" }, Blade(1))),
+                Army(Unit("Targets", 10, 4, 4)),
+                new CombatSituation(Mode: ECombatMode.Melee, AttackerCharging: true, AttackerFatigued: true));
+
+            Assert.That(tired.Volleys.Select(volley => volley.Weapon.Name), Is.EqualTo(new[] { "Blade" }));
+        }
+
         [Test]
         public void WithoutACharge_ThereIsNoImpactRow()
         {

@@ -541,7 +541,7 @@ public sealed class RuleEvaluator
                 }
 
                 invocation ??= new RuleInvocation(context, unit, rule.Arguments, DiceRoller: _diceRoller,
-                    Weapon: carryingWeapon, Definition: rule.Definition);
+                    Weapon: carryingWeapon, Definition: rule.Definition, Attachment: rule);
 
                 if (!entry.Condition.Evaluate(invocation))
                 {

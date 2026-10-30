@@ -11,8 +11,8 @@ namespace FDG.Tests
     // #027 slice 3: weapon-scoped rules on the DEFENDER's weapons, and per-weapon sight queries.
     // Counter is a weapon rule ("strikes first with this weapon when charged"), so the strike-order
     // and charge-contact evaluations hand the defender's melee weapons to the evaluator as carriers
-    // — a Counter spear triggers the swap, a Counter rule on a ranged weapon doesn't, and the
-    // impact-dice reduction counts only the models actually carrying a Counter weapon.
+    // — a Counter spear triggers the swap, a Counter rule on a ranged weapon doesn't. Since #422 (3.6)
+    // the impact-dice reduction is Brace(X)'s, counting only the models actually carrying a Brace weapon.
     // SightRuleQueries now evaluates the queried weapon's own rules, so an Indirect mortar reports
     // LoS-ignore while the same unit's rifle doesn't.
     [TestFixture]
@@ -58,17 +58,41 @@ namespace FDG.Tests
                 "Counter on a ranged weapon is not in melee scope — no strike-first.");
         }
 
+        // #422: 3.6 moved the impact-dice reduction off Counter and onto Brace(X), so a Counter spear emits
+        // nothing at charge contact any more...
         [Test]
-        public void CounterImpactReduction_CountsOnlyModelsCarryingACounterWeapon()
+        public void CounterWeapon_NoLongerReducesImpactDice()
         {
             DataBinding<UnitData> charger = MakeUnit(MakeBlade());
 
             Weapon counterSpear = MakeBlade("Spear");
             counterSpear.AttachRuleDefinition(new ResolvedRule("Counter", CoreRuleCatalog.Counter));
-
-            // 3 models: only the first carries the Counter spear; the other two have plain blades.
             DataBinding<UnitData> defender = MakeUnitPerModelWeapons(
-                new[] { counterSpear }, new[] { MakeBlade() }, new[] { MakeBlade() });
+                new[] { counterSpear }, new[] { counterSpear }, new[] { MakeBlade() });
+
+            var evaluator = new RuleEvaluator(new FixedDiceRoller(4));
+            IReadOnlyList<RuleOperation> operations = evaluator.EvaluateAll(
+                new ChargeContactContext(charger.GetValue(), defender.GetValue()),
+                DetermineStrikeOrderStage.SubjectWithMeleeWeapons(defender.GetValue()));
+
+            Assert.That(operations.OfType<RuleOperation.ChargeImpactHits>(), Is.Empty,
+                "Counter only strikes first in 3.6 - it cancels no impact dice.");
+        }
+
+        // ...while a Brace(1) spear does, counting only the models actually carrying one (the facet's old
+        // weapon-scope semantics, now Brace's).
+        [Test]
+        public void BraceImpactReduction_CountsOnlyModelsCarryingABraceWeapon()
+        {
+            DataBinding<UnitData> charger = MakeUnit(MakeBlade());
+
+            Weapon braceSpear = MakeBlade("Spear");
+            braceSpear.AttachRuleDefinition(new ResolvedRule("Brace", CoreRuleCatalog.Brace,
+                new RuleArgument[] { new RuleArgument.Int(1) }));
+
+            // 3 models: only the first carries the Brace spear; the other two have plain blades.
+            DataBinding<UnitData> defender = MakeUnitPerModelWeapons(
+                new[] { braceSpear }, new[] { MakeBlade() }, new[] { MakeBlade() });
 
             var evaluator = new RuleEvaluator(new FixedDiceRoller(4));
             IReadOnlyList<RuleOperation> operations = evaluator.EvaluateAll(
@@ -78,7 +102,7 @@ namespace FDG.Tests
             RuleOperation.ChargeImpactHits reduction =
                 operations.OfType<RuleOperation.ChargeImpactHits>().Single();
             Assert.That(reduction.DiceCount, Is.EqualTo(-1),
-                "only the one model carrying the Counter spear reduces the charger's impact dice.");
+                "only the one model carrying the Brace(1) spear reduces the charger's impact dice.");
         }
 
         [Test]

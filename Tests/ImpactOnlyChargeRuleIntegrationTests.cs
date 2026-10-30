@@ -69,10 +69,11 @@ namespace FDG.Tests
         [Test]
         public void ADefensiveChargeContactRule_DoesNotLetItsBearerCharge()
         {
-            // Counter also hooks Melee_OnChargeContact - but at the Subject seat, because reducing a
+            // Brace also hooks Melee_OnChargeContact - but at the Subject seat, because reducing a
             // charger's impact dice is something you do when CHARGED. It must not read as a reason to charge.
+            // (#422: 3.5 Counter carried this entry; 3.6 moved it to Brace(X).)
             DataBinding<UnitData> unit = MakeUnit(RangedWeapon, new Position(10f, 0f));
-            Attach(unit, CoreRuleCatalog.Counter);
+            Attach(unit, CoreRuleCatalog.Brace, new RuleArgument.Int(1));
 
             Assert.That(ChargeContactRules.ActsOnChargeContact(unit.GetValue()), Is.False,
                 "a Subject-seat entry at the same hook is defensive - it is not a reason to charge.");

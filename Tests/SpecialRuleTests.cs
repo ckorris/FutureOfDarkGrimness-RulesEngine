@@ -963,9 +963,8 @@ namespace FDG.Tests
                 op => op.Unit == attacker && op.TokenToGrant.Type == usedMarker);
         }
 
-        // Counter (core) — a charged bearer strikes first. The companion facet (the
-        // charger loses 1 Impact roll per Counter model) is an Impact-count modifier
-        // added when that interaction is modelled.
+        // Counter (core) — a charged bearer strikes first. (3.5's companion facet, the charger
+        // losing Impact rolls, is Brace(X) in 3.6 - #422, BraceRuleIntegrationTests.)
         [Test]
         public void Counter_WhenCharged_StrikesFirst()
         {

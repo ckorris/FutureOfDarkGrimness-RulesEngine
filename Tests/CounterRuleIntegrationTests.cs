@@ -2,6 +2,8 @@ using System.Linq;
 using FDG.Data;
 using FDG.Presentation.Beats;
 using FDG.Rules.Dispatch;
+using FDG.Rules.Foundation;
+using FDG.Rules.Tokens;
 using FDG.Stages;
 using NUnit.Framework;
 
@@ -13,6 +15,9 @@ namespace FDG.Tests
     // first swinger and the charger becomes the strike-backer. The entire downstream swing/strike-back flow
     // keys off AttackingUnit/DefendingUnit, so the role swap IS "the charged unit strikes first". It also
     // announces the strike-first with a BannerBeat (captured here via a RecordingPresenter).
+    // #422: the 3.6 Fatigue clause ("unless this unit is Fatigued") is pinned here; Counter's 3.5 impact
+    // facet is gone (now Brace(X)) - see ImpactRuleIntegrationTests. Counter-Attack (dropped by 3.6) and
+    // its test were removed with the catalog entry.
     [TestFixture]
     public class CounterRuleIntegrationTests
     {
@@ -83,22 +88,57 @@ namespace FDG.Tests
                 "the swap is suppressed, so nothing is announced (the banner is gated on the actual strike-first).");
         }
 
-        // Counter-Attack is Counter's strikes-first facet alone (no impact-dice reduction), so a charged
-        // Counter-Attack unit gets the same role swap — it swings first.
+        // #422 - Core Rules v3.6.0: "May strike first with this weapon when charged, unless this unit is
+        // Fatigued." A defender that already fought this round (Fatigued) keeps the normal order: the charger
+        // swings first and the defender is offered the strike-back, with no banner.
         [Test]
-        public async Task ChargedCounterAttackUnit_StrikesFirst_RolesSwapped()
+        public async Task FatiguedCounterDefender_DoesNotStrikeFirst()
         {
             DataBinding<UnitData> charger = MakeUnit(modelCount: 3);
             DataBinding<UnitData> defender = MakeUnit(modelCount: 5);
-            defender.GetValue().AttachRuleDefinition(new ResolvedRule("Counter-Attack", CoreRuleCatalog.CounterAttack));
+            AttachCounter(defender);
+            FatigueUtilities.ApplyFatigued(defender.GetValue());
+
+            var context = await RunStage(charger, defender);
+
+            Assert.That(context.AttackingUnit.GetValue(), Is.SameAs(charger.GetValue()),
+                "a Fatigued Counter unit may not strike first - the charger keeps the first swing.");
+            Assert.That(context.DefendingUnit.GetValue(), Is.SameAs(defender.GetValue()));
+            Assert.That(StrikeFirstBanner(), Is.Null, "no strike-first happened, so nothing is announced.");
+        }
+
+        // Shaken always counts as Fatigued in melee (#089), and the gate is the shared predicate
+        // (FatigueUtilities.CountsAsFatiguedInMelee), so a Shaken Counter unit loses the strike-first too.
+        [Test]
+        public async Task ShakenCounterDefender_DoesNotStrikeFirst()
+        {
+            DataBinding<UnitData> charger = MakeUnit(modelCount: 3);
+            DataBinding<UnitData> defender = MakeUnit(modelCount: 5);
+            AttachCounter(defender);
+            defender.GetValue().Tokens.AddToken(new Token(TokenType.Shaken, 1, new TokenClearTrigger.ManualOnly()));
+
+            var context = await RunStage(charger, defender);
+
+            Assert.That(context.AttackingUnit.GetValue(), Is.SameAs(charger.GetValue()),
+                "Shaken counts as Fatigued in melee, so Counter's strike-first is off.");
+            Assert.That(StrikeFirstBanner(), Is.Null);
+        }
+
+        // "unless THIS unit is Fatigued": the gate reads the countering unit, never the charger. A charger
+        // that is itself Fatigued (it fought earlier this round) is still countered by a fresh defender.
+        [Test]
+        public async Task FatiguedCharger_DoesNotStopAFreshDefendersCounter()
+        {
+            DataBinding<UnitData> charger = MakeUnit(modelCount: 3);
+            DataBinding<UnitData> defender = MakeUnit(modelCount: 5);
+            AttachCounter(defender);
+            FatigueUtilities.ApplyFatigued(charger.GetValue());
 
             var context = await RunStage(charger, defender);
 
             Assert.That(context.AttackingUnit.GetValue(), Is.SameAs(defender.GetValue()),
-                "Counter-Attack: the charged unit strikes first via the same role swap as Counter.");
-            Assert.That(context.DefendingUnit.GetValue(), Is.SameAs(charger.GetValue()),
-                "the charger becomes the defender, offered the strike-back.");
-            Assert.That(StrikeFirstBanner(), Is.Not.Null, "Counter-Attack also announces the strike-first with a banner.");
+                "the fresh Counter unit still swings first - only its own fatigue switches Counter off.");
+            Assert.That(StrikeFirstBanner(), Is.Not.Null);
         }
 
         private async Task<CombatActionContext> RunStage(DataBinding<UnitData> charger, DataBinding<UnitData> defender)

@@ -14,7 +14,11 @@ namespace FDG.Rules.Definitions;
 /// invocation. <see cref="Weapon"/> is the carrying weapon when the rule is
 /// weapon-attached (#027) — null for unit-attached rules. <see cref="Definition"/> is
 /// the rule definition being fired, for the rare effect that must reason about its own
-/// rule's identity (Counter counting "models with Counter").
+/// rule's identity (Ravage and Brace counting "models with this rule"). <see cref="Attachment"/> is
+/// the exact attachment firing - the evaluator's dedup unit - for an effect that must count the models
+/// carrying THIS copy of an (X) rule rather than every copy (#422 Brace: one shared attachment on a
+/// fresh army's weapons, one per weapon after a resume rehydrates them). Null off the passive
+/// dispatch path (activated abilities, hand-built invocations).
 /// </summary>
 public sealed record RuleInvocation(
     IHookContext? Hook,
@@ -23,7 +27,8 @@ public sealed record RuleInvocation(
     IUnit? Target = null,
     IDiceRoller? DiceRoller = null,
     IWeapon? Weapon = null,
-    SpecialRuleDefinition? Definition = null)
+    SpecialRuleDefinition? Definition = null,
+    Dispatch.ResolvedRule? Attachment = null)
 {
     /// <summary>
     /// The unit an effect lands on: the explicit <see cref="Target"/> for activated

@@ -240,14 +240,16 @@ public enum EHookID
 
     /// <summary>
     /// The charging unit completes its move into combat, before any strikes. Trigger
-    /// for Furious, Thrust, Impact bonuses and Counter resolution.
-    /// Context: attacker, defender, who-charged.
+    /// for the charger's Impact dice (Actor), the charged unit's Brace reduction (Subject,
+    /// #422) and Ravage.
+    /// Context: attacker, defender.
     /// </summary>
     Melee_OnChargeContact = 100,
 
     /// <summary>
-    /// The defender has Counter and strikes first. Fires before the normal charging
-    /// strikes resolve.
+    /// Strike order: the defender's Counter (Subject, unless it counts as Fatigued, #422)
+    /// and the charger's Unwieldy (Actor) swap who swings first. Fires after the impact
+    /// hits and before the normal charging strikes resolve.
     /// Context: attacker, defender.
     /// </summary>
     Melee_OnCounterTrigger = 101,

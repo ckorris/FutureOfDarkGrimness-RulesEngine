@@ -173,7 +173,7 @@ namespace FDG.Tests
             yield return Case(new RuleOperation.ChargeImpactHits(3, ArmorPenetration: 1),
                 "rolled 3 impact dice on the charge at AP(1)");
             yield return Case(new RuleOperation.ChargeImpactHits(1), "rolled 1 impact die on the charge");
-            // Counter cancels a charger's Impact dice through the same op, with a negative count.
+            // Brace cancels a charger's Impact dice through the same op, with a negative count (#422).
             yield return Case(new RuleOperation.ChargeImpactHits(-1),
                 "cancelled 1 impact die from the charge");
             yield return Case(new RuleOperation.ChargeImpactHits(-3),

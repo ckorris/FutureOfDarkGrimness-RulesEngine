@@ -799,9 +799,9 @@ public abstract record RuleOperation
 
         public override string Describe()
         {
-            // Counter emits a NEGATIVE count to cancel a charger's Impact dice - both fold into the one
-            // sink, so ResolveImpactHitsStage rolls the net. The old wording only fit the adding half and
-            // narrated Counter as "rolled -1 impact dice on the charge".
+            // Brace (3.5: Counter) emits a NEGATIVE count to cancel a charger's Impact dice - both fold into
+            // the one sink, so ResolveImpactHitsStage rolls the net. The old wording only fit the adding half
+            // and narrated the canceller as "rolled -1 impact dice on the charge".
             //
             // Not RollTags.Count: it pluralizes by appending "s", and "dice" has no regular plural.
             string dice = DiceTally(Math.Abs(DiceCount), "impact");

@@ -78,7 +78,8 @@ public sealed class RuleValidator
     /// <summary>
     /// #267 — the AUTHORING check: everything <see cref="Validate"/> covers, plus the whole-unit-ability
     /// ownership gate (<see cref="CheckUnitWideSelfEffectGate"/>) and, since #428, a refusal of the legacy
-    /// <c>allModelsHaveThisRule</c> kind (<see cref="CheckNoLegacyAllModelsKind"/>).
+    /// <c>allModelsHaveThisRule</c> kind (<see cref="CheckNoLegacyAllModelsKind"/>), and since #422 of the
+    /// legacy <c>reduceImpactDicePerModel</c> effect (<see cref="CheckNoLegacyImpactReduction"/>).
     ///
     /// <para>Deliberately separate from <see cref="Validate"/>, which is the army-LOAD gate and hard-fails
     /// the whole load. Supplement definitions travel inside saved <c>.fdgarmy</c> files, so folding the new
@@ -96,6 +97,7 @@ public sealed class RuleValidator
             CheckUnitWideSelfEffectGate(rule, entry.HookID, entry.Effect, entry.Condition,
                 targetsSelf: true, CONDITION_MEMBER_NAME, violations);
             CheckNoLegacyAllModelsKind(rule, entry.HookID, entry.Condition, CONDITION_MEMBER_NAME, violations);
+            CheckNoLegacyImpactReduction(rule, entry.HookID, entry.Effect, EFFECT_MEMBER_NAME, violations);
         }
 
         foreach (ActivatedAbility ability in rule.Activated)
@@ -105,6 +107,8 @@ public sealed class RuleValidator
                 AVAILABLE_WHEN_MEMBER_NAME, violations);
             CheckNoLegacyAllModelsKind(rule, ability.TriggerHook, ability.AvailableWhen,
                 AVAILABLE_WHEN_MEMBER_NAME, violations);
+            CheckNoLegacyImpactReduction(rule, ability.TriggerHook, ability.Effect, EFFECT_MEMBER_NAME,
+                violations);
         }
 
         return violations;
@@ -183,6 +187,23 @@ public sealed class RuleValidator
             "uses the legacy 'allModelsHaveThisRule' condition kind, which OPR 3.6 data reads as " +
             "'mostModelsHaveThisRule' - write 'mostModelsHaveThisRule', or 'everyModelHasThisRule' if the 3.6 " +
             "rule text still says 'all models'"));
+    }
+
+    // #422 — 3.5 Counter's impact facet ("reduceImpactDicePerModel") loads, as a no-op, because old army files
+    // and the not-yet-rebaked books embed it in "Counter in Melee". 3.6 moved that facet to Brace(X), so new
+    // data must say cancelImpactDice under a Brace rule instead. Authoring-only, like the check above.
+    private static void CheckNoLegacyImpactReduction(SpecialRuleDefinition rule, EHookID hook, Effect effect,
+        string member, List<RuleViolation> violations)
+    {
+        if (effect is not Effect.LegacyReduceImpactDicePerModel)
+        {
+            return;
+        }
+
+        violations.Add(new RuleViolation(rule.Name, hook, member, MissingCapability: null,
+            "uses the legacy 'reduceImpactDicePerModel' effect, 3.5 Counter's impact facet, which does nothing " +
+            "since OPR 3.6 - Counter only strikes first now; author the reduction as Brace(X) " +
+            "('cancelImpactDice')"));
     }
 
     private static bool ContainsLegacyAllModelsKind(Condition condition) => condition switch

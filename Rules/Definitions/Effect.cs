@@ -57,7 +57,10 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(SetDefense), "setDefense")]
 [JsonDerivedType(typeof(MultiplyHits), "multiplyHits")]
 [JsonDerivedType(typeof(ChargeImpactHits), "chargeImpactHits")]
-[JsonDerivedType(typeof(ReduceImpactDicePerModel), "reduceImpactDicePerModel")]
+// #422: 3.5 Counter's impact facet. The kind still parses (old army files and not-yet-rebaked books embed it)
+// and does nothing - see LegacyReduceImpactDicePerModel.
+[JsonDerivedType(typeof(LegacyReduceImpactDicePerModel), "reduceImpactDicePerModel")]
+[JsonDerivedType(typeof(CancelImpactDice), "cancelImpactDice")]
 [JsonDerivedType(typeof(ExtraMeleeWoundCount), "extraMeleeWoundCount")]
 [JsonDerivedType(typeof(StrikeFirst), "strikeFirst")]
 [JsonDerivedType(typeof(StrikeLast), "strikeLast")]
@@ -472,7 +475,7 @@ public abstract record Effect
     ///
     /// <see cref="DiceCountPerModel"/> is the rule's per-model X (an <see cref="ValueSource.Arg"/> for the
     /// numeric rating); the effect multiplies it by the number of living models in the bearer's unit that
-    /// carry this rule (weapon-aware, mirroring <see cref="ReduceImpactDicePerModel"/>), because the source
+    /// carry this rule (weapon-aware, like <see cref="CancelImpactDice"/>), because the source
     /// text is per model ("when it is THIS MODEL's turn to attack, roll X dice"). There is no output
     /// attribution to solve — the wounds land on the enemy, not a specific attacker die — so a single pool
     /// summed across carriers is exact.
@@ -487,8 +490,8 @@ public abstract record Effect
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             // Per-model X: multiply the rating by the living models that actually carry this rule. Weapon
-            // scope counts the models wielding the weapon; unit scope counts every living model. Mirrors
-            // ReduceImpactDicePerModel so a weapon-scoped Ravage (e.g. "Combat Scythes (Ravage(3))") scales
+            // scope counts the models wielding the weapon; unit scope counts every living model. Like
+            // CancelImpactDice (Brace), so a weapon-scoped Ravage (e.g. "Combat Scythes (Ravage(3))") scales
             // by the scythe-bearers, while a monster's unit-scoped Ravage scales by 1.
             int carriers = ruleInvocation.Weapon == null || ruleInvocation.Definition == null
                 ? ruleInvocation.Bearer.Models.Count(m => m.GetIsAlive())
@@ -988,27 +991,67 @@ public abstract record Effect
     }
 
     /// <summary>
-    /// Reduces the charger's impact dice by one per living model of the bearer's unit.
-    /// Covers Counter's companion facet — "the charging unit rolls -1 Impact die per model in the
-    /// Counter unit." A defender-seat effect at charge contact: it resolves the bearer's living-model
-    /// count and emits a negative <see cref="RuleOperation.ChargeImpactHits"/> that folds into the same
-    /// <see cref="IImpactSink"/> as the attacker's Impact(X), so the stage rolls the net dice. A
-    /// "Counter model" is one carrying a weapon with this rule (#027 weapon scope); the unit-attached
-    /// fallback counts every living model, preserving the pre-weapon-scope behavior.
+    /// #422 Brace(X): "Enemies charging this unit get -X total Impact rolls, unless this unit is Fatigued"
+    /// (Core Rules v3.6.0). A defender-seat effect at charge contact: it resolves to
+    /// <see cref="DicePerModel"/> x the living models carrying this rule and emits that as a NEGATIVE
+    /// <see cref="RuleOperation.ChargeImpactHits"/>, which folds into the same <see cref="IImpactSink"/> as the
+    /// charger's Impact(X), so <c>ResolveImpactHitsStage</c> rolls the net dice and skips at zero or below (the
+    /// floor). The Fatigue clause is the entry's condition (<see cref="Condition.CountsAsFatiguedInMelee"/>),
+    /// not this effect's business.
+    /// <para>
+    /// Who counts. Brace is a weapon rule (AoF spears carry Brace(1); "Brace in Melee" puts Brace(1) on a
+    /// model's weapons), so a model counts when one of its MELEE weapons carries the rule; attached to the unit
+    /// itself (no carrying weapon) every living model counts. "Total" is read as the SUM over those models -
+    /// Brace(2) on three models cancels 6 dice (#422 decision). An (X) rule fires once per distinct
+    /// attachment (the evaluator's dedup), so with an argument it counts only the models carrying THIS
+    /// attachment (<see cref="RuleInvocation.Attachment"/>): a fresh army shares one attachment across a weapon
+    /// entry's copies and fires once, while a resumed game rehydrates one attachment per weapon and fires once
+    /// per weapon - counting every carrier on every firing would multiply the reduction there. An
+    /// argument-less copy (Brace in Melee's literal 1) fires once per bearer whatever the attachment count,
+    /// so it counts every carrier of the definition.
+    /// </para>
     /// </summary>
-    public sealed record ReduceImpactDicePerModel : Effect
+    public sealed record CancelImpactDice(ValueSource DicePerModel) : Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
-            int counterModels = ruleInvocation.Weapon == null || ruleInvocation.Definition == null
-                ? ruleInvocation.Bearer.Models.Count(m => m.GetIsAlive())
-                : ruleInvocation.Bearer.Models.Count(m => m.GetIsAlive()
-                    && m.Weapons.Any(w => w.RuleDefinitions.Any(r => r.Definition == ruleInvocation.Definition)));
-
-            if (counterModels > 0)
+            int carriers = CountCarriers(ruleInvocation);
+            int dice = DicePerModel.Resolve(ruleInvocation) * carriers;
+            if (dice > 0)
             {
-                operations.Add(new RuleOperation.ChargeImpactHits(-counterModels));
+                operations.Add(new RuleOperation.ChargeImpactHits(-dice));
             }
+        }
+
+        private static int CountCarriers(RuleInvocation invocation)
+        {
+            if (invocation.Weapon == null || invocation.Definition == null)
+            {
+                return invocation.Bearer.Models.Count(m => m.GetIsAlive());
+            }
+
+            // Melee weapons only: Brace is "on its weapons in melee", and a unit-level mention is re-homed onto
+            // EVERY weapon, so a model whose only Brace copy sits on its rifle brings nothing to the melee.
+            Dispatch.ResolvedRule? attachment = invocation.Arguments.Count > 0 ? invocation.Attachment : null;
+            return invocation.Bearer.Models.Count(m => m.GetIsAlive()
+                && m.Weapons.Any(w => w.IsMelee() && w.RuleDefinitions.Any(r => attachment != null
+                    ? r.Equals(attachment)
+                    : r.Definition == invocation.Definition)));
+        }
+    }
+
+    /// <summary>
+    /// 3.5 Counter's companion facet ("the charging unit rolls -1 Impact die per model with Counter"), which
+    /// Core Rules v3.6.0 dropped from Counter and re-homed as <see cref="CancelImpactDice"/> (Brace) (#422). The
+    /// JSON kind <c>reduceImpactDicePerModel</c> still parses because pre-3.6 army files and the bundled books
+    /// until the #438 re-bake embed "Counter in Melee" with it, and those must keep loading (plan rule 6).
+    /// It emits nothing, so they get 3.6 semantics; <c>RuleValidator.ValidateAuthoring</c> refuses it in new
+    /// data.
+    /// </summary>
+    public sealed record LegacyReduceImpactDicePerModel : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
         }
     }
 
@@ -1025,10 +1068,10 @@ public abstract record Effect
     }
 
     /// <summary>
-    /// The bearer strikes before the charging unit resolves its strikes. Covers
-    /// Counter ("Strikes first with this weapon when charged"). The companion facet
-    /// — the charger losing 1 Impact roll per Counter model — is a separate
-    /// Impact-count modifier added when that interaction is modelled.
+    /// The bearer strikes before the charging unit resolves its strikes. Covers Counter
+    /// ("May strike first with this weapon when charged, unless this unit is Fatigued" - the
+    /// Fatigue clause is the entry's condition, #422). 3.5 Counter's companion facet, the
+    /// charger losing Impact rolls, became Brace(X) in 3.6 (<see cref="CancelImpactDice"/>).
     /// </summary>
     public sealed record StrikeFirst : Effect
     {

@@ -8,7 +8,9 @@ using FDG.Rules.Foundation;
 namespace FDG.Stages
 {
     /// <summary>
-    /// #042 Counter: a charged unit with Counter strikes FIRST, before the charging unit's strikes.
+    /// #042 Counter: a charged unit with Counter strikes FIRST, before the charging unit's strikes -
+    /// "unless this unit is Fatigued" (Core Rules v3.6.0, #422: Counter's entry gates on
+    /// Condition.CountsAsFatiguedInMelee, so a Fatigued or Shaken defender queues no StrikeFirst).
     /// Fires the OnCounterTrigger "when" for the defender (Subject seat); if a StrikeFirst op is queued,
     /// swaps the attacker/defender roles for the rest of the melee. The existing flow then runs
     /// unchanged with roles reversed — the Counter unit takes the first swing, and the charger is offered
@@ -72,9 +74,9 @@ namespace FDG.Stages
         /// The defender as a Subject participant once per living-model melee weapon (so
         /// weapon-scoped Counter fires), plus once weaponless (so unit-scoped defensive
         /// rules fire even with no melee weapons). #183: the weaponless participant carries the defender's
-        /// living models under AnyOwner, so a joined hero's relocated unit-scoped Counter-Attack becomes
+        /// living models under AnyOwner, so a joined hero's relocated unit-scoped defensive rules become
         /// visible (gated by MostModelsHaveThisRule); the weapon carriers stay model-less (weapon-scoped
-        /// Counter rides the weapon, not a model).
+        /// Counter and Brace ride the weapon, not a model). Shared with ResolveImpactHitsStage.
         /// </summary>
         internal static RuleParticipant[] SubjectWithMeleeWeapons(IUnit defender)
         {

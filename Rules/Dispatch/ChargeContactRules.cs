@@ -13,15 +13,17 @@ namespace FDG.Rules.Dispatch
     /// contact by carrying a passive <see cref="HookEntry"/> at <see cref="EHookID.Melee_OnChargeContact"/>
     /// at the <see cref="ERuleSeat.Actor"/> seat, and that declaration is exactly what
     /// <c>ResolveImpactHitsStage</c> dispatches. So any rule authored at that hook in future enables the
-    /// charge with no engine change, and core Counter is excluded automatically — its charge-contact entry
+    /// charge with no engine change, and core Brace is excluded automatically — its charge-contact entry
     /// sits at the <see cref="ERuleSeat.Subject"/> seat, because reducing a charger's impact dice is
-    /// something you do when charged, not a reason you may charge.</para>
+    /// something you do when charged, not a reason you may charge (3.5 Counter carried that entry until
+    /// #422).</para>
     ///
     /// <para>A plain read over the carriers' attached rules, like <see cref="AircraftRules"/> — these gates
     /// run in stage and AI code with no <see cref="RuleEvaluator"/> in scope. It deliberately does NOT
     /// evaluate conditions: the gate runs before a defender is picked, and a condition that reads the
     /// target cannot be answered yet. A charge whose rule then declines to fire is a charge that deals no
-    /// impact hits, which the melee flow already handles.</para>
+    /// impact hits, which the melee flow already handles - including Impact's own 3.6 Fatigue clause (#422):
+    /// a Fatigued impact-only unit may still charge, it just rolls no impact dice.</para>
     /// </summary>
     public static class ChargeContactRules
     {

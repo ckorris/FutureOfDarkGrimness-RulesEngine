@@ -202,7 +202,7 @@ namespace FDG.Ai.Tactician
 
         /// <summary>
         /// Expected result of a full melee exchange, attacker charging the defender. Sequencing mirrors
-        /// MeleeStage: impact hits first, then Counter's strike-first swap (which also strips the
+        /// MeleeStage: impact hits first (net of Brace), then Counter's strike-first swap (which also strips the
         /// charge from the charger's swings - the engine's charger loses IsCharging after the swap),
         /// then each side swings every melee weapon batch, the side striking second doing so with the
         /// models the first striker's expected kills removed.
@@ -217,8 +217,10 @@ namespace FDG.Ai.Tactician
             UnitData atk = attacker.GetValue();
             UnitData def = defender.GetValue();
 
-            // --- ResolveImpactHitsStage mirror: charger's Impact(X) minus Counter's reduction, each
-            // die a hit on 2+, resolved as a synthetic AP-0 attack before any swing.
+            // --- ResolveImpactHitsStage mirror: charger's Impact(X) minus the defender's Brace(X), each
+            // die a hit on 2+, resolved as a synthetic AP-0 attack before any swing. Both rules' 3.6 Fatigue
+            // clauses (#422) are entry conditions, so the shared evaluation below already drops a Fatigued
+            // charger's dice and a Fatigued defender's Brace - nothing to mirror by hand.
             float impactWounds = 0f;
             // #191 search perf pass 5: the defender's melee participants once (two dispatches read them).
             RuleParticipant[] defenderMelee = DetermineStrikeOrderStage.SubjectWithMeleeWeapons(def);
@@ -242,7 +244,8 @@ namespace FDG.Ai.Tactician
             }
 
             // --- DetermineStrikeOrderStage mirror: a Counter defender with a usable melee weapon takes
-            // the first swing, and the charge is spent - nobody counts as charging from here on.
+            // the first swing, and the charge is spent - nobody counts as charging from here on. A Fatigued
+            // (or Shaken) defender's Counter fails its own condition in this evaluation (#422).
             IReadOnlyList<RuleOperation> counterOps = Ops(evaluator.EvaluateAllNamed(
                 new CounterTriggerContext(atk, def), defenderMelee));
             bool anyStrikeFirst = false;

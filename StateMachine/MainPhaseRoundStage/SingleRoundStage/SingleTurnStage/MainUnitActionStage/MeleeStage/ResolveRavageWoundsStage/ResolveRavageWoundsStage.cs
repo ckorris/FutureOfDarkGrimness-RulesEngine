@@ -30,7 +30,7 @@ namespace FDG.Stages
     ///
     /// Note this is a second live evaluation of <see cref="EHookID.Melee_OnChargeContact"/> in one melee,
     /// and <c>EvaluateAll</c> spends one-shot (NextTrigger) grants. Harmless for every rule at the hook
-    /// today (Impact, Heavy Impact, Counter's reduction and Ravage are all permanent, ThisAttack entries),
+    /// today (Impact, Heavy Impact, Brace and Ravage are all permanent, ThisAttack entries),
     /// but a future NextTrigger grant of Impact would be consumed here without being rolled.
     /// </summary>
     public class ResolveRavageWoundsStage : ParentStage<ICombatActionContext, ICombatMetadata>

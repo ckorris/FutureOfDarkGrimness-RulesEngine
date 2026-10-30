@@ -22,10 +22,13 @@ namespace FDG.Stages
 
         /// <summary>
         /// Whether a unit hits only on unmodified 6s in melee: it is Fatigued, or it is Shaken (#089),
-        /// which always counts as fatigued in melee.
+        /// which always counts as fatigued in melee. Since #422 the same predicate also switches off
+        /// Impact, Counter and Brace ("unless this unit is Fatigued"), which rule data reads through
+        /// <see cref="FDG.Rules.Definitions.Condition.CountsAsFatiguedInMelee"/> - this delegates to that
+        /// condition's predicate so the two can never disagree.
         /// </summary>
         public static bool CountsAsFatiguedInMelee(IUnit unit)
-            => unit.Tokens.HasToken(TokenType.Fatigued) || unit.Tokens.HasToken(TokenType.Shaken);
+            => FDG.Rules.Definitions.Condition.CountsAsFatiguedInMelee.Holds(unit);
 
         /// <summary>
         /// #418: whether this attack's natural 6s count as rolls of 6 for special rules (Furious, Surge,

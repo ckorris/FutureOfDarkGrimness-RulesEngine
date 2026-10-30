@@ -45,6 +45,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(StatGreaterOrEqualTo), "statGreaterOrEqualTo")]
 [JsonDerivedType(typeof(TargetMajorityHasTough), "targetMajorityHasTough")]
 [JsonDerivedType(typeof(TokenPresent), "tokenPresent")]
+[JsonDerivedType(typeof(CountsAsFatiguedInMelee), "countsAsFatiguedInMelee")]
 [JsonDerivedType(typeof(And), "and")]
 [JsonDerivedType(typeof(Or), "or")]
 [JsonDerivedType(typeof(Not), "not")]
@@ -392,6 +393,28 @@ public abstract record Condition
         {
             return invocation.Bearer.Tokens.GetTokenCount(TType) >= MinCount;
         }
+    }
+
+    /// <summary>
+    /// #422: true when the bearer counts as Fatigued in melee - it carries the Fatigued token, or it is Shaken,
+    /// which always counts as Fatigued in melee (#089). Core Rules v3.6.0 gives Impact ("..., unless this unit is
+    /// Fatigued"), Counter and Brace the same clause, so each of those entries gates on
+    /// <c>Not(CountsAsFatiguedInMelee)</c>; the supplement copies that "count as" them (Heavy Impact, Counter in
+    /// Melee, Brace in Melee) carry the same gate. Reads the bearer only, so a Subject-seat entry asks about the
+    /// charged unit and an Actor-seat entry about the charger.
+    /// <para>
+    /// <see cref="Holds"/> is THE predicate: <c>FatigueUtilities.CountsAsFatiguedInMelee</c> (the 6+ threshold,
+    /// #418's special-rule sixes, the AI mirrors) delegates to it, so rule data and stage code cannot disagree
+    /// about what Fatigued means. It lives here because the Rules layer does not reference the stage layer.
+    /// </para>
+    /// </summary>
+    public sealed record CountsAsFatiguedInMelee : Condition
+    {
+        public override bool Evaluate(RuleInvocation invocation) => Holds(invocation.Bearer);
+
+        /// <summary> Whether <paramref name="unit"/> counts as Fatigued in melee (Fatigued, or Shaken). </summary>
+        public static bool Holds(IUnit unit) =>
+            unit.Tokens.HasToken(TokenType.Fatigued) || unit.Tokens.HasToken(TokenType.Shaken);
     }
 
     /// <summary>

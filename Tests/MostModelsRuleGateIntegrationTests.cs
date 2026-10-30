@@ -236,8 +236,10 @@ namespace FDG.Tests
 
         // ---- The gate governs every Subject-seat effect class, in both directions ------------------------
         // One case per effect class: hit-mod (Evasive), wound-ignore (Protected), save-mod (Shielded),
-        // range-mod (Ranged Shrouding), charge-mod (Melee Shrouding), strike-first (Counter-Attack). Each
-        // asserts on op production, which is non-empty iff the rule's gated entry fired.
+        // range-mod (Ranged Shrouding), charge-mod (Melee Shrouding). Each asserts on op production, which
+        // is non-empty iff the rule's gated entry fired. (The strike-first class was Counter-Attack, the only
+        // unit-scoped StrikeFirst rule; 3.6 dropped it and #422 removed it. Counter is weapon-scoped and so
+        // carries no ownership gate.)
 
         [Test]
         public void Evasive_HitModifier_GateGovernsHostAndHero()
@@ -276,13 +278,6 @@ namespace FDG.Tests
             UnitData charger = MakeUnit(1);
             AssertGate(CoreRuleCatalog.MeleeShrouding,
                 d => new ChargeDeclaredContext(charger, d, BaseDistanceInches: 12f));
-        }
-
-        [Test]
-        public void CounterAttack_StrikeFirst_GateGovernsHostAndHero()
-        {
-            UnitData attacker = MakeUnit(1);
-            AssertGate(CoreRuleCatalog.CounterAttack, d => new CounterTriggerContext(attacker, d));
         }
 
         // --- harness ---

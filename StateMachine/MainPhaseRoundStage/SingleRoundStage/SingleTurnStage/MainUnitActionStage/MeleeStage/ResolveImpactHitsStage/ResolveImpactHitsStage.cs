@@ -16,11 +16,16 @@ namespace FDG.Stages
     /// runs this stage). The impact hits have no weapon — they ride a synthetic AP-0 attack seeded as a
     /// RollToHitResults, then run the existing save→wound sub-pipeline.
     ///
-    /// The charge-contact "when" is evaluated for BOTH combatants: the charger (Actor) emits its Impact(X)
-    /// dice, and the defender (Subject) emits Counter's "-1 impact die per Counter model" reduction — both
-    /// fold into one ImpactSink, so the stage rolls the net dice.
+    /// Core Rules v3.6.0 has Impact roll "before either unit attacks": this stage precedes
+    /// DetermineStrikeOrderStage in MeleeStage, so impact hits land before any swing - a Counter unit's
+    /// first strike included.
     ///
-    /// DEFERRED (Appendix C): the "not fatigued" gate (fatigue is absent), so Impact always rolls.
+    /// The charge-contact "when" is evaluated for BOTH combatants: the charger (Actor) emits its Impact(X)
+    /// dice, and the defender (Subject) emits Brace(X)'s "-X total Impact rolls" (#422; 3.5 had this on
+    /// Counter) — both fold into one ImpactSink, so the stage rolls the net dice and skips at zero or below.
+    /// Both rules' "unless this unit is Fatigued" clauses are their entries' conditions
+    /// (Condition.CountsAsFatiguedInMelee, read on each rule's own bearer), so a Fatigued charger
+    /// contributes no dice and a Fatigued defender cancels none.
     /// </summary>
     public class ResolveImpactHitsStage : ParentStage<ICombatActionContext, ICombatMetadata>
     {
@@ -43,8 +48,8 @@ namespace FDG.Stages
             IUnit attacker = context.AttackingUnit.GetValue();
             IUnit defender = context.DefendingUnit.GetValue();
 
-            // The defender's melee weapons join as carriers so weapon-scoped Counter's
-            // impact-dice reduction fires (#027); the charger's Impact(X) is a unit rule. #183: the
+            // The defender's melee weapons join as carriers so weapon-scoped Brace's impact-dice
+            // reduction fires (#027, #422); the charger's Impact(X) is a unit rule. #183: the
             // Subject participants carry the defender's living models (via SubjectWithMeleeWeapons) so a
             // joined hero's per-model defensive rules at charge-contact are visible.
             var participants = new List<RuleParticipant> { RuleParticipant.Actor(attacker) };
@@ -60,8 +65,9 @@ namespace FDG.Stages
 
             if (impact.TotalDice <= 0)
             {
-                // No Impact rule on the charger, or a Counter defender reduced the dice to zero — skip
-                // straight to the normal melee flow.
+                // No Impact rule on the charger, a Fatigued charger (its Impact's condition failed), or a
+                // Brace defender cancelled the dice down to zero or below — skip straight to the normal
+                // melee flow.
                 await OnImpactResolved.Activate(context);
                 return;
             }

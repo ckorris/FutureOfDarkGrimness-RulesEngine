@@ -436,6 +436,61 @@ namespace FDG.Tests
                 Is.LessThan(without.AttackerAttack.ExpectedWounds));
         }
 
+        // #422 - the AI reads Impact, Brace and Counter through the same evaluation the stages run, so the 3.6
+        // Fatigue clauses and the Counter/Brace split reach it with no hand-written mirror. Pinned anyway:
+        // a regression here would mis-value every charge into (or by) a tired unit.
+
+        [Test]
+        public void EstimateMelee_FatiguedImpactCharger_AddsNoImpactWounds()
+        {
+            var attacker = MakeUnit(2, Blade(), atX: 0f);
+            attacker.GetValue().AttachRuleDefinition(new ResolvedRule("Impact", CoreRuleCatalog.Impact,
+                new RuleArgument[] { new RuleArgument.Int(4) }));
+            FatigueUtilities.ApplyFatigued(attacker.GetValue());
+            var defender = MakeUnit(5, null, atX: 1f);
+
+            MeleeEstimate estimate = CombatMath.EstimateMelee(_ctx.RuleEvaluator, attacker, defender);
+
+            // No impact dice; the fatigued swings hit on 6s only: 2 blades x 2 attacks x 1/6, half saved.
+            float swingWounds = 2f * 2f * (1f / 6f) * 0.5f;
+            Assert.That(estimate.AttackerAttack.ExpectedWounds, Is.EqualTo(swingWounds).Within(0.001f));
+        }
+
+        [Test]
+        public void EstimateMelee_BraceDefender_CancelsImpactDice()
+        {
+            var attacker = MakeUnit(2, Blade(), atX: 0f);
+            attacker.GetValue().AttachRuleDefinition(new ResolvedRule("Impact", CoreRuleCatalog.Impact,
+                new RuleArgument[] { new RuleArgument.Int(4) }));
+            var spear = new Weapon("Spear", rangeInches: 0f, attacks: 0, armorPenetration: 0);
+            spear.AttachRuleDefinition(new ResolvedRule("Brace", CoreRuleCatalog.Brace,
+                new RuleArgument[] { new RuleArgument.Int(1) }));
+            var defender = MakeUnit(3, spear, atX: 1f);
+
+            MeleeEstimate estimate = CombatMath.EstimateMelee(_ctx.RuleEvaluator, attacker, defender);
+
+            // Impact(4) - Brace(1) x 3 spearmen = 1 die at 2+, half saved; swings 2 x 2 at Q4, half saved.
+            float impactWounds = 1f * (5f / 6f) * 0.5f;
+            float swingWounds = 2f * 2f * 0.5f * 0.5f;
+            Assert.That(estimate.AttackerAttack.ExpectedWounds,
+                Is.EqualTo(impactWounds + swingWounds).Within(0.001f));
+        }
+
+        [Test]
+        public void EstimateMelee_FatiguedCounterDefender_DoesNotStrikeFirst()
+        {
+            var attacker = MakeUnit(3, Blade(), atX: 0f);
+            var counterBlade = Blade();
+            counterBlade.AttachRuleDefinition(new ResolvedRule("Counter", CoreRuleCatalog.Counter));
+            var defender = MakeUnit(3, counterBlade, atX: 1f);
+            FatigueUtilities.ApplyFatigued(defender.GetValue());
+
+            MeleeEstimate estimate = CombatMath.EstimateMelee(_ctx.RuleEvaluator, attacker, defender);
+
+            Assert.That(estimate.DefenderStrikesFirst, Is.False,
+                "a Fatigued Counter unit keeps the normal order, in the AI's estimate as in the stage.");
+        }
+
         [Test]
         public void EstimateMelee_Fear_CountsTowardResolutionOnly()
         {

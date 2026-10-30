@@ -24,17 +24,17 @@ public static class CoreRuleCatalog
     {
         Stealth, Artillery, Indirect, Reliable, Fast, VeryFast, Slow, Surge, Relentless, Furious,
         Deadly, Regeneration, Unstoppable, Tough, Rending, Bane, Shred, Vanguard, Scout, Ambush, Thrust,
-        Blast, Takedown, Limited, Impact, Counter, MartialProwess, Strafing, Fear, Fearless, Hero, Transport,
+        Blast, Takedown, Limited, Impact, Counter, Brace, MartialProwess, Strafing, Fear, Fearless, Hero, Transport,
         FuriousBuff, Mend, Immobile, Caster,
         Evasive, MeleeEvasion, Precise, GoodShot,
         Agile, Quick, RapidAdvance, RapidRush, RapidCharge,
-        Lacerate, Crack, CounterAttack,
+        Lacerate, Crack,
         UnstoppableWhenShooting, ShredWhenShooting, BaneWhenShooting,
         Harassing, HitAndRunShooter, HitAndRunFighter, HitAndRun, Guerrilla,
         HarassingBoost, GuerrillaBoost,
         HitAndRunShooterAura, HitAndRunFighterAura, HarassingBoostAura, GuerrillaBoostAura,
         RegenerationAura, FuriousAura, StealthAura, ScoutAura, RelentlessAura, AmbushAura,
-        CounterAttackAura, EvasiveAura, FastAura, FearlessAura, MeleeEvasionAura,
+        EvasiveAura, FastAura, FearlessAura, MeleeEvasionAura,
         RapidAdvanceAura, RapidChargeAura, RapidRushAura,
         BaneWhenShootingAura, ShredWhenShootingAura, UnstoppableWhenShootingAura,
         Courage, UnstoppableInMelee, ShredInMelee, BaneInMelee, RendingInMelee,
@@ -548,23 +548,27 @@ public static class CoreRuleCatalog
         Description: "When charging, +1 to hit and AP(+1) with this weapon in melee.");
 
     /// <summary>
-    /// Impact(X): on charge contact, the charger rolls X dice — each 2+ scores an automatic hit on the
-    /// defender, resolved through save + wound BEFORE the normal melee swings. A passive rule at
+    /// Impact(X), Core Rules v3.6.0: "When charging, before either unit attacks, roll X dice, unless this unit
+    /// is Fatigued. For each 2+ the target takes 1 hit." A passive rule at
     /// <see cref="EHookID.Melee_OnChargeContact"/> that queues <see cref="RuleOperation.ChargeImpactHits"/>;
-    /// ResolveImpactHitsStage rolls the dice and runs the hits through the save→wound sub-pipeline.
-    /// The "not fatigued" gate is deferred (fatigue is absent) — see Appendix C.
+    /// ResolveImpactHitsStage rolls the dice and runs the hits through the save->wound sub-pipeline. "Before
+    /// either unit attacks" is the melee pipeline's order: that stage runs before DetermineStrikeOrderStage, so
+    /// impact hits land before any swing, a Counter swing included. The Fatigue clause (#422) is the condition:
+    /// a charger that counts as Fatigued in melee (Fatigued, or Shaken) rolls no dice. Supplement rules that
+    /// "count as having Impact(X)" (Heavy Impact) carry the same gate.
     /// </summary>
     public static SpecialRuleDefinition Impact { get; } = new SpecialRuleDefinition("Impact",
         new[]
         {
             new HookEntry(EHookID.Melee_OnChargeContact,
-                new Condition.Always(),
+                new Condition.Not(new Condition.CountsAsFatiguedInMelee()),
                 new Effect.ChargeImpactHits(new ValueSource.Arg(0)),
                 ELifetime.ThisAttack),
         },
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Positive,
-        Description: "On charging into contact, rolls bonus dice that score automatic hits before melee swings.");
+        Description: "When charging, before either unit attacks, roll X dice, unless this unit is Fatigued. " +
+            "For each 2+ the target takes 1 hit.");
 
     /// <summary>
     /// Ravage(X): when this unit attacks in melee, each model carrying the rule rolls X dice — every 6+
@@ -588,51 +592,54 @@ public static class CoreRuleCatalog
         Description: "When attacking in melee, rolls dice that deal automatic unsaveable wounds before swings.");
 
     /// <summary>
-    /// Counter: when this unit is charged, it strikes FIRST — before the charging unit's strikes — and
-    /// the charger rolls one fewer Impact die per living model of this unit. Both are defensive (Subject
-    /// seat). StrikeFirst fires at <see cref="EHookID.Melee_OnCounterTrigger"/>; DetermineStrikeOrderStage
-    /// swaps the attacker/defender roles so the existing swing/strike-back flow resolves the Counter unit
-    /// first. The impact reduction fires at <see cref="EHookID.Melee_OnChargeContact"/> (the same when the
-    /// charger's Impact(X) fires), emitting a negative <see cref="RuleOperation.ChargeImpactHits"/> that
-    /// folds into the shared impact-dice sink, so ResolveImpactHitsStage rolls the net count.
+    /// Counter, Core Rules v3.6.0: "May strike first with this weapon when charged, unless this unit is
+    /// Fatigued." Defensive (Subject seat): StrikeFirst fires at <see cref="EHookID.Melee_OnCounterTrigger"/>
+    /// and DetermineStrikeOrderStage swaps the attacker/defender roles, so the existing swing/strike-back flow
+    /// resolves the Counter unit first. Weapon-scoped (#027), so the defender's melee weapons are the carriers;
+    /// named at unit level it is re-homed onto the unit's weapons. The Fatigue clause (#422) is the condition,
+    /// read on the charged unit: a defender that already fought this round (or is Shaken) keeps the normal
+    /// order. 3.5's second facet - the charger rolling one fewer Impact die per Counter model - is gone; 3.6
+    /// re-homed it as <see cref="Brace"/>.
     /// </summary>
     public static SpecialRuleDefinition Counter { get; } = new SpecialRuleDefinition("Counter",
         new[]
         {
             new HookEntry(EHookID.Melee_OnCounterTrigger,
-                new Condition.Always(),
+                new Condition.Not(new Condition.CountsAsFatiguedInMelee()),
                 new Effect.StrikeFirst(),
                 ELifetime.ThisActivation,
-                ERuleSeat.Subject),
-            new HookEntry(EHookID.Melee_OnChargeContact,
-                new Condition.Always(),
-                new Effect.ReduceImpactDicePerModel(),
-                ELifetime.ThisAttack,
                 ERuleSeat.Subject),
         },
         Array.Empty<ActivatedAbility>(),
         ERuleScope.Weapon,
         Valence: EValence.Positive,
-        Description: "When charged, this unit strikes first and the charger rolls one fewer Impact die per living model.");
+        Description: "May strike first with this weapon when charged, unless this unit is Fatigued.");
 
     /// <summary>
-    /// Counter-Attack: this unit strikes first when charged — Counter's strikes-first facet alone, without
-    /// the impact-dice reduction. Fires <see cref="Effect.StrikeFirst"/> at
-    /// <see cref="EHookID.Melee_OnCounterTrigger"/> on the Subject (the charged unit), so
-    /// DetermineStrikeOrderStage swaps it to swing first. Unit-scoped (no per-weapon facet).
+    /// Brace(X), new in Core Rules v3.6.0 (#422): "Enemies charging this unit get -X total Impact rolls,
+    /// unless this unit is Fatigued." Defensive (Subject seat) at <see cref="EHookID.Melee_OnChargeContact"/>,
+    /// the hook the charger's Impact fires at: <see cref="Effect.CancelImpactDice"/> emits a negative
+    /// <see cref="RuleOperation.ChargeImpactHits"/> of X per living model carrying the rule, folded into the
+    /// shared impact sink, so ResolveImpactHitsStage rolls the net (floored at zero). Weapon-scoped like
+    /// <see cref="Counter"/> - AoF spears carry "Counter, Brace(1)" and "Brace in Melee" grants Brace(1) on a
+    /// model's weapons - and, like Counter, a unit-level mention is re-homed onto the weapons. The Fatigue
+    /// clause is the condition, read on the charged unit. It sits at the Subject seat, so it is never a reason
+    /// its bearer may charge (<see cref="ChargeContactRules"/> reads the Actor seat only).
     /// </summary>
-    public static SpecialRuleDefinition CounterAttack { get; } = new SpecialRuleDefinition("Counter-Attack",
+    public static SpecialRuleDefinition Brace { get; } = new SpecialRuleDefinition("Brace",
         new[]
         {
-            new HookEntry(EHookID.Melee_OnCounterTrigger,
-                new Condition.MostModelsHaveThisRule(),
-                new Effect.StrikeFirst(),
-                ELifetime.ThisActivation,
+            new HookEntry(EHookID.Melee_OnChargeContact,
+                new Condition.Not(new Condition.CountsAsFatiguedInMelee()),
+                new Effect.CancelImpactDice(new ValueSource.Arg(0)),
+                ELifetime.ThisAttack,
                 ERuleSeat.Subject),
         },
         Array.Empty<ActivatedAbility>(),
+        ERuleScope.Weapon,
+        EngineArgumentCount: 1,
         Valence: EValence.Positive,
-        Description: "When charged, this unit strikes first.");
+        Description: "Enemies charging this unit get -X total Impact rolls, unless this unit is Fatigued.");
 
     // Melee-resolution (DetermineMeleeWinnerStage) -------------------------------
 
@@ -1736,8 +1743,6 @@ public static class CoreRuleCatalog
     public static SpecialRuleDefinition RelentlessAura { get; } = UnitAura("Relentless Aura", "Relentless");
     /// <summary> Ambush Aura: grants <see cref="Ambush"/> unit-wide. </summary>
     public static SpecialRuleDefinition AmbushAura { get; } = UnitAura("Ambush Aura", "Ambush");
-    /// <summary> Counter-Attack Aura: grants <see cref="CounterAttack"/> unit-wide. </summary>
-    public static SpecialRuleDefinition CounterAttackAura { get; } = UnitAura("Counter-Attack Aura", "Counter-Attack");
     /// <summary> Evasive Aura: grants <see cref="Evasive"/> unit-wide. </summary>
     public static SpecialRuleDefinition EvasiveAura { get; } = UnitAura("Evasive Aura", "Evasive");
     /// <summary> Fast Aura: grants <see cref="Fast"/> unit-wide. </summary>

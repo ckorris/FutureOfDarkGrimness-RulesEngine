@@ -991,7 +991,8 @@ public static class CoreRuleCatalog
             Array.Empty<ActivatedAbility>(),
             ERuleScope.Weapon,
             Valence: EValence.Positive,
-            Description: "In melee, the defender must re-roll unmodified Defense 6s, and the attack ignores Regeneration.");
+            // #435: the 3.6.0 text of the AoF books' "Bane in Melee" (the census changed it; GDF books do not define it).
+            Description: "This model gets Bane on its weapons in melee.");
 
     /// <summary> Rending in melee only: per-hit AP(4) on an unmodified 6 + ignore Regeneration, when in melee. </summary>
     public static SpecialRuleDefinition RendingInMelee { get; } =

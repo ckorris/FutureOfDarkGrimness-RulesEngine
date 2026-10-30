@@ -112,8 +112,32 @@ namespace FDG.Tests
                 new AttackContext(20f, SightFactor: 0f));
 
             Assert.That(blocked.ExpectedWounds, Is.EqualTo(clear.ExpectedWounds).Within(0.0001f),
-                "Indirect ignores line of sight - neither a blocked lane nor a discounted one may " +
+                "Indirect ignores line of sight on a Hold - neither a blocked lane nor a discounted one may " +
                 "touch its estimate (the #360 artillery family keeps its value)");
+        }
+
+        // #425: Core Rules v3.6.0 grants Indirect's line-of-sight bypass only "when using Hold actions". The
+        // context's AttackerMoved is the candidate's action (the planner passes Intent != Hold), so an Advance
+        // plan's Indirect volley needs the lane like any other weapon - the Hold-vs-Advance price #360 used to
+        // carry as "-1 to hit after moving".
+        [Test]
+        public void EstimateShooting_BlockedSight_IndirectAfterMoving_NeedsTheLane()
+        {
+            (DataBinding<UnitData> us, DataBinding<UnitData> them) = MakeWalledShooterScene();
+            AttachRule(us, "Indirect", CoreRuleCatalog.Indirect);
+
+            AttackEstimate clearMoved = CombatMath.EstimateShooting(_evaluator, us, them,
+                new AttackContext(20f, AttackerMoved: true));
+            AttackEstimate blockedMoved = CombatMath.EstimateShooting(_evaluator, us, them,
+                new AttackContext(20f, AttackerMoved: true, SightFactor: 0f));
+            AttackEstimate blockedHold = CombatMath.EstimateShooting(_evaluator, us, them,
+                new AttackContext(20f, AttackerMoved: false, SightFactor: 0f));
+
+            Assert.That(clearMoved.ExpectedWounds, Is.GreaterThan(0f), "scene check: a clear lane after moving fires");
+            Assert.That(clearMoved.ExpectedWounds, Is.EqualTo(blockedHold.ExpectedWounds).Within(0.0001f),
+                "no -1 to hit after moving any more: the moved clear-lane volley prices the same as the Hold one");
+            Assert.That(blockedMoved.ExpectedWounds, Is.EqualTo(0f).Within(0.0001f),
+                "after an Advance a cut lane silences the Indirect weapon too");
         }
 
         // --- Mechanism 2: the generator's firing positions. ---

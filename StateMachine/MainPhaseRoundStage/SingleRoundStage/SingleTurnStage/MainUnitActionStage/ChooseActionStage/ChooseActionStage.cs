@@ -902,8 +902,9 @@ namespace FDG.Stages
             {
                 if (markedTargetsOnly)
                 {
-                    reasonIfCant = $"Moved {context.MoveDistance} inches, when max to move and shoot for " +
-                        $"{context.ActivatingUnit.GetValue().Name}  is {context.MoveShootAllowance}.";
+                    // #436 (from #442): rounded, one space - the raw float read "Moved 11.998999 inches".
+                    reasonIfCant = $"Moved {context.MoveDistance:0.##} inches, when max to move and shoot for " +
+                        $"{context.ActivatingUnit.GetValue().Name} is {context.MoveShootAllowance:0.##}.";
                     return false;
                 }
                 reasonIfCant = "No enemies in range or line of sight.";

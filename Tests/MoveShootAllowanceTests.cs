@@ -107,6 +107,25 @@ namespace FDG.Tests
                 Is.True, "and the menu says why");
         }
 
+        // #436 (from #442's smokes): the reason is a log/menu line, so the move reads rounded and single-spaced -
+        // it printed "Moved 11.998999 inches, when max to move and shoot for Destroyer  is 6." before.
+        [Test]
+        public async Task TheNoShootReason_RoundsTheDistance_AndHasNoDoubleSpace()
+        {
+            var capturer = new CapturingStringSelectionRequester(ChooseActionStage.CHARGE_CHOICE_NAME);
+            World world = World.Build(_store, capturer, enemyPosition: new Position(18.5f, 10f));
+            AttachSlow(world.Unit);
+
+            var moveCtx = new MovementActionContext(world.Ctx, world.Unit);
+            await MoveAndReconcile(world, moveCtx, distanceInches: 5.998999f);
+
+            await DriveChooseAction(world);
+            string reason = capturer.Captured!.InvalidOptions
+                .Single(o => o.Option == ChooseActionStage.SHOOT_CHOICE_NAME).Reason;
+            Assert.That(reason, Does.Match(@"^Moved 6 inches, when max to move and shoot for \S.*\S is 4\.$"), reason);
+            Assert.That(reason, Does.Not.Contain("  "));
+        }
+
         // A unit that has not moved is not measured at all - the gate only applies to a move that happened.
         [Test]
         public async Task AUnitThatHasNotMoved_IsNotGatedByTheAllowance()

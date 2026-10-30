@@ -519,7 +519,7 @@ public abstract record RuleOperation
 
         public override string Describe()
         {
-            return $"clears {TType} on a {MinRoll}+";
+            return $"clears {TokenDefinitionCatalog.Lookup(TType).Name} on a {MinRoll}+";
         }
     }
 
@@ -540,7 +540,7 @@ public abstract record RuleOperation
 
         public override string Describe()
         {
-            return $"rolled to place {GrantedToken.Type} on a {MinRoll}+"
+            return $"rolled to place {TokenDefinitionCatalog.Lookup(GrantedToken.Type).Name} on a {MinRoll}+"
                 + (OnFailure == null ? "" : " (with a failure arm)");
         }
     }

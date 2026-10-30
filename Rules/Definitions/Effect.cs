@@ -585,8 +585,16 @@ public abstract record Effect
                 return;
             }
 
-            operations.Add(new RuleOperation.InvokeDealAutoWounds(
-                ruleInvocation.EffectiveTarget, diceCount, SuccessThreshold));
+            // #436 (from #442): a passive Ravage has no explicit Target, so EffectiveTarget is the bearer and the
+            // narration read "Tribe Master's Ravage(6) rolled 6 dice at Tribe Master". At the strike hook the
+            // context names the unit being struck (ResolveRavageWoundsStage puts the striker in Attacker in both
+            // its placements); the stage itself always wounded the right unit - this is the op's label only.
+            IUnit target = ruleInvocation.Target
+                ?? (ruleInvocation.Hook is Dispatch.Contexts.ChargeContactContext contact
+                    && contact.Defender.ID != ruleInvocation.Bearer.ID
+                        ? contact.Defender
+                        : ruleInvocation.EffectiveTarget);
+            operations.Add(new RuleOperation.InvokeDealAutoWounds(target, diceCount, SuccessThreshold));
         }
     }
 

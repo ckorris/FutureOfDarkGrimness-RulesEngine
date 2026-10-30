@@ -264,6 +264,17 @@ namespace FDG.Tests
                 "Weapon is null when the bearing rule was not weapon-scoped; the stage reports the same gap.");
         }
 
+        // #436 (from #442's smokes): a token reads by its display name, not the TokenType record - the log said
+        // "Peasant Levy's Vale Oath clears TokenType { Id = Shaken } on a 4+." before.
+        [Test]
+        public void TokenOperations_NameTheTokenByItsDisplayName()
+        {
+            string clears = new RuleOperation.ClearTokenOnRoll(TokenType.Shaken, 4).Describe();
+
+            Assert.That(clears, Is.EqualTo("clears Shaken on a 4+"));
+            Assert.That(clears, Does.Not.Contain("TokenType"));
+        }
+
         [Test]
         public void DiceTallies_AgreeInNumber()
         {

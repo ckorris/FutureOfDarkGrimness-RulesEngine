@@ -302,6 +302,28 @@ namespace FDG.Tests
                 "nothing rolled, nothing spent");
         }
 
+        // #436 (from #442's smokes): the operation names the unit being struck, not the bearer - in both
+        // placements (the charger's strike, and the struck-back twin's reversed context). It read "Tribe Master's
+        // Ravage(6) rolled 6 dice at Tribe Master, each 6+ a direct wound." before.
+        [Test]
+        public void TheRavageOperation_NamesTheStruckUnit_InBothPlacements()
+        {
+            DataBinding<UnitData> charger = MakeUnit(modelCount: 1);
+            DataBinding<UnitData> charged = MakeUnit(modelCount: 3);
+            AttachRavage(charger, 2);
+            AttachRavage(charged, 1);
+            var evaluator = new RuleEvaluator(new FixedDiceRoller(6));
+
+            // The charger's strike, then the struck-back twin's reversed context (the striker is always Attacker).
+            Assert.That(RavageTarget(evaluator, charger.GetValue(), charged.GetValue()), Is.SameAs(charged.GetValue()));
+            Assert.That(RavageTarget(evaluator, charged.GetValue(), charger.GetValue()), Is.SameAs(charger.GetValue()));
+        }
+
+        private static IUnit RavageTarget(RuleEvaluator evaluator, IUnit striker, IUnit struck) =>
+            evaluator.EvaluateAll(new Rules.Dispatch.Contexts.ChargeContactContext(striker, struck),
+                    RuleParticipant.Actor(striker), RuleParticipant.Subject(struck))
+                .OfType<RuleOperation.InvokeDealAutoWounds>().Single().Target;
+
         [Test]
         public void TheCatalogRavage_CarriesThe36TextAndTheFatigueGate()
         {

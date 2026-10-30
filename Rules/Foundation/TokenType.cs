@@ -112,6 +112,11 @@ public readonly record struct TokenType(string Id)
     // bearer's own next melee.
     public const string REGENERATIVE_STRENGTH_SPENT_ID = "RegenerativeStrengthSpentThisMelee";
 
+    // #434: OPR 3.6 Ravage and Regenerative Strength are "Once per round, when it's this model's turn to strike in
+    // melee, roll ... dice before attacking". ResolveRavageWoundsStage stamps the striking unit when its pre-strike
+    // dice pool is rolled and skips a unit already stamped, so a unit that fights twice in a round rolls once.
+    public const string STRIKE_DICE_USED_ID = "StrikeDiceUsedThisRound";
+
     // #431 Scourge: wounds this unit COUNTS as having taken this activation without losing them - "enemies
     // count as having taken 2 extra wounds when checking who won melee, or if shooting wounds would trigger
     // Morale Tests". A Magnitude payload (fractional under the probabilistic roller, like the marker above),
@@ -149,6 +154,7 @@ public readonly record struct TokenType(string Id)
     public static readonly TokenType MovedThisRound = new(MOVED_THIS_ROUND_ID);
     public static readonly TokenType RegenerativeStrengthMarker = new(REGENERATIVE_STRENGTH_MARKER_ID);
     public static readonly TokenType RegenerativeStrengthSpent = new(REGENERATIVE_STRENGTH_SPENT_ID);
+    public static readonly TokenType StrikeDiceUsed = new(STRIKE_DICE_USED_ID);
     public static readonly TokenType CountedWoundsTaken = new(COUNTED_WOUNDS_TAKEN_ID);
     public static readonly TokenType WoundsTakenThisActivation = new(WOUNDS_TAKEN_THIS_ACTIVATION_ID);
     public static readonly TokenType DangerousTerrainTestedThisActivation = new(DANGEROUS_TERRAIN_TESTED_THIS_ACTIVATION_ID);

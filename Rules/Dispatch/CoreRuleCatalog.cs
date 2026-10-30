@@ -591,18 +591,23 @@ public static class CoreRuleCatalog
     /// <c>ResolveRavageWoundsStage</c> rolls the pool and feeds the wounds straight into wound assignment,
     /// skipping the save roll. The per-model scaling (X x living carriers) is folded in
     /// <see cref="Effect.DealAutoWounds"/>, mirroring Impact's dice-count handling.
+    /// <para>#434, OPR 3.6: "Once per round, when it's this model's turn to strike in melee, roll X dice before
+    /// attacking, unless this unit is Fatigued. For each 6+ the target takes one wound." The Fatigue clause is the
+    /// condition (read on the striker - the bearer); "once per round" is <c>ResolveRavageWoundsStage</c>'s gate; the
+    /// carriers are counted per attachment (#447's template), so a joined hero's own Ravage counts the hero.</para>
     /// </summary>
     public static SpecialRuleDefinition Ravage { get; } = new SpecialRuleDefinition("Ravage",
         new[]
         {
             new HookEntry(EHookID.Melee_OnChargeContact,
-                new Condition.Always(),
+                new Condition.Not(new Condition.CountsAsFatiguedInMelee()),
                 new Effect.DealAutoWounds(new ValueSource.Arg(0), SuccessThreshold: 6),
                 ELifetime.ThisAttack),
         },
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Positive,
-        Description: "When attacking in melee, rolls dice that deal automatic unsaveable wounds before swings.");
+        Description: "Once per round, when it's this model's turn to strike in melee, roll X dice before attacking, " +
+            "unless this unit is Fatigued. For each 6+ the target takes one wound.");
 
     /// <summary>
     /// Counter, Core Rules v3.6.0: "May strike first with this weapon when charged, unless this unit is

@@ -524,19 +524,22 @@ public abstract record Effect
     /// <see cref="RuleOperation.InvokeDealAutoWounds"/> is a plain <see cref="RuleOperation"/>, enacted only
     /// by the stages wired for it — <c>ResolveRavageWoundsStage</c> (melee charge-contact, this slice) and
     /// the Crossing Attack movement path. Any other hook's generic op application silently drops it.
+    ///
+    /// <para>#434: the carriers are counted per ATTACHMENT, by #447's <see cref="ChargeImpactHits.CountCarriers"/>:
+    /// a unit-attached Ravage counts the living native models (a joined hero does not inherit it), a joined hero's
+    /// own copy counts the hero, a token grant (an aura) counts every living model, and a weapon-carried copy
+    /// counts the models wielding a weapon with THAT attachment (a resumed game's one attachment per weapon no
+    /// longer multiplies it). <see cref="PerModel"/> false skips the multiplication for a pool the bearer already
+    /// holds as a whole (3.6 Regenerative Strength: "roll as many dice as tokens on it").</para>
     /// </summary>
-    public sealed record DealAutoWounds(ValueSource DiceCountPerModel, int SuccessThreshold = 6) : Effect
+    public sealed record DealAutoWounds(ValueSource DiceCountPerModel, int SuccessThreshold = 6,
+        bool PerModel = true) : Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
-            // Per-model X: multiply the rating by the living models that actually carry this rule. Weapon
-            // scope counts the models wielding the weapon; unit scope counts every living model. Like
-            // CancelImpactDice (Brace), so a weapon-scoped Ravage (e.g. "Combat Scythes (Ravage(3))") scales
-            // by the scythe-bearers, while a monster's unit-scoped Ravage scales by 1.
-            int carriers = ruleInvocation.Weapon == null || ruleInvocation.Definition == null
-                ? ruleInvocation.Bearer.Models.Count(m => m.GetIsAlive())
-                : ruleInvocation.Bearer.Models.Count(m => m.GetIsAlive()
-                    && m.Weapons.Any(w => w.RuleDefinitions.Any(r => r.Definition == ruleInvocation.Definition)));
+            // Per-model X: multiply the rating by the living models that actually carry this copy (Brace's and
+            // Impact's accounting), so a monster's unit-scoped Ravage scales by 1 and a squad's by its size.
+            int carriers = PerModel ? ChargeImpactHits.CountCarriers(ruleInvocation) : 1;
 
             int diceCount = DiceCountPerModel.Resolve(ruleInvocation) * carriers;
             if (diceCount <= 0)
@@ -1059,7 +1062,12 @@ public abstract record Effect
             operations.Add(new RuleOperation.ChargeImpactHits(perModel * carriers, ArmorPenetration, carriers));
         }
 
-        private static int CountCarriers(RuleInvocation invocation)
+        /// <summary>
+        /// The living models carrying THIS attachment (#447's per-model accounting, see the type doc) - shared with
+        /// <see cref="DealAutoWounds"/> (#434: Ravage(X) is per model the same way, so a joined hero's own Ravage
+        /// counts the hero and the host's counts the host's models).
+        /// </summary>
+        internal static int CountCarriers(RuleInvocation invocation)
         {
             IUnit unit = invocation.Bearer;
             Dispatch.ResolvedRule? attachment = invocation.Attachment;

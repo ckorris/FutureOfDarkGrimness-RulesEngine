@@ -15,22 +15,18 @@ using NUnit.Framework;
 
 namespace FDG.Tests
 {
-    // #197 P12 Regenerative Strength - "Place one marker on this model when it ignores a wound. When in
-    // melee, pick one of its weapons to get +X attacks, where X is the number of markers on it."
+    // Regenerative Strength. #197 P12 (3.5): "Place one marker on this model when it ignores a wound. When in melee,
+    // pick one of its weapons to get +X attacks, where X is the number of markers on it."
+    // #434 (OPR 3.6): "Place one token on this model when it ignores a wound. Once per round, when it's this model's
+    // turn to strike in melee, roll as many dice as tokens on it before attacking, unless this unit is Fatigued. For
+    // each 4+ the target takes one wound."
     //
-    // The slice's whole difficulty is that the marker's value is ROLL-DERIVED. Wounds reaching the ignore
-    // fold are already fractional under the probabilistic roller, and the ignore roll spreads them across
-    // faces again, so "how many wounds did it ignore" has no integer answer. Rather than round it (which
-    // int-locks a roll-derived value - the one thing the dice invariant forbids), the count rides a
-    // TokenPayload.Magnitude and is added to an attack count that was always a float. Owner-signed
-    // 2026-07-31, reversing the 2026-07-22 deferral once it turned out the "separate decisive roll"
-    // option did not exist: you cannot roll a fractional number of decisive dice without rounding first.
-    //
-    // Both hooks involved were declared-but-unwired (the Breath Attack shape). This slice lights
-    // Lifecycle_OnWoundIgnored - context, capability, effect and fire site. Shooting_OnPreHitRollCount is
-    // deliberately LEFT dormant: the read side prompts and is gated to one weapon per melee, neither of
-    // which an effect can express, so it lives in stage code beside TargetMarkerSpend. See
-    // RegenerativeStrengthAttacks.
+    // The producer is unchanged: the marker's value is ROLL-DERIVED (wounds reaching the ignore fold are fractional
+    // under the probabilistic roller), so the count rides a TokenPayload.Magnitude (owner-signed 2026-07-31). The 3.5
+    // consumer - stage code that offered +X attacks on one weapon - is gone; the 3.6 consumer is rule data: a
+    // DealAutoWounds at Melee_OnChargeContact whose pool is the token total (ValueSource.TokenTotal, PerModel false),
+    // rolled at 4+ by ResolveRavageWoundsStage beside Ravage, with Ravage's "once per round" gate and the Fatigue
+    // condition.
     [TestFixture]
     public class RegenerativeStrengthRuleIntegrationTests
     {
@@ -38,13 +34,18 @@ namespace FDG.Tests
 
         // Mirrors the shipped GdfRuleSupplement.json entry exactly; RegenerativeStrengthShippedDataTests
         // (app side) pins that the authored data still has this shape.
-        private static SpecialRuleDefinition RegenerativeStrengthDefinition() => new("Regenerative Strength",
+        internal static SpecialRuleDefinition RegenerativeStrengthDefinition() => new("Regenerative Strength",
             new[]
             {
                 new HookEntry(EHookID.Lifecycle_OnWoundIgnored, new Condition.Always(),
                     new Effect.GrantIgnoredWoundMarker(TokenType.RegenerativeStrengthMarker,
                         new TokenClearTrigger.ManualOnly()),
                     ELifetime.UntilEndOfGame, ERuleSeat.Subject),
+                new HookEntry(EHookID.Melee_OnChargeContact,
+                    new Condition.Not(new Condition.CountsAsFatiguedInMelee()),
+                    new Effect.DealAutoWounds(new ValueSource.TokenTotal(TokenType.RegenerativeStrengthMarker),
+                        SuccessThreshold: 4, PerModel: false),
+                    ELifetime.ThisAttack),
             },
             Array.Empty<ActivatedAbility>());
 
@@ -138,133 +139,130 @@ namespace FDG.Tests
                 "no wound-ignore rule means no ignored wounds means no markers");
         }
 
-        // ---------- Consumer: the markers buy attacks, in melee, on one weapon ----------
+        // ---------- Consumer (3.6): before it strikes, a 4+ wound pool of as many dice as tokens ----------
 
         [Test]
-        public async Task InMelee_AcceptedMarkersAddAttacksToTheVolley()
+        public async Task BeforeStriking_RollsAsManyDiceAsTokens_EachFourPlusAWound()
         {
-            // The read side, through the REAL DetermineHitRollStage: a 3-attack weapon plus 1.5 markers
-            // rolls 4.5 attacks. Fractional all the way through - attackCount has always been a float,
-            // which is what made the consumption side free once the producer could express a fraction.
-            (DataBinding<UnitData> attacker, DataBinding<UnitData> defender) = MakeCombatants();
-            GiveMarkers(attacker, 1.5f);
+            // 3 tokens, every die a 4: 3 unsaveable wounds before the swings.
+            var requester = new CapturingWoundRequester();
+            (DataBinding<UnitData> striker, DataBinding<UnitData> target) = MakeCombatants();
+            AttachRegenerativeStrength(striker);
+            GiveMarkers(striker, 3f);
 
-            DetermineHitRollResults results = await RunDetermineHitRoll(attacker, defender,
-                new CannedYesNoRequester(accept: true), isMelee: true, weaponAttacks: 3);
+            await RunStrikeDice(new WoundTestContext(_store, requester, new AllOnFace(4)), striker, target);
 
-            Assert.That(results.AttackCount, Is.EqualTo(4.5f).Within(Tolerance),
-                "3 base attacks + 1.5 markers");
+            Assert.That(requester.Captured, Is.Not.Null, "the pool produced a wound assignment");
+            Assert.That(requester.Captured!.TotalWoundsToAssign, Is.EqualTo(3f));
+            Assert.That(Markers(striker), Is.EqualTo(3f), "the tokens are rolled, not spent");
         }
 
         [Test]
-        public async Task Declining_AddsNothing_AndKeepsTheMarkers()
+        public async Task ThreesMiss()
         {
-            // Markers are never consumed by the offer - the rule says "+X attacks where X is the number of
-            // markers on it", not "spend them". A player saving the bonus for a later weapon in the same
-            // swing loop must still have it.
-            (DataBinding<UnitData> attacker, DataBinding<UnitData> defender) = MakeCombatants();
-            GiveMarkers(attacker, 2f);
+            var requester = new CapturingWoundRequester();
+            (DataBinding<UnitData> striker, DataBinding<UnitData> target) = MakeCombatants();
+            AttachRegenerativeStrength(striker);
+            GiveMarkers(striker, 3f);
 
-            DetermineHitRollResults results = await RunDetermineHitRoll(attacker, defender,
-                new CannedYesNoRequester(accept: false), isMelee: true, weaponAttacks: 3);
+            await RunStrikeDice(new WoundTestContext(_store, requester, new AllOnFace(3)), striker, target);
 
-            Assert.That(results.AttackCount, Is.EqualTo(3f).Within(Tolerance), "declined - base attacks only");
-            Assert.That(Markers(attacker), Is.EqualTo(2f).Within(Tolerance), "and the markers are still there");
+            Assert.That(requester.Captured, Is.Null, "3s are below the 4+");
         }
 
         [Test]
-        public async Task Shooting_IsNeverOffered()
+        public async Task ProbabilisticMode_TheFractionalTokenTotalRoundsToWholeDice()
         {
-            // "When in melee" - a counting requester proves the prompt is not merely answered "no" but
-            // never issued, so a shooting unit with markers is not nagged every volley.
-            (DataBinding<UnitData> attacker, DataBinding<UnitData> defender) = MakeCombatants();
-            GiveMarkers(attacker, 2f);
-            var requester = new CountingYesNoRequester(accept: true);
+            // 2.6 tokens -> 3 dice at 4+ -> 1.5 expected wounds.
+            var requester = new CapturingWoundRequester();
+            (DataBinding<UnitData> striker, DataBinding<UnitData> target) = MakeCombatants();
+            AttachRegenerativeStrength(striker);
+            GiveMarkers(striker, 2.6f);
 
-            DetermineHitRollResults results = await RunDetermineHitRoll(attacker, defender, requester,
-                isMelee: false, weaponAttacks: 3);
+            await RunStrikeDice(NewContext(requester), striker, target);
 
-            Assert.That(results.AttackCount, Is.EqualTo(3f).Within(Tolerance), "no melee, no bonus");
-            Assert.That(requester.Asked, Is.Zero, "and no prompt was issued at all");
+            Assert.That(requester.Captured!.TotalWoundsToAssign, Is.EqualTo(1.5f).Within(Tolerance));
         }
 
         [Test]
-        public async Task WithoutMarkers_NoPromptIsIssued()
+        public async Task WithoutTokens_NothingIsRolled_AndTheRoundsUseIsNotSpent()
         {
-            (DataBinding<UnitData> attacker, DataBinding<UnitData> defender) = MakeCombatants();
-            var requester = new CountingYesNoRequester(accept: true);
+            var requester = new CapturingWoundRequester();
+            (DataBinding<UnitData> striker, DataBinding<UnitData> target) = MakeCombatants();
+            AttachRegenerativeStrength(striker);
 
-            DetermineHitRollResults results = await RunDetermineHitRoll(attacker, defender, requester,
-                isMelee: true, weaponAttacks: 3);
+            await RunStrikeDice(new WoundTestContext(_store, requester, new AllOnFace(6)), striker, target);
 
-            Assert.That(results.AttackCount, Is.EqualTo(3f).Within(Tolerance));
-            Assert.That(requester.Asked, Is.Zero, "nothing to offer, so no question");
+            Assert.That(requester.Captured, Is.Null);
+            Assert.That(striker.GetValue().Tokens.HasToken(TokenType.StrikeDiceUsed), Is.False,
+                "no dice, no use: a later strike this round with tokens may still roll");
         }
 
         [Test]
-        public async Task OnlyOneWeaponPerMelee_GetsTheBonus()
+        public async Task OncePerRound_ASecondStrikeThisRound_RollsNothing()
         {
-            // "Pick ONE of its weapons." The melee swing loop re-enters DetermineHitRollStage per weapon,
-            // so the second volley of the same melee must be neither boosted nor even offered.
-            (DataBinding<UnitData> attacker, DataBinding<UnitData> defender) = MakeCombatants();
-            GiveMarkers(attacker, 2f);
-            var requester = new CountingYesNoRequester(accept: true);
-            var context = NewContext(requester);
+            (DataBinding<UnitData> striker, DataBinding<UnitData> target) = MakeCombatants();
+            AttachRegenerativeStrength(striker);
+            GiveMarkers(striker, 2f);
 
-            DetermineHitRollResults first = await RunDetermineHitRoll(context, attacker, defender,
-                isMelee: true, weaponAttacks: 3);
-            DetermineHitRollResults second = await RunDetermineHitRoll(context, attacker, defender,
-                isMelee: true, weaponAttacks: 3);
+            var first = new CapturingWoundRequester();
+            await RunStrikeDice(new WoundTestContext(_store, first, new AllOnFace(6)), striker, target);
+            Assert.That(first.Captured!.TotalWoundsToAssign, Is.EqualTo(2f));
 
-            Assert.That(first.AttackCount, Is.EqualTo(5f).Within(Tolerance), "first weapon takes the bonus");
-            Assert.That(second.AttackCount, Is.EqualTo(3f).Within(Tolerance), "the second gets nothing");
-            Assert.That(requester.Asked, Is.EqualTo(1), "and is not asked again this melee");
+            var second = new CapturingWoundRequester();
+            await RunStrikeDice(new WoundTestContext(_store, second, new AllOnFace(6)), striker, target);
+            Assert.That(second.Captured, Is.Null, "'once per round'");
         }
 
         [Test]
-        public async Task AfterTheMelee_TheBonusIsAvailableAgain()
+        public async Task WhileFatigued_NothingIsRolled()
         {
-            // The gate is per MELEE, not per game or per activation - run through the real PostMeleeStage,
-            // whose Melee_OnPostMelee sweep is the only thing that clears a CustomHook token of that hook.
-            // Delete the sweep and this test fails while every other test here still passes.
-            (DataBinding<UnitData> attacker, DataBinding<UnitData> defender) = MakeCombatants();
-            GiveMarkers(attacker, 2f);
-            var requester = new CountingYesNoRequester(accept: true);
-            var context = NewContext(requester);
+            var requester = new CapturingWoundRequester();
+            (DataBinding<UnitData> striker, DataBinding<UnitData> target) = MakeCombatants();
+            AttachRegenerativeStrength(striker);
+            GiveMarkers(striker, 3f);
+            FatigueUtilities.ApplyFatigued(striker.GetValue());
 
-            await RunDetermineHitRoll(context, attacker, defender, isMelee: true, weaponAttacks: 3);
-            Assert.That(attacker.GetValue().Tokens.HasToken(TokenType.RegenerativeStrengthSpent), Is.True,
-                "the gate is stamped by the accepted offer");
+            await RunStrikeDice(new WoundTestContext(_store, requester, new AllOnFace(6)), striker, target);
 
-            await RunPostMelee(context, attacker, defender);
-
-            Assert.That(attacker.GetValue().Tokens.HasToken(TokenType.RegenerativeStrengthSpent), Is.False,
-                "the post-melee sweep clears it");
-
-            DetermineHitRollResults nextMelee = await RunDetermineHitRoll(context, attacker, defender,
-                isMelee: true, weaponAttacks: 3);
-            Assert.That(nextMelee.AttackCount, Is.EqualTo(5f).Within(Tolerance),
-                "the next melee may cash the markers again");
+            Assert.That(requester.Captured, Is.Null, "'unless this unit is Fatigued'");
         }
 
         [Test]
-        public async Task TheStrikerBacksGate_IsClearedToo_NotJustTheAttackedUnit()
+        public async Task TheVolley_GetsNoExtraAttacks_Any_More()
         {
-            // Why the sweep visits BOTH combatants: a strike-back happens inside the ENEMY's activation, so
-            // a gate stamped there would never be reached by the end-of-activation sweep (which only ever
-            // visits the activated unit) and would suppress the bearer's own next melee.
-            (DataBinding<UnitData> attacker, DataBinding<UnitData> defender) = MakeCombatants();
-            GiveMarkers(defender, 2f);
-            var context = NewContext(new CannedYesNoRequester(accept: true));
+            // The 3.5 consumer (+X attacks on one melee weapon) is gone: the attack count is the weapon's.
+            (DataBinding<UnitData> striker, DataBinding<UnitData> target) = MakeCombatants();
+            AttachRegenerativeStrength(striker);
+            GiveMarkers(striker, 3f);
+            var context = NewContext(new CapturingWoundRequester());
 
-            // The defender swings back: roles reversed at the volley level.
-            await RunDetermineHitRoll(context, defender, attacker, isMelee: true, weaponAttacks: 3);
-            Assert.That(defender.GetValue().Tokens.HasToken(TokenType.RegenerativeStrengthSpent), Is.True);
+            var stage = new DetermineHitRollStage<ICombatMetadata>(context, new NoOpLayer<ICombatMetadata>());
+            stage.NextStage.Bind("done");
+            var metadata = new CombatMetadata(context, striker, target,
+                new Weapon("Claws", rangeInches: 0f, attacks: 3, armorPenetration: 0), weaponCount: 1,
+                attackerMoved: false, isMelee: true);
+            await stage.Enter(metadata);
 
-            await RunPostMelee(context, attacker, defender);
+            Assert.That(metadata.QueryForResult(out DetermineHitRollResults result), Is.True);
+            Assert.That(result.AttackCount, Is.EqualTo(3f));
+        }
 
-            Assert.That(defender.GetValue().Tokens.HasToken(TokenType.RegenerativeStrengthSpent), Is.False,
-                "the striker-back's gate clears with the melee it belongs to");
+        [Test]
+        public void TheStrikePool_RoundTripsThroughJson_AndOldDealAutoWoundsDataStaysPerModel()
+        {
+            Effect pool = new Effect.DealAutoWounds(new ValueSource.TokenTotal(TokenType.RegenerativeStrengthMarker),
+                SuccessThreshold: 4, PerModel: false);
+            string json = System.Text.Json.JsonSerializer.Serialize(pool, FDG.Rules.Serialization.RuleJson.Options);
+            Assert.That(json, Does.Contain("tokenTotal"));
+            Assert.That(System.Text.Json.JsonSerializer.Deserialize<Effect>(json, FDG.Rules.Serialization.RuleJson.Options),
+                Is.EqualTo(pool));
+
+            // Ravage data written before #434 has no perModel field: it still multiplies by the carriers.
+            string legacy = "{\"kind\":\"dealAutoWounds\",\"diceCountPerModel\":{\"kind\":\"arg\",\"index\":0}," +
+                "\"successThreshold\":6}";
+            Assert.That(System.Text.Json.JsonSerializer.Deserialize<Effect>(legacy, FDG.Rules.Serialization.RuleJson.Options),
+                Is.EqualTo(new Effect.DealAutoWounds(new ValueSource.Arg(0), 6, PerModel: true)));
         }
 
         // ---------- Token layer ----------
@@ -373,35 +371,14 @@ namespace FDG.Tests
             await stage.Enter(metadata);
         }
 
-        private Task<DetermineHitRollResults> RunDetermineHitRoll(DataBinding<UnitData> attacker,
-            DataBinding<UnitData> defender, IPlayerRequestByID requester, bool isMelee, int weaponAttacks)
-            => RunDetermineHitRoll(NewContext(requester), attacker, defender, isMelee, weaponAttacks);
-
-        private static async Task<DetermineHitRollResults> RunDetermineHitRoll(WoundTestContext context,
-            DataBinding<UnitData> attacker, DataBinding<UnitData> defender, bool isMelee, int weaponAttacks)
+        private static async Task RunStrikeDice(WoundTestContext context, DataBinding<UnitData> striker,
+            DataBinding<UnitData> target)
         {
-            var stage = new DetermineHitRollStage<ICombatMetadata>(context, new NoOpLayer<ICombatMetadata>());
-            stage.NextStage.Bind("done");
-
-            var weapon = new Weapon("Claws", rangeInches: 0f, attacks: weaponAttacks, armorPenetration: 0);
-            var metadata = new CombatMetadata(context, attacker, defender, weapon, weaponCount: 1,
-                attackerMoved: false, isMelee: isMelee);
-            await stage.Enter(metadata);
-
-            Assert.That(metadata.QueryForResult(out DetermineHitRollResults result), Is.True,
-                "the stage must store a DetermineHitRollResults");
-            return result;
-        }
-
-        private static async Task RunPostMelee(WoundTestContext context, DataBinding<UnitData> attacker,
-            DataBinding<UnitData> defender)
-        {
-            var combatContext = new CombatActionContext(context, attacker, isMelee: true, isCharging: true);
-            combatContext.SetDefender(defender);
-
-            var stage = new PostMeleeStage(context, new NoOpLayer<ICombatActionContext>());
-            stage.ToFinished.Bind("done");
-            await stage.Enter(combatContext);
+            var combat = new CombatActionContext(context, striker, isMelee: true, isCharging: true);
+            combat.SetDefender(target);
+            var stage = new ResolveRavageWoundsStage(context, new NoOpLayer<ICombatActionContext>());
+            stage.OnRavageResolved.Bind("done");
+            await stage.Enter(combat);
         }
 
         private (DataBinding<UnitData>, DataBinding<UnitData>) MakeCombatants() =>
@@ -423,26 +400,17 @@ namespace FDG.Tests
             return _store.GetDataBinding<UnitData>(_store.Create(unit));
         }
 
-        // Answers yes/no like CannedYesNoRequester but counts the questions, so a test can assert that a
-        // prompt was never ISSUED - the difference between "offered and declined" and "correctly skipped".
-        private sealed class CountingYesNoRequester : IPlayerRequestByID
+        // Every rolled die on one face, so an N-die pool is N dice there (FixedDiceRoller rolls one).
+        private sealed class AllOnFace : IDiceRoller
         {
-            private readonly bool _accept;
+            private readonly int _face;
+            public AllOnFace(int face) => _face = face;
 
-            public CountingYesNoRequester(bool accept) => _accept = accept;
-
-            public int Asked { get; private set; }
-
-            public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
-                where TRequest : IStageTaskRequest<TReply>
+            public IDiceResults Roll(int sideCount, float rollCount)
             {
-                if (request is YesNoRequest)
-                {
-                    Asked++;
-                    return Task.FromResult((TReply)(object)_accept);
-                }
-
-                throw new InvalidOperationException("Unexpected request type: " + request.GetType());
+                float[] perSide = new float[sideCount];
+                perSide[_face - 1] = rollCount;
+                return new DiceResults(perSide);
             }
         }
     }

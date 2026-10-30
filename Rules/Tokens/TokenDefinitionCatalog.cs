@@ -181,6 +181,11 @@ public static class TokenDefinitionCatalog
             new(TokenType.POST_COMBAT_MOVE_USED_ID, "Post-combat move used", EValence.Neutral,
                 ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.RoundEnd()),
 
+            // #434: Ravage / Regenerative Strength's "once per round" pre-strike dice. Stamped by
+            // ResolveRavageWoundsStage, swept by the round-end pass.
+            new(TokenType.STRIKE_DICE_USED_ID, "Strike dice used", EValence.Neutral,
+                ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.RoundEnd()),
+
             // #381: "fought in melee this round", either role - the data-readable gate for
             // "after being in melee" rules (AoF Retreating Strike). Stamped by ApplyFatigueStage.
             new(TokenType.WAS_IN_MELEE_THIS_ROUND_ID, "Was in melee", EValence.Neutral,

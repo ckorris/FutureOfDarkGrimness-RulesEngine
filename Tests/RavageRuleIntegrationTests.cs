@@ -4,6 +4,7 @@ using FDG.Players;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Foundation;
+using FDG.Rules.Tokens;
 using FDG.Stages;
 using FDG.StageResolution;
 using FDG.StageResolution.Requests;
@@ -217,6 +218,126 @@ namespace FDG.Tests
             Assert.That(requester.WoundRequests[0].UnitReceivingWounds.GetValue(),
                 Is.SameAs(charger.GetValue()),
                 "and its wounds go at the charger - the stage must read the POST-swap Actor seat.");
+        }
+
+        // ── #434: OPR 3.6 Ravage - per model (#447's template), once per round, not while Fatigued ─────────────
+
+        // "...when it's THIS MODEL's turn to strike": a joined hero's own Ravage (relocated onto its model by the #006
+        // merge) fires - before #434 the stage evaluated the striker without its models and the hero's copy never did.
+        [Test]
+        public async Task AJoinedHerosOwnRavage_Fires_CountingTheHero()
+        {
+            var requester = new CapturingWoundRequester();
+            var ctx = new WoundTestContext(_store, requester, new AllOnFaceDiceRoller(6));
+            DataBinding<UnitData> squad = MakeUnitWithHero(hostModels: 5, hostRavage: null, heroRavage: 2);
+
+            await RunStage(ctx, squad, MakeUnit(modelCount: 10));
+
+            Assert.That(requester.Captured!.TotalWoundsToAssign, Is.EqualTo(2f), "1 hero x Ravage(2)");
+        }
+
+        // The host's Ravage counts the host's models; a joined hero lacking it does not inherit it.
+        [Test]
+        public async Task TheHostsRavage_CountsItsNativeModels_NotTheJoinedHero()
+        {
+            var requester = new CapturingWoundRequester();
+            var ctx = new WoundTestContext(_store, requester, new AllOnFaceDiceRoller(6));
+            DataBinding<UnitData> squad = MakeUnitWithHero(hostModels: 3, hostRavage: 1, heroRavage: 2);
+
+            await RunStage(ctx, squad, MakeUnit(modelCount: 10));
+
+            Assert.That(requester.Captured!.TotalWoundsToAssign, Is.EqualTo(5f), "3 models x Ravage(1) + 1 hero x Ravage(2)");
+        }
+
+        // A token-granted copy (an aura's literal die) counts every living model, the joined hero included.
+        [Test]
+        public async Task AGrantedCopy_CountsEveryLivingModel_TheJoinedHeroIncluded()
+        {
+            var requester = new CapturingWoundRequester();
+            var resolver = new RuleResolver();
+            resolver.Register(GrantedRavage);
+            var ctx = new WoundTestContext(_store, requester, new AllOnFaceDiceRoller(6), ruleResolver: resolver);
+            DataBinding<UnitData> squad = MakeUnitWithHero(hostModels: 3, hostRavage: null, heroRavage: null);
+            squad.GetValue().Tokens.AddToken(new Token(TokenType.RuleGrant, 1, new TokenClearTrigger.ManualOnly(),
+                new TokenPayload.RuleGrant(GrantedRavage.Name, ELifetime.Aura)));
+
+            await RunStage(ctx, squad, MakeUnit(modelCount: 10));
+
+            Assert.That(requester.Captured!.TotalWoundsToAssign, Is.EqualTo(4f), "3 host models + the hero, 1 die each");
+        }
+
+        [Test]
+        public async Task OncePerRound_ASecondStrikeThisRound_RollsNoRavage()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(modelCount: 1);
+            AttachRavage(attacker, x: 3);
+            DataBinding<UnitData> defender = MakeUnit(modelCount: 10);
+
+            var first = new CapturingWoundRequester();
+            await RunStage(new WoundTestContext(_store, first, new AllOnFaceDiceRoller(6)), attacker, defender);
+            Assert.That(first.Captured!.TotalWoundsToAssign, Is.EqualTo(3f));
+
+            var second = new CapturingWoundRequester();
+            await RunStage(new WoundTestContext(_store, second, new AllOnFaceDiceRoller(6)), attacker, defender);
+            Assert.That(second.Captured, Is.Null, "'Once per round' - the unit's next strike this round rolls none");
+
+            // The round-end sweep clears the gate (RoundEnd default trigger).
+            Token gate = attacker.GetValue().Tokens.GetAllTokens(TokenType.StrikeDiceUsed).Single();
+            Assert.That(gate.ClearTrigger, Is.InstanceOf<TokenClearTrigger.RoundEnd>());
+        }
+
+        [Test]
+        public async Task AFatiguedStriker_RollsNoRavage()
+        {
+            var requester = new CapturingWoundRequester();
+            DataBinding<UnitData> attacker = MakeUnit(modelCount: 1);
+            AttachRavage(attacker, x: 3);
+            FatigueUtilities.ApplyFatigued(attacker.GetValue());
+
+            await RunStage(new WoundTestContext(_store, requester, new AllOnFaceDiceRoller(6)), attacker,
+                MakeUnit(modelCount: 10));
+
+            Assert.That(requester.Captured, Is.Null, "'unless this unit is Fatigued'");
+            Assert.That(attacker.GetValue().Tokens.HasToken(TokenType.StrikeDiceUsed), Is.False,
+                "nothing rolled, nothing spent");
+        }
+
+        [Test]
+        public void TheCatalogRavage_CarriesThe36TextAndTheFatigueGate()
+        {
+            Assert.That(CoreRuleCatalog.Ravage.Passive.Single().Condition,
+                Is.EqualTo(new Condition.Not(new Condition.CountsAsFatiguedInMelee())));
+            Assert.That(CoreRuleCatalog.Ravage.Description, Is.EqualTo(
+                "Once per round, when it's this model's turn to strike in melee, roll X dice before attacking, " +
+                "unless this unit is Fatigued. For each 6+ the target takes one wound."));
+        }
+
+        private static readonly SpecialRuleDefinition GrantedRavage = new("Ravage (Aura)",
+            new[]
+            {
+                new HookEntry(EHookID.Melee_OnChargeContact, new Condition.Not(new Condition.CountsAsFatiguedInMelee()),
+                    new Effect.DealAutoWounds(new ValueSource.Literal(1), SuccessThreshold: 6), ELifetime.ThisAttack),
+            },
+            System.Array.Empty<ActivatedAbility>());
+
+        private DataBinding<UnitData> MakeUnitWithHero(int hostModels, int? hostRavage, int? heroRavage)
+        {
+            DataBinding<UnitData> hostBinding = MakeUnit(hostModels);
+            UnitData host = hostBinding.GetValue();
+            if (hostRavage is int hx) AttachRavage(hostBinding, hx);
+
+            DataBinding<UnitData> heroBinding = MakeUnit(1);
+            UnitData hero = heroBinding.GetValue();
+            hero.AttachRuleDefinition(new ResolvedRule("Hero", CoreRuleCatalog.Hero));
+            if (heroRavage is int rx) AttachRavage(heroBinding, rx);
+
+            HeroJoinResolver.Apply(new List<(FDG.SaveLoad.UnitFileEntry, UnitData)>
+            {
+                (new FDG.SaveLoad.UnitFileEntry { Id = "host" }, host),
+                (new FDG.SaveLoad.UnitFileEntry { JoinsUnitId = "host" }, hero),
+            });
+            Assert.That(host.JoinedHeroModelId, Is.Not.Null, "premise: the hero joined");
+            return hostBinding;
         }
 
         private static async Task RunStrikeBack(WoundTestContext ctx, DataBinding<UnitData> charger,

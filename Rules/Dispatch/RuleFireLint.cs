@@ -118,6 +118,7 @@ public static class RuleFireLint
         LintWorld world = LintWorld.Build(definition);
         IReadOnlyList<RuleArgument> args = ArgumentsFor(definition);
         SatisfyCondition(entry.Condition, world, positive: true);
+        SatisfyEffectInputs(entry.Effect, world);
 
         bool conditionEverPassed = false;
         string? applyError = null;
@@ -556,6 +557,19 @@ public static class RuleFireLint
                 // which the default empty state satisfies), but a positive leaf must still be reachable.
                 SeedTokens(world.Bearer, TokenType.Fatigued, 1);
                 break;
+        }
+    }
+
+    /// <summary>
+    /// #434: state an effect's own VALUE reads, as <see cref="SatisfyCondition"/> does for conditions - a pool sized by
+    /// the bearer's tokens (3.6 Regenerative Strength: "roll as many dice as tokens on it",
+    /// <see cref="ValueSource.TokenTotal"/>) produces nothing on an empty container, so seed two.
+    /// </summary>
+    private static void SatisfyEffectInputs(Effect effect, LintWorld world)
+    {
+        if (effect is Effect.DealAutoWounds { DiceCountPerModel: ValueSource.TokenTotal pool })
+        {
+            SeedTokens(world.Bearer, pool.TType, 2);
         }
     }
 

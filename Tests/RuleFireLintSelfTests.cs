@@ -193,6 +193,20 @@ namespace FDG.Tests
             Assert.That(RuleFireLint.Check(rule), Is.Empty);
         }
 
+        [Test]
+        public void ATokenSizedStrikePool_IsSeeded_AndLintsClean()
+        {
+            // #434: 3.6 Regenerative Strength rolls "as many dice as tokens on it" - on the empty lint container the
+            // pool would be zero dice and read as a no-op; the lint seeds the tokens the value source reads.
+            var rule = Passive("Lint Token Pool", new HookEntry(EHookID.Melee_OnChargeContact,
+                new Condition.Not(new Condition.CountsAsFatiguedInMelee()),
+                new Effect.DealAutoWounds(new ValueSource.TokenTotal(TokenType.RegenerativeStrengthMarker),
+                    SuccessThreshold: 4, PerModel: false),
+                ELifetime.ThisAttack));
+
+            Assert.That(RuleFireLint.Check(rule), Is.Empty);
+        }
+
         private static TargetSelector AnySelector() => new(RangeInches: 6f, MinCount: 1, MaxCount: 1,
             TargetAffinity: ETargetAffinity.Friend, RequireLineOfSight: false);
     }

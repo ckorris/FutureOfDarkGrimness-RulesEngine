@@ -23,6 +23,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(Literal), "literal")]
 [JsonDerivedType(typeof(Arg), "arg")]
 [JsonDerivedType(typeof(RuleCarrierCount), "ruleCarrierCount")]
+[JsonDerivedType(typeof(TokenTotal), "tokenTotal")]
 public abstract record ValueSource
 {
     public abstract int Resolve(RuleInvocation invocation);
@@ -89,6 +90,22 @@ public abstract record ValueSource
 
             return unit.Models.Count(model => model.GetIsAlive()
                 && (unitWide || model.RuleDefinitions.Any(rule => rule.Definition == definition)));
+        }
+    }
+
+    /// <summary>
+    /// #434: how many tokens of <see cref="TType"/> the bearer holds - the MAGNITUDE when the tokens carry one
+    /// (Regenerative Strength's ignored-wound markers accumulate fractionally under the probabilistic roller),
+    /// otherwise the token count - rounded to the nearest whole number, since a value source is an int. 3.6
+    /// Regenerative Strength: "roll as many dice as tokens on it".
+    /// </summary>
+    public sealed record TokenTotal(TokenType TType) : ValueSource
+    {
+        public override int Resolve(RuleInvocation invocation)
+        {
+            float magnitude = invocation.Bearer.Tokens.GetTokenMagnitude(TType);
+            float total = magnitude > 0f ? magnitude : invocation.Bearer.Tokens.GetTokenCount(TType);
+            return (int)System.MathF.Round(total, System.MidpointRounding.AwayFromZero);
         }
     }
 }

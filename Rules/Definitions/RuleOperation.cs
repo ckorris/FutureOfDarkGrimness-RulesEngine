@@ -989,6 +989,24 @@ public abstract record RuleOperation
     public sealed record EnableReDeployment : CapabilityOperation;
 
     /// <summary>
+    /// #424: the carrying WEAPON may be used as a melee weapon whatever its printed range. Resolution of
+    /// <see cref="Effect.EnableMeleeUse"/> (Core Rules v3.6.0 Assault: "Counts as both a ranged weapon and a melee
+    /// weapon."). A weapon ROLE rather than a unit capability: it is read off the weapon's own rules by
+    /// <c>WeaponRoleQueries</c>, resolved once when the weapon is built and cached on it, and widens the seam
+    /// <c>IWeaponExtensions.IsMelee</c> ("range 0 OR grants melee use"). Roles are grants only - no operation
+    /// ever takes a role away - so two role rules can only widen the set.
+    /// </summary>
+    public sealed record EnableMeleeUse : CapabilityOperation;
+
+    /// <summary>
+    /// #424: the carrying WEAPON may be used as a ranged weapon whatever its printed range - the twin of
+    /// <see cref="EnableMeleeUse"/>, widening <c>IWeaponExtensions.IsRanged</c> ("range &gt; 0 OR grants ranged
+    /// use"). Every 3.6.0 Assault weapon has a printed range, so this arm is redundant for the corpus; it exists
+    /// so the seam is symmetric and a future "may also be fired" rule has an answer ready.
+    /// </summary>
+    public sealed record EnableRangedUse : CapabilityOperation;
+
+    /// <summary>
     /// The bearer lends its <see cref="Pool"/> tokens to OTHER friendly casters within
     /// <see cref="RangeInches"/>, who spend them as if they were their own spell tokens. Resolution of
     /// <see cref="Effect.EnableSpellLending"/> (Spell Accumulator). Read by <c>SpellPurse</c>.

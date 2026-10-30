@@ -70,6 +70,9 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(EnableCasting), "enableCasting")]
 [JsonDerivedType(typeof(EnableTransport), "enableTransport")]
 [JsonDerivedType(typeof(EnableReDeployment), "enableReDeployment")]
+// #424: weapon roles (Assault) - the weapon-scoped members of the capability family.
+[JsonDerivedType(typeof(EnableMeleeUse), "enableMeleeUse")]
+[JsonDerivedType(typeof(EnableRangedUse), "enableRangedUse")]
 [JsonDerivedType(typeof(EnableSpellLending), "enableSpellLending")]
 [JsonDerivedType(typeof(EnableSpellRelay), "enableSpellRelay")]
 [JsonDerivedType(typeof(EnableBuffRelay), "enableBuffRelay")]
@@ -1319,6 +1322,40 @@ public abstract record Effect
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.EnableReDeployment());
+        }
+    }
+
+    /// <summary>
+    /// #424: the carrying weapon counts as a MELEE weapon whatever its printed range. Conferred by Core Rules
+    /// v3.6.0 <c>Assault</c> ("Counts as both a ranged weapon and a melee weapon."), authored on a weapon-scoped
+    /// rule at <see cref="EHookID.Lifecycle_OnCapabilityQuery"/> like every other capability - so any other rule
+    /// that confers the same thing needs no engine change, and nothing tests for the name "Assault".
+    ///
+    /// <para>A weapon ROLE, not a unit capability: it is read by <c>WeaponRoleQueries</c> off the weapon's own
+    /// rules, resolved once when the weapon is built (the <c>Weapon.EffectKey</c>-at-load precedent, #239) and
+    /// cached on it, because the classification seam runs in hot paths (the AI's search, per-frame UI) and from
+    /// places with no table at all (the Forge card, the list compiler, the importer). Roles are grants only: a
+    /// future "may not be used in melee" is an action restriction beside <c>ActionRestrictionQueries</c>, never a
+    /// negation here.</para>
+    /// </summary>
+    public sealed record EnableMeleeUse : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.EnableMeleeUse());
+        }
+    }
+
+    /// <summary>
+    /// #424: the carrying weapon counts as a RANGED weapon whatever its printed range - the twin of
+    /// <see cref="EnableMeleeUse"/>. Assault authors both arms because the rule says "both"; every 3.6.0 Assault
+    /// weapon has a printed range, so for the corpus this arm only restates what the range already says.
+    /// </summary>
+    public sealed record EnableRangedUse : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.EnableRangedUse());
         }
     }
 

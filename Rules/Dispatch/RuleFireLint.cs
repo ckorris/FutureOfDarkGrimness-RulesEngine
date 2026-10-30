@@ -322,6 +322,8 @@ public static class RuleFireLint
             // question, and emitting (say) a token grant in reply to it does nothing.
             EHookID.Lifecycle_OnCapabilityQuery => op is RuleOperation.EnableCasting
                 or RuleOperation.EnableTransport or RuleOperation.EnableReDeployment
+                // #424: weapon roles are read off the weapon by WeaponRoleQueries at build time.
+                or RuleOperation.EnableMeleeUse or RuleOperation.EnableRangedUse
                 or RuleOperation.EnableSpellLending or RuleOperation.EnableSpellRelay
                 or RuleOperation.EnableBuffRelay
                 or RuleOperation.RepelAmbushers or RuleOperation.AmbushBeacon

@@ -723,6 +723,8 @@ namespace FDG.Stages
         // whose unit is within CASTER_ASSIST_RANGE_INCHES (base-to-base, 3D) of the casting unit. Friendly
         // Casters (same team, or same player when no team is registered — mirroring SpellTargeting) come
         // first, then enemy Casters, each group in store order for a deterministic prompt sequence.
+        // #429: range ONLY, never line of sight - Core Rules v3.6.0 "Models within 18\" of the Caster may spend any
+        // number of spell tokens at the same time before rolling" (pinned by Cast36_ABoosterBehindAWall_*).
         private List<(DataBinding<UnitData> unit, bool friendly)> FindEligibleAssisters(
             DataBinding<UnitData> casterBinding, PlayerID casterPlayer)
         {

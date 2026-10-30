@@ -10,6 +10,7 @@ using FDG.SaveLoad;
 using FDG.Stages;
 using FDG.StageResolution;
 using FDG.StageResolution.Requests;
+using FDG.Utilities;
 using NUnit.Framework;
 
 namespace FDG.Tests
@@ -1581,6 +1582,76 @@ namespace FDG.Tests
             await RunCastStage(ctx, caster);
 
             Assert.That(target.GetValue().Tokens.GetAllTokens(TokenType.RuleGrant), Is.Not.Empty);
+        }
+
+        // 3.6: "Models within 18\" of the Caster may spend any number of spell tokens at the same time before
+        // rolling to give the Caster +1/-1 to the roll per token." Range only - no line of sight. A friendly
+        // Caster 15" away (base to base) with a Blocking wall squarely between still boosts: face 3 fails the base
+        // 4+ and clears the boosted 3+.
+        [Test]
+        public async Task Cast36_ABoosterBehindAWall_FifteenInchesAway_StillBoosts()
+        {
+            var requester = new CannedAssistRequester(tokensPerAssister: 1);
+            var ctx = new TriggeredMoveTestContext(_store, requester, new FixedDiceRoller(3));
+
+            DataBinding<UnitData> caster = MakeCasterBinding(_player, casterRating: 3, tokens: 1, CasterBehindWall);
+            DataBinding<UnitData> booster = MakeCasterBinding(_player, casterRating: 3, tokens: 2, BoosterBehindWall);
+            var army = new ArmyData(_player, new List<DataBinding<UnitData>> { caster, booster });
+            army.SetSpells(new[] { SelfBuffSpell("Bless", threshold: 1, grantedRule: "Furious") });
+            _store.Create(army);
+            _store.Create(new TerrainData(ETerrainType.Blocking, BoosterWall));
+
+            AssertBehindTheWallAtFifteenInches(ctx, caster, booster);
+
+            await RunCastStage(ctx, caster);
+
+            Assert.That(requester.AssistPromptCount, Is.EqualTo(1), "the booster out of sight is still offered the boost");
+            Assert.That(caster.GetValue().Tokens.GetAllTokens(TokenType.RuleGrant), Is.Not.Empty,
+                "its +1 turned face 3 into a success: boosters need only be within 18\"");
+            Assert.That(booster.GetValue().Tokens.GetTokenCount(TokenType.SpellTokens), Is.EqualTo(1));
+        }
+
+        // ...and the same for the other side: an enemy Caster behind the wall may still hinder (-1 per token).
+        [Test]
+        public async Task Cast36_AnEnemyHindererBehindAWall_StillHinders()
+        {
+            var requester = new CannedAssistRequester(tokensPerAssister: 1);
+            var ctx = new TriggeredMoveTestContext(_store, requester, new FixedDiceRoller(4));
+
+            DataBinding<UnitData> caster = MakeCasterBinding(_player, casterRating: 3, tokens: 1, CasterBehindWall);
+            var army = new ArmyData(_player, new List<DataBinding<UnitData>> { caster });
+            army.SetSpells(new[] { SelfBuffSpell("Bless", threshold: 1, grantedRule: "Furious") });
+            _store.Create(army);
+
+            var enemyPlayer = new PlayerID(System.Guid.NewGuid());
+            DataBinding<UnitData> hinderer = MakeCasterBinding(enemyPlayer, casterRating: 3, tokens: 2, BoosterBehindWall);
+            _store.Create(new ArmyData(enemyPlayer, new List<DataBinding<UnitData>> { hinderer }));
+            _store.Create(new TerrainData(ETerrainType.Blocking, BoosterWall));
+
+            AssertBehindTheWallAtFifteenInches(ctx, caster, hinderer);
+
+            await RunCastStage(ctx, caster);
+
+            Assert.That(caster.GetValue().Tokens.GetAllTokens(TokenType.RuleGrant), Is.Empty,
+                "the hidden enemy's -1 made face 4 miss the hindered 5+");
+            Assert.That(hinderer.GetValue().Tokens.GetTokenCount(TokenType.SpellTokens), Is.EqualTo(1));
+        }
+
+        // Centres 16" apart with 0.5" radius bases: 15" base to base, inside the 18" boost range.
+        private static readonly Position BoosterBehindWall = new Position(10f, 26f);
+        private static readonly RectangularZone BoosterWall = new RectangularZone(4f, 16f, 17f, 19f);
+
+        // Preconditions, so the boost tests cannot pass vacuously: the pair is 15" apart and the wall really
+        // blocks every sight line between them.
+        private static void AssertBehindTheWallAtFifteenInches(IGameContext ctx, DataBinding<UnitData> caster,
+            DataBinding<UnitData> other)
+        {
+            float distance = UnitCompareUtilities.MinDistanceBetweenUnits(caster.GetValue(), other.GetValue(),
+                out _, out _, includeVertical: true);
+            Assert.That(distance, Is.EqualTo(15f).Within(0.01f), "15\" base to base");
+            List<ITerrain> terrain = ctx.TableState.Terrain.Objects.ToList();
+            Assert.That(LineOfSightUtilities.HasLineOfSight(CasterBehindWall, BoosterBehindWall, terrain), Is.False,
+                "the wall blocks the sight line");
         }
 
         private static readonly Position CasterBehindWall = new Position(10f, 10f);

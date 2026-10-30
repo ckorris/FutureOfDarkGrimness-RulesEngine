@@ -23,6 +23,15 @@ namespace FDG.Tests
             "Once per activation, before attacking, pick one friendly unit within 12\", which moves +1\" when using " +
             "move actions once (next time the effect would apply).";
 
+        public const string EtherealText =
+            "Once per activation, before attacking, you may place this model anywhere fully within 6\" of its position. " +
+            "If you do, this model moves -6\" when using Advance, and -6\" when using Rush/Charge until the end of that " +
+            "activation.";
+
+        /// <summary>The once-per-activation "used" marker the engine stamps when a cost is paid
+        /// (<c>RuleEvaluator.UsedMarker</c>, cleared at activation end) - Ethereal's "if you do".</summary>
+        public static readonly TokenType EtherealUsed = new("AbilityUsed:Ethereal");
+
         private static SpecialRuleDefinition Unit(string name, string description, params HookEntry[] passive) =>
             new(name, passive, System.Array.Empty<ActivatedAbility>(), ERuleScope.Unit,
                 Valence: EValence.Positive, Description: description);
@@ -58,6 +67,24 @@ namespace FDG.Tests
 
         /// <summary>Great Musician (3.6 text): a friendly unit within 12" gets Musician once (unchanged grant).</summary>
         public static SpecialRuleDefinition GreatMusician() => Buff("Great Musician", "Musician", GreatMusicianText);
+
+        /// <summary>Ethereal (3.6: the -6" applies only "if you do" teleport, until the end of that activation; 3.5 moved
+        /// -6" always). The teleport is the catalog Teleport's ability (TeleportStage routes on <see cref="Effect.Teleport"/>);
+        /// each move penalty gates on the ability's own used marker, which the stage stamps only when the placement is
+        /// accepted and which clears at activation end.</summary>
+        public static SpecialRuleDefinition Ethereal() => new("Ethereal",
+            new[] { EtherealPenalty(EActionType.Advance), EtherealPenalty(EActionType.Rush), EtherealPenalty(EActionType.Charge) },
+            new[]
+            {
+                new ActivatedAbility(EHookID.Activation_OnActionChoice, new Cost.OncePerActivation(),
+                    new TargetSelector(0f, 1, 1, ETargetAffinity.Self, RequireLineOfSight: false),
+                    new Effect.Teleport(), new Condition.MostModelsHaveThisRule()),
+            },
+            ERuleScope.Unit, Valence: EValence.Positive, Description: EtherealText);
+
+        private static HookEntry EtherealPenalty(EActionType action) => new(EHookID.Movement_OnMoveActionDeclared,
+            new Condition.And(new Condition.ActionTypeIs(action), new Condition.TokenPresent(EtherealUsed)),
+            new Effect.MovementBonus(action, -6f), ELifetime.ThisActivation);
 
         private static SpecialRuleDefinition Buff(string name, string granted, string description) => new(name,
             System.Array.Empty<HookEntry>(),

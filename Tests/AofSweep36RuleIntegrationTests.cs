@@ -3,7 +3,9 @@ using System.Linq;
 using FDG.Data;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
+using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
+using FDG.Rules.Tokens;
 using FDG.Stages;
 using FDG.Tests.RulesHarness;
 using NUnit.Framework;
@@ -12,7 +14,7 @@ namespace FDG.Tests
 {
     // #435 - the AoF supplement sweep's re-authored definitions that sit on existing primitives, through the REAL stages
     // where the effect lands (the GdfSweep36RuleIntegrationTests rig): Great Sergeant's AP(+2) at RollToHitStage ->
-    // DetermineSaveRollsNeededStage. Units are Quality 4 / Defense 4 and the weapon AP(0) unless a case says otherwise,
+    // DetermineSaveRollsNeededStage, and Ethereal's "if you do" move penalty through TeleportStage. Units are Quality 4 / Defense 4 and the weapon AP(0) unless a case says otherwise,
     // so a save threshold of 4 is "no modifier". (Banner / Musician / Great Banner / Great Musician drive the morale and
     // movement sites in AofCommandGroup36RuleIntegrationTests.)
     [TestFixture]
@@ -54,7 +56,81 @@ namespace FDG.Tests
             Assert.That(hits.SuccessfulHitList.Sum(g => g.HitCount), Is.EqualTo(1f));
         }
 
+        // --- Ethereal ----------------------------------------------------------------------------------------------
+
+        [TestCase(EActionType.Advance)]
+        [TestCase(EActionType.Rush)]
+        [TestCase(EActionType.Charge)]
+        public async Task Ethereal_AfterTeleporting_MovesMinusSix_UntilTheActivationEnds(EActionType action)
+        {
+            var ctx = new TriggeredMoveTestContext(_store, new CannedPlaceRequester(new Position(13f, 10f)));
+            DataBinding<UnitData> unit = EtherealUnit();
+
+            await Teleport(ctx, unit);
+
+            Assert.That(NetMove(ctx, unit, action), Is.EqualTo(-6f), "'if you do, this model moves -6\"'");
+            Token used = unit.GetValue().Tokens.GetAllTokens(AofSweep36Definitions.EtherealUsed).Single();
+            Assert.That(used.ClearTrigger, Is.InstanceOf<TokenClearTrigger.ActivationEnd>(),
+                "'until the end of that activation'");
+        }
+
+        [Test]
+        public void Ethereal_WithoutTeleporting_MovesNormally()
+        {
+            // 3.5 Ethereal moved -6" on every move; 3.6 only after the placement.
+            var ctx = new TriggeredMoveTestContext(_store, new NullPlayerRequester());
+            DataBinding<UnitData> unit = EtherealUnit();
+
+            Assert.That(NetMove(ctx, unit, EActionType.Advance), Is.EqualTo(0f));
+            Assert.That(NetMove(ctx, unit, EActionType.Rush), Is.EqualTo(0f));
+        }
+
+        [Test]
+        public async Task Ethereal_ATeleportBackedOutOf_CostsNoMovement()
+        {
+            var ctx = new TriggeredMoveTestContext(_store, new CancellingPlaceRequester());
+            DataBinding<UnitData> unit = EtherealUnit();
+
+            await Teleport(ctx, unit);
+
+            Assert.That(NetMove(ctx, unit, EActionType.Advance), Is.EqualTo(0f), "a declined placement is not 'if you do'");
+        }
+
         // --- helpers ------------------------------------------------------------------------------------------------
+
+        private DataBinding<UnitData> EtherealUnit()
+        {
+            var player = new PlayerID(System.Guid.NewGuid());
+            var model = new ModelData(BaseRadius, new List<Weapon>(), new Position(10f, 10f), _store);
+            var unit = new UnitData(player, "Spirits", quality: 4, defense: 4,
+                modelBindings: new List<DataBinding<ModelData>> { _store.GetDataBinding<ModelData>(_store.Create(model)) });
+            SpecialRuleDefinition ethereal = AofSweep36Definitions.Ethereal();
+            unit.AttachRuleDefinition(new ResolvedRule(ethereal.Name, ethereal));
+            DataBinding<UnitData> binding = _store.GetDataBinding<UnitData>(_store.Create(unit));
+            _store.Create(new ArmyData(player, new List<DataBinding<UnitData>> { binding }));
+            return binding;
+        }
+
+        // ChooseActionStage routes the Ethereal offer (an Effect.Teleport) to TeleportStage, which pays the cost - the
+        // used marker - only when the placement is accepted.
+        private static async Task Teleport(IGameContext ctx, DataBinding<UnitData> unit)
+        {
+            var unitCtx = new UnitActionContext(ctx, unit);
+            unitCtx.Reset(unit);
+            unitCtx.SetPendingCustomAction(ctx.RuleEvaluator.GatherOffers(new ActionChoiceContext(unit.GetValue()))
+                .Single(o => o.RuleName == "Ethereal"));
+            var stage = new TeleportStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(unitCtx);
+        }
+
+        private static float NetMove(IGameContext ctx, DataBinding<UnitData> unit, EActionType action)
+        {
+            var sink = new MovementModifierSink();
+            sink.ApplyFrom(ctx.RuleEvaluator.EvaluateAll(new MoveActionDeclaredContext(unit.GetValue(), action, 6f),
+                RuleParticipant.Actor(unit.GetValue())));
+            return sink.Net(action);
+        }
 
         private async Task<int> SaveNeeded(Weapon weapon, DataBinding<UnitData> defender, float distance,
             DataBinding<UnitData>? attacker = null, bool isMelee = false, bool charging = false, bool moved = false)

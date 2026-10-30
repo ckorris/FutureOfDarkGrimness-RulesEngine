@@ -396,6 +396,8 @@ public static class RuleFireLint
             // that strikes first (Counter) and a charger that strikes last (Unwieldy) are one outcome.
             EHookID.Melee_OnCounterTrigger =>
                 op is RuleOperation.StrikeFirst or RuleOperation.StrikeLast,
+            // #423: ParryHitsStage folds the defender's Parry dice through the ParrySink and rolls them.
+            EHookID.Melee_OnHitsTaken => op is RuleOperation.ParryDice,
             EHookID.Melee_OnMeleeResolution => op is RuleOperation.ExtraMeleeWoundCount,
             EHookID.Melee_OnPostMelee => op is RuleOperation.InvokeTriggeredMove,
 
@@ -800,6 +802,10 @@ public static class RuleFireLint
             case EHookID.Melee_OnCounterTrigger:
                 yield return new CounterTriggerContext(attacker, defender);
                 break;
+            case EHookID.Melee_OnHitsTaken:
+                // #423: three hits landing, so Parry's "up to as many dice as hits taken" has something to cap.
+                yield return new MeleeHitsTakenContext(attacker, defender, HitsTaken: 3f);
+                break;
             case EHookID.Melee_OnMeleeResolution:
                 yield return new MeleeResolutionContext(attacker, defender);
                 break;
@@ -858,7 +864,7 @@ public static class RuleFireLint
         private static readonly IReadOnlySet<EHookID> MeleeHooks = new HashSet<EHookID>
         {
             EHookID.Melee_OnChargeContact, EHookID.Melee_OnCounterTrigger,
-            EHookID.Melee_OnMeleeResolution, EHookID.Melee_OnPostMelee,
+            EHookID.Melee_OnMeleeResolution, EHookID.Melee_OnPostMelee, EHookID.Melee_OnHitsTaken,
         };
 
         private static bool IsMeleeOnly(SpecialRuleDefinition definition) =>

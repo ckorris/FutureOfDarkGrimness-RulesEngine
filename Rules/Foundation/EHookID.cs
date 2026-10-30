@@ -271,6 +271,16 @@ public enum EHookID
     Melee_OnPostMelee = 103,
 
     /// <summary>
+    /// #423: the defending unit has just taken hits in melee - a swing's hit roll has resolved (every extra-hit
+    /// and per-hit-AP rule folded) or the charge's Impact hits have landed - and no save has been rolled yet.
+    /// Trigger for Parry(X) (Subject, Core Rules v3.6.0: "When this unit takes hits in melee, roll X dice per
+    /// model with this rule in it, up to as many dice as hits taken. For each 6+ one hit is ignored"). Fired by
+    /// ParryHitsStage once per hit group arrival: each weapon profile the attacker swings, and the Impact hits.
+    /// Context: attacker, defender, hits taken.
+    /// </summary>
+    Melee_OnHitsTaken = 104,
+
+    /// <summary>
     /// #197 P16: the attacker and its target are both fixed and no dice have been rolled - the last moment
     /// at which an EXTRA attack can be injected into the action. Fires in both combat kinds, hence the
     /// <c>Combat_</c> family: before the shooting volley (target already chosen and range/LoS-validated),

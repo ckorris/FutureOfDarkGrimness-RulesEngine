@@ -79,11 +79,16 @@ namespace FDG.Stages
             // attack-wide threshold arithmetic chips composed in DetermineSaveRollsNeededStage.
             string weaponName = metaData.WeaponType.Name;
             string defenderName = metaData.DefendingUnit.GetValue().Name;
+            // #423: when the Parry step removed hits, these beats roll fewer dice than hits landed - say why, so the
+            // reduction is attributable to the Parry beat just above. No label when Parry rolled but removed nothing.
+            string afterParry = metaData.QueryForResult(out ParryResults parry) && parry.RemovedHits
+                ? " (after Parry)"
+                : string.Empty;
             foreach (SaveThresholdBucket bucket in buckets)
             {
                 await GameContext.Presenter.Present(
                     DiceRolledBeat.From(bucket.BuildResults(), bucket.SaveNeeded, GameContext.Settings.RandomnessType,
-                        $"{weaponName}: {bucket.ComposeExplanation()}",
+                        $"{weaponName}: {bucket.ComposeExplanation()}{afterParry}",
                         $"{bucket.Saved:0.##} saved, {RollTags.Count(bucket.Wounds, "wound")}",
                         category: ERollBeatCategory.Defense,
                         context: $"{defenderName} saves",

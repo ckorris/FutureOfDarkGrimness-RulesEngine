@@ -69,6 +69,14 @@ namespace FDG.Stages
         public void RegisterDefenderStruckBack();
 
         /// <summary>
+        /// #423 B1: the defender's Parry dice pool for THIS attack - sized by ParryHitsStage when the attack's first
+        /// hits land and spent across every weapon profile the attacker swings. A strike-back is a new context (a
+        /// new attack, a fresh pool); a Counter role swap resets it because the parrying side changes. Handed to each
+        /// melee swing's <see cref="ICombatMetadata.ParryBudget"/> by <see cref="ConsumeAttackIntoContext"/>.
+        /// </summary>
+        public ParryBudget ParryBudget { get; }
+
+        /// <summary>
         /// #381/#391: the units the <c>PostCombatMoveGate</c> just repositioned (Harassing family) this
         /// action, in the order they moved - empty when no post-combat move actually happened. Appended
         /// by <c>PostMeleeStage</c> (either combatant, #391) / <c>PostShootStage</c>, drained one entry
@@ -284,6 +292,8 @@ namespace FDG.Stages
         public bool DefenderStruckBack { get; private set; }
 
         public void RegisterDefenderStruckBack() => DefenderStruckBack = true;
+
+        public ParryBudget ParryBudget { get; } = new ParryBudget();
 
         // #381/#391: see the interface doc. Plain mutable hand-off between the Post*Stages and
         // RetreatingStrikePostCombatStage; never survives past the action.
@@ -603,6 +613,9 @@ namespace FDG.Stages
             // The former defender is now the attacker; its own Unpredictable rule (if any) must roll fresh.
             _unpredictableBranch = null;
 
+            // #423 B1: the roles flipped, so the unit taking hits - and its Parry pool - is a different one.
+            ParryBudget.Reset();
+
             // The in-range sets swap with the roles: the former defenders are now the attackers (#017).
             (InRangeAttackingModels, InRangeDefendingModels) = (InRangeDefendingModels, InRangeAttackingModels);
 
@@ -636,7 +649,9 @@ namespace FDG.Stages
                 DefendingUnit, weapon, count, _attackerMoved, _isMelee, _isCharging,
                 chargeOriginDistanceInches: ChargeOriginDistanceAgainstDefender(),
                 unpredictableBranch: ResolveUnpredictableBranch(),
-                burstShotIndex: burstIndex);
+                burstShotIndex: burstIndex,
+                // #423 B1: every melee swing of this attack draws on the one Parry pool; shooting never reads it.
+                parryBudget: _isMelee ? ParryBudget : null);
         }
 
         // #197 (P15): roll the Unpredictable die once per attack action, then reuse it for every weapon of

@@ -61,6 +61,8 @@ namespace FDG.Rules.Definitions;
 // and does nothing - see LegacyReduceImpactDicePerModel.
 [JsonDerivedType(typeof(LegacyReduceImpactDicePerModel), "reduceImpactDicePerModel")]
 [JsonDerivedType(typeof(CancelImpactDice), "cancelImpactDice")]
+// #423: Parry(X) (Core Rules v3.6.0) - the defender's hit-ignore dice when it takes hits in melee.
+[JsonDerivedType(typeof(ParryHits), "parryHits")]
 [JsonDerivedType(typeof(ExtraMeleeWoundCount), "extraMeleeWoundCount")]
 [JsonDerivedType(typeof(StrikeFirst), "strikeFirst")]
 [JsonDerivedType(typeof(StrikeLast), "strikeLast")]
@@ -1188,6 +1190,60 @@ public abstract record Effect
                 && m.Weapons.Any(w => w.IsMelee() && w.RuleDefinitions.Any(r => attachment != null
                     ? r.Equals(attachment)
                     : r.Definition == invocation.Definition)));
+        }
+    }
+
+    /// <summary>
+    /// #423 Parry(X), Core Rules v3.6.0: "When this unit takes hits in melee, roll X dice per model with this rule in
+    /// it, up to as many dice as hits taken. For each 6+ one hit is ignored (defender picks which)." A defender-seat
+    /// effect at <see cref="Rules.Foundation.EHookID.Melee_OnHitsTaken"/>: it resolves X and names the living models
+    /// carrying THIS attachment, emitting one <see cref="RuleOperation.ParryDice"/>. <c>ParryHitsStage</c> folds every
+    /// firing through a <c>ParrySink</c> (the highest X per model, so a model with two Parry weapons - no 3.6.0 unit has
+    /// one - rolls X once), rolls min(budget, hits) with the defender's own dice and removes one hit per 6+ from the
+    /// worst hit group first. "Up to as many dice as hits taken" and the one-budget-per-enemy-attack rule (#423 B1) are
+    /// the stage's business, not this effect's.
+    /// <para>
+    /// Who counts: the <see cref="CancelImpactDice"/> accounting. Parry is a weapon rule (AoF Hand Weapons, the GDF
+    /// Daemons' claws), so a model counts when one of its MELEE weapons carries this copy of the rule - a unit-level
+    /// mention is re-homed onto every weapon at army load, so a model whose only Parry copy sits on its bow brings
+    /// nothing to the melee. Attached to the unit itself (a grant, a hand-built invocation), every living model counts.
+    /// An argumented copy counts the models carrying THIS attachment (one shared attachment on a fresh army's weapons,
+    /// one per weapon after a resume rehydrates them - the sink's per-model fold makes both read the same); an
+    /// argument-less copy (a literal X) counts every carrier of the definition.
+    /// </para>
+    /// </summary>
+    public sealed record ParryHits(ValueSource DicePerModel) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            int perModel = DicePerModel.Resolve(ruleInvocation);
+            if (perModel <= 0) return;
+
+            List<ModelID> carriers = Carriers(ruleInvocation);
+            if (carriers.Count == 0)
+            {
+                // Nobody carrying this copy is left alive: no dice. Tracing reports "produced no operations".
+                return;
+            }
+
+            operations.Add(new RuleOperation.ParryDice(perModel, carriers));
+        }
+
+        private static List<ModelID> Carriers(RuleInvocation invocation)
+        {
+            IUnit unit = invocation.Bearer;
+            if (invocation.Weapon == null || invocation.Definition == null)
+            {
+                return unit.Models.Where(m => m.GetIsAlive()).Select(m => m.ID).ToList();
+            }
+
+            Dispatch.ResolvedRule? attachment = invocation.Arguments.Count > 0 ? invocation.Attachment : null;
+            return unit.Models
+                .Where(m => m.GetIsAlive() && m.Weapons.Any(w => w.IsMelee() && w.RuleDefinitions.Any(r => attachment != null
+                    ? r.Equals(attachment)
+                    : r.Definition == invocation.Definition)))
+                .Select(m => m.ID)
+                .ToList();
         }
     }
 

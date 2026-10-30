@@ -24,7 +24,7 @@ public static class CoreRuleCatalog
     {
         Stealth, Artillery, Indirect, Reliable, Fast, VeryFast, Slow, Surge, Relentless, Furious,
         Deadly, Regeneration, Unstoppable, Tough, Rending, Bane, Shred, Vanguard, Scout, Ambush, Thrust,
-        Blast, Takedown, Limited, Impact, Counter, Brace, MartialProwess, Strafing, Fear, Fearless, Hero, UniqueHero, Transport,
+        Blast, Takedown, Limited, Impact, Counter, Brace, Parry, MartialProwess, Strafing, Fear, Fearless, Hero, UniqueHero, Transport,
         FuriousBuff, Mend, Immobile, Cumbersome, Caster, SpellAmplifier,
         Evasive, MeleeEvasion, Precise, GoodShot,
         Agile, Quick, RapidAdvance, RapidRush, RapidCharge,
@@ -658,6 +658,38 @@ public static class CoreRuleCatalog
         EngineArgumentCount: 1,
         Valence: EValence.Positive,
         Description: "Enemies charging this unit get -X total Impact rolls, unless this unit is Fatigued.");
+
+    /// <summary>
+    /// Parry(X), new in Core Rules v3.6.0 (#423): "When this unit takes hits in melee, roll X dice per model with this
+    /// rule in it, up to as many dice as hits taken. For each 6+ one hit is ignored (defender picks which)." Defensive
+    /// (Subject seat) at <see cref="EHookID.Melee_OnHitsTaken"/>, which ParryHitsStage fires between the hit roll and
+    /// the saves of every melee swing and of the charge's Impact hits: <see cref="Effect.ParryHits"/> names the living
+    /// models carrying the rule, the stage rolls min(X x carriers, hits) dice with the defender's own roller and removes
+    /// one hit per 6+ from the WORST group first (the Rending / Crack natural-6 group before the base group). Hits in one
+    /// swing differ only by save threshold, so the defender's pick has one right answer and the engine makes it - no
+    /// request, no resolver (#423 D1, owner sign-off); the roll is a dice beat that names the parried groups. One dice
+    /// budget per enemy melee attack - X x the living carriers when its first hits land - spent across every weapon
+    /// profile the attacker swings (B1); a strike-back is a new attack with its own budget. Weapon-scoped like
+    /// <see cref="Brace"/> (AoF Hand Weapons carry Parry(1) / Parry(3), the GDF Daemons' weapons too): a model counts
+    /// when one of its melee weapons carries it, and a unit-level mention is re-homed onto the weapons. No Fatigue
+    /// clause: a Fatigued defender parries normally, and the Parry dice are the defender's own roll, untouched by
+    /// #418's fatigued-6 gate (which reads the ATTACKER's hit roll).
+    /// </summary>
+    public static SpecialRuleDefinition Parry { get; } = new SpecialRuleDefinition("Parry",
+        new[]
+        {
+            new HookEntry(EHookID.Melee_OnHitsTaken,
+                new Condition.Always(),
+                new Effect.ParryHits(new ValueSource.Arg(0)),
+                ELifetime.ThisAttack,
+                ERuleSeat.Subject),
+        },
+        Array.Empty<ActivatedAbility>(),
+        ERuleScope.Weapon,
+        EngineArgumentCount: 1,
+        Valence: EValence.Positive,
+        Description: "When this unit takes hits in melee, roll X dice per model with this rule in it, " +
+            "up to as many dice as hits taken. For each 6+ one hit is ignored (defender picks which).");
 
     // Melee-resolution (DetermineMeleeWinnerStage) -------------------------------
 

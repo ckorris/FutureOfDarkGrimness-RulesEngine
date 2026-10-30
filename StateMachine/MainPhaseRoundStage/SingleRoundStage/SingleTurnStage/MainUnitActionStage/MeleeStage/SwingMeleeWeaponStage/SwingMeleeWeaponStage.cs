@@ -39,6 +39,9 @@ namespace FDG.Stages
                 .AddChild(new BuildTargetListStage<ICombatMetadata>(GameContext, this), out var buildTargetList)
                 .AddChild(new DetermineHitRollStage<ICombatMetadata>(GameContext, this), out var determineHitRollNeeded)
                 .AddChild(new RollToHitStage<ICombatMetadata>(GameContext, this), out var rollToHit)
+                // #423 Parry: the defender's hit-ignore roll, between the hits landing and the saves. A no-op for a
+                // defender without the rule, a whiff, or an attack whose Parry pool is already spent.
+                .AddChild(new ParryHitsStage<ICombatMetadata>(GameContext, this), out var parryHits)
                 .AddChild(new DetermineSaveRollsNeededStage<ICombatMetadata>(GameContext, this), out var determineSaveRollsNeeded)
                 .AddChild(new RollToSaveStage<ICombatMetadata>(GameContext, this), out var rollToSave)
                 .AddChild(new AssignWoundsStage<ICombatMetadata>(GameContext, this), out var assignWounds)
@@ -56,6 +59,7 @@ namespace FDG.Stages
 
             buildTargetList.BindNextStage(determineHitRollNeeded)
                 .BindNextStage(rollToHit)
+                .BindNextStage(parryHits)
                 .BindNextStage(determineSaveRollsNeeded)
                 .BindNextStage(rollToSave)
                 .BindNextStage(assignWounds)

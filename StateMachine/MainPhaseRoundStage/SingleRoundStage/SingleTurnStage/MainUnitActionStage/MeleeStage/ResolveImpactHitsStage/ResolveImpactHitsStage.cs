@@ -14,7 +14,8 @@ namespace FDG.Stages
     /// resolve through save + wound application BEFORE the normal melee swings. Fired at charge contact,
     /// so only the charger triggers it (melee is only ever entered via Charge, and strike-back never
     /// runs this stage). The impact hits have no weapon — they ride a synthetic AP-0 attack seeded as a
-    /// RollToHitResults, then run the existing save→wound sub-pipeline.
+    /// RollToHitResults, then run the existing save→wound sub-pipeline (#423: with the defender's Parry step ahead
+    /// of the saves - Impact hits are hits taken in melee).
     ///
     /// Core Rules v3.6.0 has Impact roll "before either unit attacks": this stage precedes
     /// DetermineStrikeOrderStage in MeleeStage, so impact hits land before any swing - a Counter unit's
@@ -185,7 +186,7 @@ namespace FDG.Stages
 
         // "Impact(1)" -> "Impact", "Heavy Impact(3)" -> "Heavy Impact": drops the final parenthesised group (nested
         // ones included) that an attached rule's printable name carries; a bare name comes back unchanged.
-        private static string WithoutAuthoredValue(string name)
+        internal static string WithoutAuthoredValue(string name)
         {
             string trimmed = name.TrimEnd();
             if (!trimmed.EndsWith(")")) return name;
@@ -233,6 +234,10 @@ namespace FDG.Stages
             OnImpactResolved = new StageBinding(this);
 
             Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
+                // #423 Parry: Impact hits ARE hits taken in melee (same save chain), so the defender's hit-ignore roll
+                // comes first - its own hit-taking event with its own dice pool (the child metadata carries no shared
+                // budget), before the attacker's weapon swings draw on the attack's.
+                .AddChild(new ParryHitsStage<ICombatMetadata>(GameContext, this), out var parryHits)
                 .AddChild(new DetermineSaveRollsNeededStage<ICombatMetadata>(GameContext, this), out var determineSaveRollsNeeded)
                 .AddChild(new RollToSaveStage<ICombatMetadata>(GameContext, this), out var rollToSave)
                 .AddChild(new AssignWoundsStage<ICombatMetadata>(GameContext, this), out var assignWounds)
@@ -240,9 +245,10 @@ namespace FDG.Stages
                 .AddSibling(nameof(OnImpactResolved), OnImpactResolved, out string impactResolvedEvent)
                 .Build();
 
-            startingChild = determineSaveRollsNeeded;
+            startingChild = parryHits;
 
-            determineSaveRollsNeeded.BindNextStage(rollToSave)
+            parryHits.BindNextStage(determineSaveRollsNeeded)
+                .BindNextStage(rollToSave)
                 .BindNextStage(assignWounds)
                 .BindNextStage(applyWounds)
                 .BindToEvent(impactResolvedEvent);

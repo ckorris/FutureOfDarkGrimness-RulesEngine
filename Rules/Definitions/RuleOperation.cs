@@ -829,6 +829,28 @@ public abstract record RuleOperation
     }
 
     /// <summary>
+    /// #423 Parry(X): the bearer may roll <see cref="DicePerModel"/> Parry dice for each of <see cref="Carriers"/> - its
+    /// living models carrying this copy of the rule - when it takes hits in melee. Resolution of
+    /// <see cref="Effect.ParryHits"/>; <c>ParryHitsStage</c> folds every firing through <see cref="IParrySink"/>, which
+    /// keeps the highest X per model, caps the dice at the hits taken and at the attack's remaining budget, and removes
+    /// one hit per 6+ from the worst hit group first.
+    /// </summary>
+    public sealed record ParryDice(int DicePerModel, IReadOnlyList<ModelID> Carriers) : SinkOperation<IParrySink>
+    {
+        public override void ApplyTo(IParrySink sink)
+        {
+            sink.AddDice(DicePerModel, Carriers);
+        }
+
+        public override string Describe()
+        {
+            int models = Carriers.Count;
+            return $"may roll {DiceTally(DicePerModel, "Parry")} per model when hit in melee " +
+                $"({models} model{(models == 1 ? "" : "s")})";
+        }
+    }
+
+    /// <summary>
     /// Roll <see cref="DiceCount"/> impact dice (each 2+ a hit) on the charge.
     /// Resolution of <see cref="Effect.ChargeImpactHits"/> (Impact) and, negative, of
     /// <see cref="Effect.CancelImpactDice"/> (Brace). <see cref="Models"/> (#447) is how many models the count

@@ -511,6 +511,13 @@ namespace FDG.ArmyBuilding
             {
                 ItemEntry template = bought.First().Item;
                 int held = items.Where(i => i.Name == template.Name).Sum(i => i.Quantity);
+
+                // #447: every model still holds the item after the purchase - a 3.6 "Replace one Lance and Trample ->
+                // Trample (Impact(1))" swap hands the one model back the Trample its profile gave every model. It is
+                // the unit's, so the fold covers it; a one-model grant would also stop the fold (it skips placed
+                // (item, rule) pairs) and strip the profile copy from the other models.
+                if (held >= unit.ModelCount) continue;
+
                 int models = Math.Min(held, bought.Sum(p => Math.Max(1, p.Item.Quantity) * p.Applications));
 
                 foreach (SpecialRuleEntry rule in template.Rules)

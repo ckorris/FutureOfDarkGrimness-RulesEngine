@@ -322,6 +322,28 @@ namespace FDG.Tests
             Assert.That(run.Roller.RollCounts.First(), Is.EqualTo(3f), "one model x Impact(3), not three");
         }
 
+        [Test]
+        public async Task Compile_ReplacingOneProfileItemWithTheSameItem_KeepsItUnitWide()
+        {
+            // 3.6.0 Dragon Empire Dragonkin Horsemen / Ghostly Undead Dread Knights shape: every model's profile
+            // carries "Trample (Impact(1))", and "Replace one Lance and Trample" gives the one model a new Trample.
+            // Every model still holds one, so the unit keeps Impact(1) - not a one-model grant that would leave the
+            // other four without it (1 die instead of 5).
+            BuiltArmyFile army = ListCompiler.Compile(HorsemenBook(), HorsemenList());
+            UnitFileEntry horsemen = army.Units.Single();
+
+            Assert.That(horsemen.SpecialRules, Does.Contain(new SpecialRuleEntry_CoreNumeric("Impact", 1)));
+            Assert.That(horsemen.ModelGrants, Is.Null);
+
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            GameBootstrap.CreateArmy(new PlayerID(Guid.NewGuid()), army, store, CoreRuleCatalog.CreateResolver());
+            _store = store;
+
+            Run run = await RunStage(store.GetAllDataBindings<UnitData>().Single(), MakeUnit(10, "Targets"));
+
+            Assert.That(run.Roller.RollCounts.First(), Is.EqualTo(5f), "5 models x Impact(1)");
+        }
+
         // ---- helpers ------------------------------------------------------------------------------------------
 
         private sealed record Run(RecordingDiceRoller Roller, List<string> Lines);
@@ -443,6 +465,61 @@ namespace FDG.Tests
                             },
                         },
                     },
+                },
+            },
+        };
+
+        private static BookFile HorsemenBook() => new()
+        {
+            Name = "Test Book", Faction = "Testers",
+            Units =
+            {
+                new RosterUnit
+                {
+                    Id = "horsemen", Name = "Horsemen", Quality = 4, Defense = 4,
+                    BaseModelCount = 5, MinModels = 5, MaxModels = 5, BasePointCost = 100,
+                    Weapons = { new WeaponFileEntry { Name = "Lance", Quantity = 5, RangeInches = 0, Attacks = 1 } },
+                    Items =
+                    {
+                        new ItemEntry { Name = "Trample", Quantity = 5, Rules = { new SpecialRuleEntry_CoreNumeric("Impact", 1) } },
+                    },
+                    Sections =
+                    {
+                        new UpgradeSection
+                        {
+                            Id = "lance-section", Label = "Replace one Lance and Trample",
+                            Variant = UpgradeVariant.Replace, Affects = UpgradeAffects.One, Targets = { "Lance", "Trample" },
+                            Options =
+                            {
+                                new UpgradeOption
+                                {
+                                    Id = "glaive", Label = "Glaive (A2), Trample (Impact(1))", Cost = 5,
+                                    WeaponsGained = { new WeaponFileEntry { Name = "Glaive", Quantity = 1, RangeInches = 0, Attacks = 2 } },
+                                    ItemsGained =
+                                    {
+                                        new ItemEntry
+                                        {
+                                            Name = "Trample", Quantity = 1,
+                                            Rules = { new SpecialRuleEntry_CoreNumeric("Impact", 1) },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        };
+
+        private static BuilderList HorsemenList() => new()
+        {
+            Name = "Test", BookName = "Test Book", PointsLimit = 1000,
+            Units =
+            {
+                new BuilderUnit
+                {
+                    RosterUnitId = "horsemen", ModelCount = 5,
+                    Choices = { new UpgradeChoice { SectionId = "lance-section", OptionId = "glaive", Count = 1 } },
                 },
             },
         };

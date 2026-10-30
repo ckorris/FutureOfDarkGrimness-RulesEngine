@@ -17,6 +17,8 @@ namespace FDG.Stages
     /// pass, so an enemy Scout already placed does not push back. Both halves are read from the rule's
     /// <see cref="RuleOperation.DeferDeployment"/>, and the request carries them, so the CLI, GUI and AI
     /// resolvers judge the same numbers.</para>
+    /// <para>#426: the players alternate, one Scout unit per turn, starting with the player that activates
+    /// next (<see cref="PlacementAlternation"/>).</para>
     /// </summary>
     public class PlaceDeferredUnitsStage : StageBase<IDeploymentTurnContext>
     {
@@ -35,33 +37,56 @@ namespace FDG.Stages
             // Only Scout-style (AfterNormalDeployment) units reach the deferred pool. Ambush units are
             // held interactively at selection time (ChooseUnitToDeployStage) and stay off-table until a
             // later round, so they never appear here.
+            //
+            // #426: "Players alternate in placing Scout units, starting with the player that activates next"
+            // (3.5 and 3.6 alike; this pass used to place them in list order). One unit per turn, players in
+            // the deployment roll order - the order round 1 activates in - and each player's own Scouts in
+            // army-list order.
+            var queues = new Dictionary<PlayerID, Queue<DeferredUnitEntry>>();
+            var participants = new List<PlayerID>();
             foreach (DeferredUnitEntry entry in context.DeferredUnits)
             {
                 if (entry.Defer.Timing != EDeferTiming.AfterNormalDeployment) continue;
 
-                UnitData unit = entry.Unit.GetValue();
-                PlaceObjectsRequest<ModelData> request = BuildRequest(context, entry);
-
-                // #282: commit-time overlap check, same as normal deployment.
-                List<PlacedObjectEntry<ModelData>> placements = await PlacementCommitGuard
-                    .RequestClearPlacement(GameContext, request);
-
-                // On the table is the negation of in reserve (a Scout defers within deployment, so it never
-                // carries the token; a legacy save's bootstrap may have stamped it). #309: cleared BEFORE
-                // the positions so a networked client never captures an on-table position paired with a
-                // still-reserved unit state.
-                Rules.Dispatch.ReserveRules.ClearReserve(unit);
-
-                foreach (PlacedObjectEntry<ModelData> placement in placements)
+                PlayerID owner = entry.Unit.GetValue().PlayerID;
+                if (!queues.TryGetValue(owner, out Queue<DeferredUnitEntry>? queue))
                 {
-                    placement.Binding.GetValue().SetPosition(placement.Position);
-                    if (placement.Facing.HasValue) placement.Binding.GetValue().SetFacing(placement.Facing.Value);
+                    queues[owner] = queue = new Queue<DeferredUnitEntry>();
+                    participants.Add(owner);
                 }
-
-                context.Log($"{unit.Name} deployed via Scout.");
+                queue.Enqueue(entry);
             }
 
+            await PlacementAlternation.RunAsync(context.FirstDeploymentRollOrder, participants,
+                player => queues.TryGetValue(player, out Queue<DeferredUnitEntry>? queue) && queue.Count > 0,
+                player => PlaceOne(context, queues[player].Dequeue()));
+
             await OnFinish.Activate(context);
+        }
+
+        private async Task PlaceOne(IDeploymentTurnContext context, DeferredUnitEntry entry)
+        {
+            UnitData unit = entry.Unit.GetValue();
+            // Built at the unit's own turn, so the keep-out sees every unit placed before it.
+            PlaceObjectsRequest<ModelData> request = BuildRequest(context, entry);
+
+            // #282: commit-time overlap check, same as normal deployment.
+            List<PlacedObjectEntry<ModelData>> placements = await PlacementCommitGuard
+                .RequestClearPlacement(GameContext, request);
+
+            // On the table is the negation of in reserve (a Scout defers within deployment, so it never
+            // carries the token; a legacy save's bootstrap may have stamped it). #309: cleared BEFORE
+            // the positions so a networked client never captures an on-table position paired with a
+            // still-reserved unit state.
+            Rules.Dispatch.ReserveRules.ClearReserve(unit);
+
+            foreach (PlacedObjectEntry<ModelData> placement in placements)
+            {
+                placement.Binding.GetValue().SetPosition(placement.Position);
+                if (placement.Facing.HasValue) placement.Binding.GetValue().SetFacing(placement.Facing.Value);
+            }
+
+            context.Log($"{unit.Name} deployed via Scout.");
         }
 
         /// <summary>The literal TaskName of a Scout placement (the Tactician's discriminator).</summary>

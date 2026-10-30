@@ -67,6 +67,16 @@ namespace FDG.Tests
                 },
                 System.Array.Empty<ActivatedAbility>(), ERuleScope.Weapon);
 
+            /// <summary>Targeting Visor / Precision Marksman / Buccaneer: +1 to hit when shooting over 9".</summary>
+            public static SpecialRuleDefinition TargetingVisor => new("Targeting Visor",
+                new[]
+                {
+                    new HookEntry(EHookID.Shooting_OnHitRollModifier,
+                        new Condition.And(new Condition.Not(new Condition.IsMelee()), new Condition.DistanceGreaterThan(9f)),
+                        new Effect.RollModifier(ERollKind.Hit, 1), ELifetime.ThisAttack),
+                },
+                System.Array.Empty<ActivatedAbility>());
+
             /// <summary>Wolfborn / Nimble / Rapid Blink / Wave-Step: the D3" activation move (#434 D8).</summary>
             public static SpecialRuleDefinition Wolfborn => new("Wolfborn",
                 new[]
@@ -253,7 +263,326 @@ namespace FDG.Tests
             Assert.That(requester.Asked, Is.EqualTo(0));
         }
 
+        // --- C: the "always ... (instead of only when over 9"/6")" complements -------------------------------------------
+        // Base + Enhanced: the effect at EVERY distance, once - the two arms are disjoint and can never both fire.
+
+        [TestCase(10f, false, 0f)]
+        [TestCase(8f, false, 0f)]
+        [TestCase(0.5f, true, 7f)]
+        [TestCase(0.5f, true, 5f)]
+        [TestCase(0.5f, true, 0f)]
+        public async Task EnhancedChangebound_WithChangebound_EnemiesGetMinusOneToHit_Always(float distance, bool melee,
+            float origin)
+        {
+            DataBinding<UnitData> defender = MakeUnit("Daemons", 10f, 3, RangeConditional36Definitions.MinusHit(),
+                Enhanced36Definitions.MinusHit());
+
+            Assert.That(await HitNeeded(defender, distance, melee, charging: origin > 0f, origin), Is.EqualTo(5),
+                "-1 once: over range from the base arm, inside it (and on a strike-back) from the Enhanced arm");
+        }
+
+        [Test]
+        public async Task EnhancedChangebound_WithoutChangebound_IsInert()
+        {
+            DataBinding<UnitData> defender = MakeUnit("Pretenders", 10f, 3, Enhanced36Definitions.MinusHit());
+
+            Assert.That(await HitNeeded(defender, 8f, melee: false, charging: false, origin: 0f), Is.EqualTo(4));
+        }
+
+        [TestCase(10f)]
+        [TestCase(8f)]
+        public async Task EnhancedGuarded_WithGuarded_PlusOneDefense_Always(float distance)
+        {
+            DataBinding<UnitData> defender = MakeUnit("Guards", 10f, 1, RangeConditional36Definitions.PlusDefense(),
+                Enhanced36Definitions.PlusDefense());
+
+            Assert.That(await SaveNeeded(new Weapon("Gun", 24f, 1, 0), defender, distance), Is.EqualTo(3), "+1 once");
+        }
+
+        [Test]
+        public async Task EnhancedGuarded_WithoutGuarded_IsInert()
+        {
+            DataBinding<UnitData> defender = MakeUnit("Pretenders", 10f, 1, Enhanced36Definitions.PlusDefense());
+
+            Assert.That(await SaveNeeded(new Weapon("Gun", 24f, 1, 0), defender, 8f), Is.EqualTo(4));
+        }
+
+        [TestCase(10f, false, 0f, 5f / 6f)]
+        [TestCase(8f, false, 0f, 5f / 6f)]
+        [TestCase(0.5f, true, 7f, 5f / 6f)]
+        [TestCase(0.5f, true, 5f, 5f / 6f)]
+        public async Task EnhancedKnightborn_WithKnightborn_IgnoresShootingAndChargingWounds_OnSixPlus_AtAnyDistance(
+            float distance, bool melee, float origin, float expected)
+        {
+            DataBinding<UnitData> knights = MakeUnit("Knights", 10f, 1, RangeConditional36Definitions.Ward(),
+                Enhanced36Definitions.Ward());
+
+            Assert.That(await WoundsFromOneFailedSave(knights, distance, melee, origin), Is.EqualTo(expected).Within(0.0001f),
+                "one 6+ roll per wound - never a 6+ and then another 6+");
+        }
+
+        [Test]
+        public async Task EnhancedKnightborn_LeavesStrikeBackWounds_AndKeepsTheSpellArm()
+        {
+            DataBinding<UnitData> knights = MakeUnit("Knights", 10f, 1, RangeConditional36Definitions.Ward(),
+                Enhanced36Definitions.Ward());
+
+            Assert.That(await WoundsFromOneFailedSave(knights, 0.5f, melee: true, origin: 0f), Is.EqualTo(1f).Within(0.0001f),
+                "a strike-back's wound is neither a shooting nor a charging wound");
+            Assert.That(await WoundsFromOneFailedSave(knights, 4f, isSpell: true), Is.EqualTo(1f / 6f).Within(0.0001f),
+                "spell wounds: the base's 2+ arm alone");
+        }
+
+        [Test]
+        public async Task EnhancedKnightborn_WithoutKnightborn_IsInert()
+        {
+            DataBinding<UnitData> pretenders = MakeUnit("Pretenders", 10f, 1, Enhanced36Definitions.Ward());
+
+            Assert.That(await WoundsFromOneFailedSave(pretenders, 8f), Is.EqualTo(1f).Within(0.0001f));
+        }
+
+        [Test]
+        public void EnhancedHiveBond_WithHiveBond_PlusOneToEveryMoraleTest_Once()
+        {
+            var harness = new TestRuleHarness();
+            IUnit swarm = harness.BuildUnit("P1", 4);
+            harness.AttachRule(swarm, RangeConditional36Definitions.Morale());
+            harness.AttachRule(swarm, Enhanced36Definitions.Morale());
+
+            Assert.That(MoraleNet(harness, swarm, new PreMoraleTestContext(swarm, ShotFromInches: 10f)), Is.EqualTo(1),
+                "over range: the base arm alone");
+            Assert.That(MoraleNet(harness, swarm, new PreMoraleTestContext(swarm, ShotFromInches: 8f)), Is.EqualTo(1),
+                "inside range: the Enhanced arm alone");
+            Assert.That(MoraleNet(harness, swarm, new PreMoraleTestContext(swarm, ChargedFromInches: 5f)), Is.EqualTo(1));
+            Assert.That(MoraleNet(harness, swarm, new PreMoraleTestContext(swarm)), Is.EqualTo(1),
+                "always: a test no attack triggered too");
+        }
+
+        [Test]
+        public void EnhancedHiveBond_WithoutHiveBond_IsInert()
+        {
+            var harness = new TestRuleHarness();
+            IUnit swarm = harness.BuildUnit("P1", 4);
+            harness.AttachRule(swarm, Enhanced36Definitions.Morale());
+
+            Assert.That(MoraleNet(harness, swarm, new PreMoraleTestContext(swarm, ShotFromInches: 8f)), Is.EqualTo(0));
+        }
+
+        [TestCase(10f, false, 0f)]
+        [TestCase(8f, false, 0f)]
+        [TestCase(0.5f, true, 7f)]
+        [TestCase(0.5f, true, 0f)]
+        public async Task EnhancedDevout_WithDevout_ANaturalSixScoresOneExtraHit_Always(float distance, bool melee, float origin)
+        {
+            _ctx = new WoundTestContext(_store, new CapturingWoundRequester(), new FixedDiceRoller(6));
+            DataBinding<UnitData> shooter = MakeUnit("Sisters", 0f, 1, RangeConditional36Definitions.ExtraHit(),
+                Enhanced36Definitions.ExtraHit());
+
+            Assert.That(TotalHits(await Hits(new Weapon("Gun", melee ? 0f : 24f, 1, 0), shooter, MakeUnit("Target", 10f, 1),
+                distance, melee, charging: origin > 0f, origin)), Is.EqualTo(2f), "the hit plus ONE extra");
+        }
+
+        [Test]
+        public async Task EnhancedDevout_WithoutDevout_IsInert_AndASpellGetsNothing()
+        {
+            _ctx = new WoundTestContext(_store, new CapturingWoundRequester(), new FixedDiceRoller(6));
+            DataBinding<UnitData> pretenders = MakeUnit("Pretenders", 0f, 1, Enhanced36Definitions.ExtraHit());
+            DataBinding<UnitData> sisters = MakeUnit("Sisters", 0f, 1, RangeConditional36Definitions.ExtraHit(),
+                Enhanced36Definitions.ExtraHit());
+            DataBinding<UnitData> target = MakeUnit("Target", 10f, 1);
+
+            Assert.That(TotalHits(await Hits(new Weapon("Gun", 24f, 1, 0), pretenders, target, 8f)), Is.EqualTo(1f));
+
+            // The spell pipeline (SyntheticHitResolution, IsSpell) rolls hits that all show 6 here: inside 9", a spell is
+            // neither the base's shot nor one of the Enhanced arm's weapon attacks.
+            Place(target, 8f);
+            SyntheticHitResolution.Result spell = SyntheticHitResolution.Resolve(_ctx, sisters.GetValue(), target.GetValue(),
+                baseHits: 1, new Weapon("Spell", 0f, 1, 0), isSpell: true);
+            Assert.That(spell.HitGroups.Sum(g => g.HitCount), Is.EqualTo(1f),
+                "a caster's spell hits are not 'unmodified results of 6 to hit'");
+            SyntheticHitResolution.Result ability = SyntheticHitResolution.Resolve(_ctx, sisters.GetValue(), target.GetValue(),
+                baseHits: 1, new Weapon("Flamer", 0f, 1, 0), isSpell: false);
+            Assert.That(ability.HitGroups.Sum(g => g.HitCount), Is.EqualTo(2f), "control: the same dice, not a spell");
+        }
+
+        [TestCase(10f, false, 0f)]
+        [TestCase(8f, false, 0f)]
+        [TestCase(0.5f, true, 7f)]
+        [TestCase(0.5f, true, 0f)]
+        public async Task EnhancedHavocbound_WithHavocbound_ApPlusOne_Always(float distance, bool melee, float origin)
+        {
+            DataBinding<UnitData> raider = MakeUnit("Raider", 0f, 1, RangeConditional36Definitions.ApPlusOne(),
+                Enhanced36Definitions.ApPlusOne());
+
+            Assert.That(await SaveNeeded(new Weapon("Gun", melee ? 0f : 24f, 1, 0), MakeUnit("Target", 10f, 1), distance,
+                raider, melee, charging: origin > 0f, origin), Is.EqualTo(5), "AP(+1) once");
+        }
+
+        [Test]
+        public async Task EnhancedHavocbound_WithoutHavocbound_IsInert_AndASpellGetsNothing()
+        {
+            DataBinding<UnitData> pretender = MakeUnit("Pretender", 0f, 1, Enhanced36Definitions.ApPlusOne());
+            DataBinding<UnitData> raider = MakeUnit("Raider", 0f, 1, RangeConditional36Definitions.ApPlusOne(),
+                Enhanced36Definitions.ApPlusOne());
+            DataBinding<UnitData> target = MakeUnit("Target", 10f, 1);
+
+            Assert.That(await SaveNeeded(new Weapon("Gun", 24f, 1, 0), target, 8f, pretender), Is.EqualTo(4));
+
+            Place(target, 8f);
+            SyntheticHitResolution.Result spell = SyntheticHitResolution.Resolve(_ctx, raider.GetValue(), target.GetValue(),
+                baseHits: 1, new Weapon("Spell", 0f, 1, 0), isSpell: true);
+            Assert.That(spell.SaveModifier, Is.EqualTo(0), "'its weapons get AP(+1)': a spell is not one");
+            SyntheticHitResolution.Result ability = SyntheticHitResolution.Resolve(_ctx, raider.GetValue(), target.GetValue(),
+                baseHits: 1, new Weapon("Flamer", 0f, 1, 0), isSpell: false);
+            Assert.That(ability.SaveModifier, Is.EqualTo(-1), "control: the same synthetic hits, not a spell");
+        }
+
+        [TestCase(10f, false, 0f)]
+        [TestCase(8f, false, 0f)]
+        [TestCase(0.5f, true, 7f)]
+        [TestCase(0.5f, true, 0f)]
+        public async Task EnhancedInfected_WithInfectedOnTheWeapon_OnesToBlockDealOneExtraWound_Always(float distance,
+            bool melee, float origin)
+        {
+            var claws = new Weapon("Claws", melee ? 0f : 24f, 1, 0);
+            claws.AttachRuleDefinition(new ResolvedRule("Infected", RangeConditional36Definitions.ExtraWound()));
+            DataBinding<UnitData> carrier = MakeUnit("Carrier", 0f, 1, Enhanced36Definitions.ExtraWound());
+            ((ModelData)carrier.GetValue().Models[0]).Weapons.Add(claws);   // "on its weapons": the gate reads them there
+
+            Assert.That(await WoundsFromOneFailedSave(MakeUnit("Target", 10f, 1), distance, melee, origin, weapon: claws,
+                attacker: carrier, failedFace: 1), Is.EqualTo(2f), "one natural 1 to block: one wound plus ONE extra");
+        }
+
+        [Test]
+        public async Task EnhancedInfected_WithoutInfected_IsInert_AndASpellGetsNothing()
+        {
+            var plain = new Weapon("Claws", 24f, 1, 0);
+            var claws = new Weapon("Claws", 24f, 1, 0);
+            claws.AttachRuleDefinition(new ResolvedRule("Infected", RangeConditional36Definitions.ExtraWound()));
+            DataBinding<UnitData> pretender = MakeUnit("Pretender", 0f, 1, Enhanced36Definitions.ExtraWound());
+            ((ModelData)pretender.GetValue().Models[0]).Weapons.Add(plain);
+            DataBinding<UnitData> carrier = MakeUnit("Carrier", 0f, 1, Enhanced36Definitions.ExtraWound());
+            ((ModelData)carrier.GetValue().Models[0]).Weapons.Add(claws);
+
+            Assert.That(await WoundsFromOneFailedSave(MakeUnit("Target", 10f, 1), 8f, weapon: plain, attacker: pretender,
+                failedFace: 1), Is.EqualTo(1f), "no Infected anywhere on the unit");
+            Assert.That(await WoundsFromOneFailedSave(MakeUnit("Target", 10f, 1), 8f, weapon: claws, attacker: carrier,
+                failedFace: 1, isSpell: true), Is.EqualTo(1f), "'hits from weapons': a spell's are not");
+        }
+
+        [TestCase("AP(+1)", 10f, 0, -1)]
+        [TestCase("AP(+1)", 8f, 0, -1)]
+        [TestCase("+1 to hit", 10f, 1, 0)]
+        [TestCase("+1 to hit", 8f, 1, 0)]
+        public void EnhancedVersatileWarrior_WithThePick_AppliesIt_Always(string label, float distance, int expectedHit,
+            int expectedSave)
+        {
+            var harness = new TestRuleHarness();
+            harness.Register(RangeConditional36Definitions.Pick());
+            harness.Register(RangeConditional36Definitions.PickPiercing());
+            harness.Register(RangeConditional36Definitions.PickPrecision());
+            harness.Register(Enhanced36Definitions.Pick());
+            IUnit warriors = harness.BuildUnit("P1", 3, "Versatile Warrior", "Enhanced Versatile Warrior");
+            IUnit enemy = harness.BuildUnit("P2", 1);
+
+            AbilityOffer offer = harness.OfferAbilities(new ActivationStartContext(warriors))
+                .Single(o => o.Ability.Label == label);
+            OperationApplier.ApplyTokenOperations(harness.Accept(offer, warriors));
+
+            var hit = new RollModifierSink();
+            hit.ApplyFrom(harness.Evaluate(warriors, ERuleSeat.Actor, new HitRollModifierContext(warriors, enemy, distance)));
+            var save = new RollModifierSink();
+            save.ApplyFrom(harness.Evaluate(warriors, ERuleSeat.Actor,
+                new HitRollCompleteContext(warriors, enemy, TestDice.Faces(4), distance)));
+
+            Assert.That(hit.Net(ERollKind.Hit), Is.EqualTo(expectedHit), $"{label} at {distance}\" - once");
+            Assert.That(save.Net(ERollKind.Save), Is.EqualTo(expectedSave), $"{label} at {distance}\" - once");
+        }
+
+        [Test]
+        public void EnhancedVersatileWarrior_WithoutAPick_GrantsNothing()
+        {
+            var harness = new TestRuleHarness();
+            harness.Register(RangeConditional36Definitions.Pick());
+            harness.Register(RangeConditional36Definitions.PickPiercing());
+            harness.Register(RangeConditional36Definitions.PickPrecision());
+            harness.Register(Enhanced36Definitions.Pick());
+            IUnit warriors = harness.BuildUnit("P1", 3, "Versatile Warrior", "Enhanced Versatile Warrior");
+            IUnit enemy = harness.BuildUnit("P2", 1);
+
+            var hit = new RollModifierSink();
+            hit.ApplyFrom(harness.Evaluate(warriors, ERuleSeat.Actor, new HitRollModifierContext(warriors, enemy, 8f)));
+            var save = new RollModifierSink();
+            save.ApplyFrom(harness.Evaluate(warriors, ERuleSeat.Actor,
+                new HitRollCompleteContext(warriors, enemy, TestDice.Faces(4), 8f)));
+
+            Assert.That(hit.Net(ERollKind.Hit), Is.EqualTo(0));
+            Assert.That(save.Net(ERollKind.Save), Is.EqualTo(0));
+        }
+
+        [TestCase(10f, false)]
+        [TestCase(8f, false)]
+        [TestCase(0.5f, true)]
+        public async Task EnhancedTargetingVisor_WithTargetingVisor_PlusOneToHit_Always(float distance, bool melee)
+        {
+            DataBinding<UnitData> shooter = MakeUnit("Shooter", 0f, 1, Bases.TargetingVisor, Enhanced36Definitions.PlusHit());
+
+            Assert.That(await HitNeeded(MakeUnit("Target", 10f, 1), distance, melee, charging: false, origin: 0f, shooter),
+                Is.EqualTo(3), "+1 once - over 9\" from the base, otherwise (melee included, D5) from the Enhanced arm");
+        }
+
+        [Test]
+        public async Task EnhancedTargetingVisor_WithoutTargetingVisor_IsInert()
+        {
+            DataBinding<UnitData> shooter = MakeUnit("Pretender", 0f, 1, Enhanced36Definitions.PlusHit());
+
+            Assert.That(await HitNeeded(MakeUnit("Target", 10f, 1), 8f, melee: false, charging: false, origin: 0f, shooter),
+                Is.EqualTo(4));
+        }
+
         // --- helpers --------------------------------------------------------------------------------------------------
+
+        private static int MoraleNet(TestRuleHarness harness, IUnit unit, PreMoraleTestContext context)
+        {
+            var sink = new RollModifierSink();
+            sink.ApplyFrom(harness.Evaluate(unit, ERuleSeat.Actor, context));
+            return sink.Net(ERollKind.Morale);
+        }
+
+        private static float TotalHits(RollToHitResults results) => results.SuccessfulHitList.Sum(h => h.HitCount);
+
+        private async Task<int> HitNeeded(DataBinding<UnitData> defender, float distance, bool melee, bool charging,
+            float origin, DataBinding<UnitData>? attacker = null)
+        {
+            attacker ??= MakeUnit("Attacker", 0f, 1);
+            Place(defender, distance);
+
+            var stage = new DetermineHitRollStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>());
+            stage.NextStage.Bind("done");
+            var metadata = new CombatMetadata(_ctx, attacker, defender, new Weapon("Gun", melee ? 0f : 24f, 1, 0),
+                weaponCount: 1, attackerMoved: false, isMelee: melee, isCharging: charging,
+                chargeOriginDistanceInches: origin);
+            await stage.Enter(metadata);
+
+            Assert.That(metadata.QueryForResult(out DetermineHitRollResults result), Is.True);
+            return result.HitRollNeeded;
+        }
+
+        private async Task<RollToHitResults> Hits(Weapon weapon, DataBinding<UnitData> attacker, DataBinding<UnitData> defender,
+            float distance, bool melee = false, bool charging = false, float origin = 0f, bool isSpell = false)
+        {
+            Place(defender, distance);
+
+            var stage = new RollToHitStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>());
+            stage.NextStage.Bind("done");
+            var metadata = new CombatMetadata(_ctx, attacker, defender, weapon, weaponCount: 1, attackerMoved: false,
+                isMelee: melee, isCharging: charging, isSpell: isSpell, chargeOriginDistanceInches: origin);
+            metadata.AddResult(new DetermineHitRollResults(4, 1));
+            await stage.Enter(metadata);
+
+            Assert.That(metadata.QueryForResult(out RollToHitResults result), Is.True);
+            return result;
+        }
 
         // The movement machinery looks a moving unit up through its army.
         private DataBinding<UnitData> InArmy(DataBinding<UnitData> unit)
@@ -273,17 +602,12 @@ namespace FDG.Tests
             await stage.Enter(unitContext);
         }
 
-        private async Task<int> SaveNeeded(Weapon weapon, DataBinding<UnitData> defender, float distance)
+        private async Task<int> SaveNeeded(Weapon weapon, DataBinding<UnitData> defender, float distance,
+            DataBinding<UnitData>? attacker = null, bool melee = false, bool charging = false, float origin = 0f,
+            bool isSpell = false)
         {
-            DataBinding<UnitData> attacker = MakeUnit("Attacker", 0f, 1);
-            Place(defender, distance);
-
-            var hitStage = new RollToHitStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>());
-            hitStage.NextStage.Bind("done");
-            var hitMetadata = new CombatMetadata(_ctx, attacker, defender, weapon, weaponCount: 1);
-            hitMetadata.AddResult(new DetermineHitRollResults(4, 1));
-            await hitStage.Enter(hitMetadata);
-            Assert.That(hitMetadata.QueryForResult(out RollToHitResults hits), Is.True);
+            attacker ??= MakeUnit("Attacker", 0f, 1);
+            RollToHitResults hits = await Hits(weapon, attacker, defender, distance, melee, charging, origin, isSpell);
 
             var stage = new DetermineSaveRollsNeededStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>());
             stage.NextStage.Bind("done");
@@ -296,17 +620,21 @@ namespace FDG.Tests
             return result.PendingSaveRollsList.Max(p => p.SaveNeeded);
         }
 
-        private async Task<float> WoundsFromOneFailedSave(DataBinding<UnitData> defender)
+        private async Task<float> WoundsFromOneFailedSave(DataBinding<UnitData> defender, float distance = 10f,
+            bool melee = false, float origin = 0f, bool isSpell = false, Weapon? weapon = null,
+            DataBinding<UnitData>? attacker = null, int failedFace = 2)
         {
-            DataBinding<UnitData> attacker = MakeUnit("Attacker", 0f, 1);
-            Place(defender, 10f);
+            attacker ??= MakeUnit("Attacker", 0f, 1);
+            Place(defender, distance);
 
             var stage = new AssignWoundsStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>());
             stage.NextStage.Bind("done");
-            var metadata = new CombatMetadata(_ctx, attacker, defender, new Weapon("Gun", 24f, 1, 0), weaponCount: 1);
+            var metadata = new CombatMetadata(_ctx, attacker, defender, weapon ?? new Weapon("Gun", 24f, 1, 0),
+                weaponCount: 1, attackerMoved: false, isMelee: melee, isCharging: melee && origin > 0f, isSpell: isSpell,
+                chargeOriginDistanceInches: origin);
             var failed = new List<FailedSaveInfo>
             {
-                new FailedSaveInfo(TestDice.Faces(2), new PendingSaveRolls(TestDice.Faces(2), 4)),
+                new FailedSaveInfo(TestDice.Faces(failedFace), new PendingSaveRolls(TestDice.Faces(failedFace), 4)),
             };
             metadata.AddResult(new RollToSaveResults(new List<SuccessfulSaveInfo>(), failed));
             await stage.Enter(metadata);

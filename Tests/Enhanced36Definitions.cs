@@ -22,6 +22,10 @@ namespace FDG.Tests
         public static Condition ShotOrCharged => new Condition.AttackedFromOver(ShootInches: 0f, ChargeInches: 0f);
         private static Condition Not(Condition c) => new Condition.Not(c);
         private static Condition And(Condition l, Condition r) => new Condition.And(l, r);
+        /// <summary>The Actor-seat complements describe weapon attacks ("its weapons get AP(+1)", "hits from weapons",
+        /// "unmodified result of 6 to hit"); a caster's spell hits are none of these, and the base's range gate already
+        /// excludes them (a spell has no shooting distance), so the complement must too (D4).</summary>
+        private static Condition NotSpell => new Condition.IsNotSpell();
 
         private static SpecialRuleDefinition Unit(string name, params HookEntry[] passive) =>
             new(name, passive, System.Array.Empty<ActivatedAbility>(), ERuleScope.Unit, Valence: EValence.Positive,
@@ -123,24 +127,24 @@ namespace FDG.Tests
         /// <summary>Enhanced Devout; also Ferocious, Brutal, Lucky.</summary>
         public static SpecialRuleDefinition ExtraHit(string x = "Devout") => Unit($"Enhanced {x}",
             new HookEntry(EHookID.Shooting_OnHitRollComplete,
-                And(Has(x), And(Not(Attacking), new Condition.UnmodifiedRollEquals(6))),
+                And(Has(x), And(And(Not(Attacking), NotSpell), new Condition.UnmodifiedRollEquals(6))),
                 new Effect.AddExtraHit(OnRollValue: 6, Count: 1), ELifetime.ThisAttack));
 
         /// <summary>Enhanced Havocbound; also Piercing Warrior.</summary>
         public static SpecialRuleDefinition ApPlusOne(string x = "Havocbound") => Unit($"Enhanced {x}",
-            new HookEntry(EHookID.Shooting_OnHitRollComplete, And(Has(x), Not(Attacking)),
+            new HookEntry(EHookID.Shooting_OnHitRollComplete, And(Has(x), And(Not(Attacking), NotSpell)),
                 new Effect.RollModifier(ERollKind.Save, -1), ELifetime.ThisAttack));
 
         /// <summary>Enhanced Infected; also Warbound, Violent, Destroyer. Unit scope: the base is a weapon rule re-homed
         /// onto the weapons, and the gate reads them.</summary>
         public static SpecialRuleDefinition ExtraWound(string x = "Infected") => Unit($"Enhanced {x}",
-            new HookEntry(EHookID.Shooting_OnSaveRollComplete, And(Has(x), Not(Attacking)),
+            new HookEntry(EHookID.Shooting_OnSaveRollComplete, And(Has(x), And(Not(Attacking), NotSpell)),
                 new Effect.AddExtraWound(OnRollValue: 1, Count: 1), ELifetime.ThisAttack));
 
         /// <summary>Enhanced Versatile Warrior; also Watchborn, Vinci Tech. The pick's one-activation helper is a grant
         /// token, which UnitHasRule reads.</summary>
         public static SpecialRuleDefinition Pick(string x = "Versatile Warrior") => Unit($"Enhanced {x}",
-            new HookEntry(EHookID.Shooting_OnHitRollComplete, And(Has($"{x} (Piercing)"), Not(Attacking)),
+            new HookEntry(EHookID.Shooting_OnHitRollComplete, And(Has($"{x} (Piercing)"), And(Not(Attacking), NotSpell)),
                 new Effect.RollModifier(ERollKind.Save, -1), ELifetime.ThisAttack),
             new HookEntry(EHookID.Shooting_OnHitRollModifier, And(Has($"{x} (Precision)"), Not(Attacking)),
                 new Effect.RollModifier(ERollKind.Hit, +1), ELifetime.ThisAttack));

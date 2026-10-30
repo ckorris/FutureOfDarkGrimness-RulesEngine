@@ -1921,11 +1921,14 @@ public static class CoreRuleCatalog
                      "next.");
 
     /// <summary>
-    /// Ambush: this unit is kept in reserve instead of deploying normally, and the owner may bring it
-    /// on at the start of any round after the first, placed anywhere over 9" from enemy units. A passive
-    /// rule at <see cref="EHookID.Deployment_OnPreDeploymentSelect"/> that queues
+    /// Ambush (Core Rules v3.6.0, text unchanged from 3.5): "May be set aside before deployment. At the start
+    /// of any round after the first, may be deployed anywhere over 9" away from enemy units. Players alternate
+    /// in placing Ambush units, starting with the player that activates next. Units that deploy via Ambush
+    /// can't seize or contest objectives on the round they deploy." A passive rule at
+    /// <see cref="EHookID.Deployment_OnPreDeploymentSelect"/> that queues
     /// <see cref="RuleOperation.DeferDeployment"/> with <see cref="EDeferTiming.LaterRound"/>; the
-    /// round-start arrival pass places it.
+    /// round-start arrival pass places it (over 9" from every enemy model, the players alternating since
+    /// #426) and stamps the ArrivedFromReserve marker that keeps it off objectives that round.
     /// </summary>
     public static SpecialRuleDefinition Ambush { get; } = new SpecialRuleDefinition("Ambush",
         new[]
@@ -1937,7 +1940,10 @@ public static class CoreRuleCatalog
         },
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Positive,
-        Description: "Kept in reserve; may arrive from round 2 onward, placed over 9\" from enemy units.");
+        Description: "May be set aside before deployment. At the start of any round after the first, may be " +
+                     "deployed anywhere over 9\" away from enemy units. Players alternate in placing Ambush units, " +
+                     "starting with the player that activates next. Units that deploy via Ambush can't seize or " +
+                     "contest objectives on the round they deploy.");
 
     // Reactivation primitive (DeterminePlayerTurnStage offer -> activation list) ----
 

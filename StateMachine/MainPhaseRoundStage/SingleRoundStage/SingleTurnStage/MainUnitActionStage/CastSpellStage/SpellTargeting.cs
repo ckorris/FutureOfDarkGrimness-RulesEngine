@@ -13,6 +13,11 @@ namespace FDG.Stages
     /// sight check <see cref="ChooseRangedAttackStage"/> uses for shooting: a target is legal when it matches
     /// the selector's affinity and some living caster model is within range (base-to-base, 3D) of some living
     /// target model and — when the spell requires it — has line of sight.
+    ///
+    /// <para>#429 (Core Rules v3.6.0): line of sight is the SPELL's requirement, never the caster's. Caster(X) no
+    /// longer says "target in line of sight"; each spell's text does ("within 18\" in line of sight") or does
+    /// not, and the importer sets <see cref="TargetSelector.RequireLineOfSight"/> from that clause. A spell with
+    /// the flag false may target a unit behind a wall. Nothing here adds a caster-level LoS gate.</para>
     /// </summary>
     public static class SpellTargeting
     {

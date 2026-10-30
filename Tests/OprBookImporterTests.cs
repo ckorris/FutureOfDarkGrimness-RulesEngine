@@ -411,12 +411,13 @@ public class OprBookImporterTests
         Assert.That(terror.Target.TargetAffinity, Is.EqualTo(ETargetAffinity.Foe));
         Assert.That(((Effect.MarkTarget)terror.Effect).RuleName, Is.EqualTo("Unpredictable Fighter"));
 
-        // Damage: AP folds into ArmorPenetration; targeting is one enemy unit needing LoS.
+        // Damage: AP folds into ArmorPenetration; targeting is one enemy unit. #429: this 3.5 text has no "in line
+        // of sight" clause, so under the 3.6 contract it needs none - LoS follows the text, not the damage shape.
         SpellDefinition blast = book.Spells.Single(s => s.Name == "Psychic Blast");
         Assert.That(blast.Threshold, Is.EqualTo(2));
         Assert.That(blast.Target.RangeInches, Is.EqualTo(12f));
         Assert.That(blast.Target.TargetAffinity, Is.EqualTo(ETargetAffinity.Foe));
-        Assert.That(blast.Target.RequireLineOfSight, Is.True);
+        Assert.That(blast.Target.RequireLineOfSight, Is.False);
         var blastHits = (Effect.DealHits)blast.Effect;
         Assert.That(blastHits.Count, Is.EqualTo(4));
         Assert.That(blastHits.ArmorPenetration, Is.EqualTo(2));
@@ -438,6 +439,76 @@ public class OprBookImporterTests
         var grant = (Effect.AddRule)spirits.Effect;
         Assert.That(grant.RuleName, Is.EqualTo("Unpredictable Shooter"));
         Assert.That(grant.Scope, Is.EqualTo(ELifetime.NextTrigger));
+    }
+
+    // #429 - Core Rules v3.6.0 moved "target in line of sight" out of Caster and into each spell's own text
+    // ("Pick one enemy unit within 18\" in line of sight, ..."). The importer's contract: RequireLineOfSight is
+    // true iff the text carries that clause, for EVERY effect shape (it used to be true for damage spells and
+    // false for everything else). Invented spells in the 3.6 grammar, one per shape, with and without the clause.
+    private const string LineOfSightSpellsJson = """
+    {
+      "name": "Spells36", "versionString": "1", "units": [], "upgradePackages": [],
+      "spells": [
+        { "name": "Seen Bolt", "threshold": 1,
+          "effect": "Pick one enemy unit within 18\" in line of sight, which takes 2 hits with AP(1)." },
+        { "name": "Unseen Bolt", "threshold": 1,
+          "effect": "Pick one enemy unit within 18\", which takes 2 hits with AP(1)." },
+        { "name": "Seen Lance", "threshold": 2,
+          "effect": "Pick one enemy model within 24\" In Line Of Sight, which takes 1 hit with AP(4). This effect is resolved as if the target was a unit of [1]." },
+        { "name": "Seen Ward", "threshold": 1,
+          "effect": "Pick up to two friendly units within 12\" in line of sight, which get Unpredictable Shooter once (next time the effect would apply)." },
+        { "name": "Unseen Ward", "threshold": 1,
+          "effect": "Pick up to two friendly units within 12\", which get Unpredictable Shooter once (next time the effect would apply)." },
+        { "name": "Seen Dread", "threshold": 2,
+          "effect": "Pick one enemy unit within 18\" in line of sight, which must take a morale test. If failed, it becomes fatigued." },
+        { "name": "Seen Mark", "threshold": 2,
+          "effect": "Pick up to three enemy units within 18\" in line of sight, which friendly units gets Unpredictable Fighter against once (next time the effect would apply)." },
+        { "name": "Seen Hex", "threshold": 2,
+          "effect": "Pick one enemy unit within 18\" in line of sight, which gets -1 to hit rolls when attacking once (next time the effect would apply)." },
+        { "name": "Seen Mire", "threshold": 1,
+          "effect": "Pick one enemy unit within 18\" in line of sight, which counts as being in Difficult Terrain once (next time the effect would apply)." }
+      ]
+    }
+    """;
+
+    [Test]
+    public void Import_SpellLineOfSight_FollowsTheSpellsOwnClause_NotItsEffectShape()
+    {
+        var warnings = new List<string>();
+        BookFile book = OprBookImporter.Import(LineOfSightSpellsJson, "TestSource", "CC-BY-SA 4.0", warnings.Add);
+
+        Assert.That(book.Spells, Has.Count.EqualTo(9), "the clause must not break any shape's parse");
+        Assert.That(warnings, Is.Empty);
+
+        bool Los(string name) => book.Spells.Single(s => s.Name == name).Target.RequireLineOfSight;
+
+        // With the clause - damage, single-model damage (any casing), buff grant, morale test, mark, stat
+        // modifier and a synthesized-rule grant all require LoS.
+        foreach (string name in new[] { "Seen Bolt", "Seen Lance", "Seen Ward", "Seen Dread", "Seen Mark", "Seen Hex",
+                     "Seen Mire" })
+        {
+            Assert.That(Los(name), Is.True, $"{name}: the text says 'in line of sight'");
+        }
+
+        // Without it - a damage spell no longer needs LoS just for being a damage spell, and a buff stays free.
+        Assert.That(Los("Unseen Bolt"), Is.False, "no clause, no LoS - even for a damage spell");
+        Assert.That(Los("Unseen Ward"), Is.False);
+
+        // The clause is part of the target text only: range and count still parse around it.
+        SpellDefinition lance = book.Spells.Single(s => s.Name == "Seen Lance");
+        Assert.That(lance.Target.RangeInches, Is.EqualTo(24f));
+        Assert.That(lance.Target.SingleModel, Is.True);
+        Assert.That(book.Spells.Single(s => s.Name == "Seen Mark").Target.MaxCount, Is.EqualTo(3));
+    }
+
+    [TestCase("Pick one enemy unit within 18\" in line of sight, which takes 1 hit.", true)]
+    [TestCase("Pick one enemy unit within 18\" IN LINE OF SIGHT, which takes 1 hit.", true)]
+    [TestCase("Pick one enemy unit within 18\", which takes 1 hit.", false)]
+    [TestCase("Pick one enemy unit within 18\" out of sight lines, which takes 1 hit.", false)]
+    [TestCase("", false)]
+    public void SpellTextRequiresLineOfSight_IsTheClauseTest(string text, bool expected)
+    {
+        Assert.That(OprBookImporter.SpellTextRequiresLineOfSight(text), Is.EqualTo(expected));
     }
 
     // The five remaining corpus shapes verbatim (Dwarf Guilds / HDF / Machine Cults / War Disciples /

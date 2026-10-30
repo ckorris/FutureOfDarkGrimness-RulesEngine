@@ -1531,6 +1531,81 @@ namespace FDG.Tests
                 Is.False, "a failed cast has no effect to report");
         }
 
+        // --- #429 Core Rules v3.6.0 Caster(X) ---------------------------------------------------------------
+        // 3.6 moved "target in line of sight" out of the Caster rule and into each spell's own text, so the
+        // engine reads LoS from the spell (TargetSelector.RequireLineOfSight) and from nowhere else: a spell
+        // whose text has no "in line of sight" clause (flag false - the importer's contract) may target a unit
+        // the caster cannot see. A Blocking wall sits squarely between caster and target, 10" apart.
+
+        [Test]
+        public async Task Cast36_ASpellWithoutALineOfSightClause_TargetsAUnitBehindAWall()
+        {
+            var ctx = new TriggeredMoveTestContext(_store, new CannedCastRequester(), new FixedDiceRoller(6));
+            DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 2,
+                new[] { LosDebuffSpell("Unseen Hex", requireLineOfSight: false) }, CasterBehindWall);
+            DataBinding<UnitData> target = MakeEnemyUnit(new PlayerID(System.Guid.NewGuid()), TargetBehindWall);
+            AddWallBetweenCasterAndTarget();
+
+            await RunCastStage(ctx, caster);
+
+            Assert.That(target.GetValue().Tokens.GetAllTokens(TokenType.RuleGrant), Is.Not.Empty,
+                "no 'in line of sight' clause, so the wall does not stop the spell (3.6: LoS is the spell's to demand)");
+        }
+
+        [Test]
+        public async Task Cast36_ASpellWithTheClause_CannotTargetThatSameUnit()
+        {
+            var ctx = new TriggeredMoveTestContext(_store, new CannedCastRequester(), new FixedDiceRoller(6));
+            DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 2,
+                new[] { LosDebuffSpell("Seen Hex", requireLineOfSight: true) }, CasterBehindWall);
+            DataBinding<UnitData> target = MakeEnemyUnit(new PlayerID(System.Guid.NewGuid()), TargetBehindWall);
+            AddWallBetweenCasterAndTarget();
+
+            await RunCastStage(ctx, caster);
+
+            Assert.That(target.GetValue().Tokens.GetAllTokens(TokenType.RuleGrant), Is.Empty,
+                "'within 18\" in line of sight' - the only target is behind the wall, so nothing is cast");
+            Assert.That(caster.GetValue().Tokens.GetTokenCount(TokenType.SpellTokens), Is.EqualTo(2),
+                "an uncastable spell is never attempted, so nothing is spent");
+        }
+
+        [Test]
+        public async Task Cast36_TheClauseIsWhatTheWallBlocks_WithoutTheWallTheSameSpellLands()
+        {
+            // Control for the two tests above: the LoS spell is otherwise castable at this range.
+            var ctx = new TriggeredMoveTestContext(_store, new CannedCastRequester(), new FixedDiceRoller(6));
+            DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 2,
+                new[] { LosDebuffSpell("Seen Hex", requireLineOfSight: true) }, CasterBehindWall);
+            DataBinding<UnitData> target = MakeEnemyUnit(new PlayerID(System.Guid.NewGuid()), TargetBehindWall);
+
+            await RunCastStage(ctx, caster);
+
+            Assert.That(target.GetValue().Tokens.GetAllTokens(TokenType.RuleGrant), Is.Not.Empty);
+        }
+
+        private static readonly Position CasterBehindWall = new Position(10f, 10f);
+        private static readonly Position TargetBehindWall = new Position(10f, 20f);
+
+        // A Blocking wall across the sight line between CasterBehindWall and TargetBehindWall.
+        private void AddWallBetweenCasterAndTarget() =>
+            _store.Create(new TerrainData(ETerrainType.Blocking, new RectangularZone(4f, 16f, 14f, 16f)));
+
+        private static async Task RunCastStage(IGameContext ctx, DataBinding<UnitData> caster)
+        {
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(NewActivation(ctx, caster));
+        }
+
+        // Foe-affinity, non-damage: the debuff lands as a RuleGrant token on the target, so "did the cast succeed"
+        // is one assertion with no wound pipeline in the way. 18" range, like the 3.6 spells.
+        private static RuntimeSpell LosDebuffSpell(string name, bool requireLineOfSight, int threshold = 1) =>
+            new RuntimeSpell(
+                new SpellDefinition(name, threshold,
+                    new TargetSelector(18f, 1, 1, ETargetAffinity.Foe, requireLineOfSight),
+                    new Effect.AddRule("Slow", ELifetime.NextTrigger)),
+                System.Array.Empty<ResolvedRule>());
+
         // The effect report is matched by its exact text rather than by tier: the cast result itself and
         // any morale banner the spell triggers are Notices too, so tier alone does not identify it. The
         // count assertion is the load-bearing one - a multi-target spell must report ONCE, not per target.

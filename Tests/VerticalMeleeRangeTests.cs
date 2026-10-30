@@ -8,11 +8,13 @@ using NUnit.Framework;
 
 namespace FDG.Tests
 {
-    // #022 — Vertical melee range handling. Melee range is the 2"-horizontal AND 4"-vertical cylinder
-    // (GF v3.5.1). Before #022 the *defender-eligibility* gate (ChooseMeleeDefenderStage) and the
-    // *charge-availability* gate (ChooseActionStage.GetCanCharge) applied only the horizontal half, so a
-    // unit within 2" horizontally but beyond 4" vertically (e.g. on a tall ledge) was offered/engageable
-    // even though no model could actually strike it. Both gates now share
+    // #022 — Vertical melee range handling. Melee range is the 3"-horizontal (Core Rules v3.6.0, #417; 2"
+    // in v3.5.1) AND 4"-vertical cylinder (the vertical figure is this engine's convention - OPR gives
+    // none - and #417 kept it at 4"). Before #022 the *defender-eligibility* gate
+    // (ChooseMeleeDefenderStage) and the *charge-availability* gate (ChooseActionStage.GetCanCharge)
+    // applied only the horizontal half, so a unit within melee range horizontally but beyond 4"
+    // vertically (e.g. on a tall ledge) was offered/engageable even though no model could actually
+    // strike it. Both gates now share
     // MeleeRangeUtilities.AreUnitsInMeleeRange — the same cylinder the post-pile-in strike gate uses
     // (covered separately by MeleeInRangeIntegrationTests). These tests pin the unit-level predicate and
     // prove ChooseMeleeDefenderStage no longer offers a vertically-distant enemy as a valid defender.
@@ -62,6 +64,29 @@ namespace FDG.Tests
             DataBinding<UnitData> b = MakeUnit(new Position(11f, 4f, 0f));
 
             Assert.That(MeleeRangeUtilities.AreUnitsInMeleeRange(a.GetValue(), b.GetValue()), Is.True);
+        }
+
+        // #417: the horizontal range went to 3"; the 4" vertical convention did not move with it. Both
+        // halves at once, at the new horizontal edge: centres 4" apart with 0.75" radii = a 2.5" gap (out of
+        // range under 3.5.1's 2", inside 3.6's 3").
+        [Test]
+        public void AreUnitsInMeleeRange_TwoAndAHalfInchesAcross_FourUp_True()
+        {
+            DataBinding<UnitData> a = MakeUnit(new Position(10f, 0f, 0f));
+            DataBinding<UnitData> b = MakeUnit(new Position(14f, 4f, 0f));
+
+            Assert.That(MeleeRangeUtilities.AreUnitsInMeleeRange(a.GetValue(), b.GetValue()), Is.True,
+                "2.5\" across is inside the 3\" horizontal range, and 4\" up is exactly at the vertical ceiling.");
+        }
+
+        [Test]
+        public void AreUnitsInMeleeRange_TwoAndAHalfInchesAcross_FourAndAHalfUp_False()
+        {
+            DataBinding<UnitData> a = MakeUnit(new Position(10f, 0f, 0f));
+            DataBinding<UnitData> b = MakeUnit(new Position(14f, 4.5f, 0f));
+
+            Assert.That(MeleeRangeUtilities.AreUnitsInMeleeRange(a.GetValue(), b.GetValue()), Is.False,
+                "the vertical reach is still 4\": the wider horizontal range must not have widened it.");
         }
 
         [Test]

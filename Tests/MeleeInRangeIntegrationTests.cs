@@ -7,7 +7,7 @@ using NUnit.Framework;
 namespace FDG.Tests
 {
     // Vertical-slice integration test for #017: proves the real DetermineInRange{Attackers,Defenders}
-    // stages gate melee participation by position. Only models within MELEE_RANGE_INCHES_HORIZONTAL (2")
+    // stages gate melee participation by position. Only models within MELEE_RANGE_INCHES_HORIZONTAL (3")
     // base-to-base AND MELEE_RANGE_INCHES_VERTICAL (4") vertically of an enemy model may strike; an
     // out-of-range model in the same unit contributes none of its weapons to the swing pool.
     [TestFixture]

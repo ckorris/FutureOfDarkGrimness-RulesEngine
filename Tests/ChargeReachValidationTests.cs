@@ -39,13 +39,14 @@ namespace FDG.Tests
         [Test]
         public void BeyondRush_EndsInMelee_Accepted()
         {
-            //Moved 15" (> 12" Rush, ≤ 18" Charge). Ends with a BASE-to-base gap of 1.9" (within
-            //MELEE_RANGE_INCHES_HORIZONTAL = 2"): centres 3.4" apart, radii 0.75" each. #312: the old
-            //centre-to-centre check would have rejected exactly this legal charge.
+            //Moved 15" (> 12" Rush, ≤ 18" Charge). Ends with a BASE-to-base gap of 2.5" (within
+            //MELEE_RANGE_INCHES_HORIZONTAL = 3", #417; this was a rejection under 3.5.1's 2"): centres 4.0"
+            //apart, radii 0.75" each. #312: the old centre-to-centre check would have rejected exactly this
+            //legal charge.
             DataBinding<ModelData> model = MakeModel(new Position(0, 0));
             ModelMoveEntry move = new ModelMoveEntry(model, new List<Position> { new Position(15, 0) });
 
-            List<EnemyModelFootprint> enemies = new List<EnemyModelFootprint> { new EnemyModelFootprint(new Position(18.4f, 0), 0.75f, 0) };
+            List<EnemyModelFootprint> enemies = new List<EnemyModelFootprint> { new EnemyModelFootprint(new Position(19.0f, 0), 0.75f, 0) };
 
             bool ok = MovementUtilities.ValidatePaths(
                 new List<ModelMoveEntry> { move },
@@ -63,7 +64,7 @@ namespace FDG.Tests
         public void BeyondRush_NoMeleeReach_Rejected()
         {
             //Moved 15" (> 12" Rush). Nearest enemy is 3.5" away base-to-base (centres 5", radii 0.75")
-            //— outside melee range.
+            //— outside the 3" melee range (#417).
             DataBinding<ModelData> model = MakeModel(new Position(0, 0));
             ModelMoveEntry move = new ModelMoveEntry(model, new List<Position> { new Position(15, 0) });
 
@@ -79,6 +80,14 @@ namespace FDG.Tests
 
             Assert.That(ok, Is.False);
             Assert.That(errors.Any(e => e.ErrorReasonType == EErrorReasonType.ChargeRangeRequiresMeleeReach), Is.True);
+        }
+
+        [Test]
+        public void ChargeReachError_NamesTheThreeInchStrikeRange()
+        {
+            //#417: the refusal reads the constant, so it tells the player the 3.6 figure.
+            Assert.That(MovementUtilities.ErrorReasonToString(EErrorReasonType.ChargeRangeRequiresMeleeReach),
+                Is.EqualTo("A model moved beyond Rush range, but no model ends within 3\" of an enemy"));
         }
 
         [Test]

@@ -16,7 +16,7 @@ namespace FDG.Tests
     // (Devout / Ferocious / Warbound / Infected / Mischievous / Scrapper Boost).
     //
     // Condition.DistanceGreaterThan reads the LIVE attacker-to-target distance. A melee attack is resolved
-    // in base contact (MELEE_RANGE_INCHES_HORIZONTAL == 2), so a live-distance gate of 9in can never pass
+    // in base contact (MELEE_RANGE_INCHES_HORIZONTAL == 3), so a live-distance gate of 9in can never pass
     // in melee — which silently disabled the melee half of all six rules. Condition.AttackedFromOverInches
     // reads the distance the attack was LAUNCHED from instead: the live distance when shooting, and the
     // distance to the defender at activation start when charging (this engine models Charge as the melee

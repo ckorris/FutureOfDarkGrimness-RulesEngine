@@ -211,7 +211,7 @@ namespace FDG.Tests
         public void Approach_StagesOutsideTheEnemyThreatLine_InsteadOfWalkingIntoIt()
         {
             // A5-6 (Chris): charging beats being charged. Approaching brawlers must stop OUTSIDE
-            // the enemy's charge budget + 2" melee cylinder, staged to charge next activation.
+            // the enemy's charge budget + 3" melee cylinder, staged to charge next activation.
             var brawlers = MakeUnit(_us, 5, Blade(attacks: 3), atX: 14f, atZ: 24f);
             var chaff = MakeUnit(_them, 4, Blade(attacks: 1), atX: 44f, atZ: 24f); // 30" out
             _planner.BeginActivation(brawlers);

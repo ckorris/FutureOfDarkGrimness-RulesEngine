@@ -55,7 +55,7 @@ namespace FDG.Tests
         [Test]
         public void FindContacts_EnemyChargeableButOutsideTheBand_ReportsNothing()
         {
-            // 1.5" gap: within melee range (2") so Charge is offered, but NOT forced - the unit may still Pass.
+            // 1.5" gap: within melee range (3") so Charge is offered, but NOT forced - the unit may still Pass.
             // The preview must not cry forced-charge here or it would contradict the gate on the commonest
             // approach there is.
             var contacts = ForcedChargeUtilities.FindContacts(
@@ -63,6 +63,22 @@ namespace FDG.Tests
                 new List<ForcedChargeUtilities.StandoffPose> { Circle(0, 2.5f) });
 
             Assert.That(contacts, Is.Empty);
+        }
+
+        [Test]
+        public void FindContacts_EnemyAtTwoAndAHalfInches_ChargeableButNotForced()
+        {
+            // #417: the strike range went 2" -> 3" but the standoff stayed 1", so the may-charge-but-not-forced
+            // band is now 1"-3". A 2.5" gap (centres 3.5") is the part 3.6 added: chargeable, and still no
+            // forced-charge warning - widening the strike range must not have widened the obligation.
+            var contacts = ForcedChargeUtilities.FindContacts(
+                new List<ForcedChargeUtilities.StandoffPose> { Circle(0, 0) },
+                new List<ForcedChargeUtilities.StandoffPose> { Circle(0, 3.5f) });
+
+            Assert.That(contacts, Is.Empty);
+            Assert.That(ForcedChargeUtilities.IsInsideStandoff(2.5f), Is.False);
+            Assert.That(2.5f, Is.LessThanOrEqualTo(GameWideConstants.MELEE_RANGE_INCHES_HORIZONTAL),
+                "and the same gap IS inside the strike range, so Charge is on offer there.");
         }
 
         [Test]

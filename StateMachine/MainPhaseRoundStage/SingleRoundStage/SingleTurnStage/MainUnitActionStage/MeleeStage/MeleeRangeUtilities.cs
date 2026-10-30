@@ -4,15 +4,16 @@ namespace FDG.Stages
 {
     /// <summary>
     /// Determines which models are within melee striking range of an enemy unit, after a charge
-    /// and pile-in have settled positions. GF v3.5.1: a model may strike (or strike back) only if
-    /// it is within <see cref="GameWideConstants.MELEE_RANGE_INCHES_HORIZONTAL"/> (2") base-to-base
-    /// horizontally AND within <see cref="GameWideConstants.MELEE_RANGE_INCHES_VERTICAL"/> (4")
-    /// vertically of an enemy model.
+    /// and pile-in have settled positions. Core Rules v3.6.0: "Models within 3" of enemies must strike
+    /// with all melee weapons" (#417; 2" in v3.5.1). A model may strike (or strike back) only if it is
+    /// within <see cref="GameWideConstants.MELEE_RANGE_INCHES_HORIZONTAL"/> (3") base-to-base
+    /// horizontally AND within <see cref="GameWideConstants.MELEE_RANGE_INCHES_VERTICAL"/> (4", this
+    /// engine's convention - OPR gives no vertical figure, #022) vertically of an enemy model.
     /// </summary>
     public static class MeleeRangeUtilities
     {
         /// <summary>The single definition of the melee-engagement cylinder: true if both models are alive
-        /// and within <see cref="GameWideConstants.MELEE_RANGE_INCHES_HORIZONTAL"/> (2") base-to-base
+        /// and within <see cref="GameWideConstants.MELEE_RANGE_INCHES_HORIZONTAL"/> (3") base-to-base
         /// horizontally AND within <see cref="GameWideConstants.MELEE_RANGE_INCHES_VERTICAL"/> (4")
         /// vertically. Every melee-range gate (charge availability, defender eligibility, strike range)
         /// flows through here so they can't disagree.</summary>

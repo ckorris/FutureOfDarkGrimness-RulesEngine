@@ -108,7 +108,7 @@ public static class CoreRuleCatalog
     /// Artillery: as an attacker, +1 to hit beyond 9" (Actor); as a target, enemies shooting it from
     /// beyond 9" take -2 to hit (Subject). Both ride the existing hit-roll-modifier sink at
     /// <see cref="EHookID.Shooting_OnHitRollModifier"/>; the <c>DistanceGreaterThan(9)</c> condition
-    /// naturally excludes melee (melee is within 2"), so neither needs a combat-kind gate. The
+    /// naturally excludes melee (melee is within 3"), so neither needs a combat-kind gate. The
     /// "Hold-only action restriction" facet (W5) is still deferred — see Appendix C.
     /// </summary>
     public static SpecialRuleDefinition Artillery { get; } = new SpecialRuleDefinition("Artillery",

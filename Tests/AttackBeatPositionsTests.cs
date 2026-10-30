@@ -210,7 +210,7 @@ namespace FDG.Tests
         {
             Weapon claws = new Weapon("Claws", 0f, 1, 0);
             var engaged = MakeModel(new Position(1f, 1f), claws);
-            var standoff = MakeModel(new Position(10f, 1f), claws); // ~7" from the enemy, melee is 2"
+            var standoff = MakeModel(new Position(10f, 1f), claws); // ~7" from the enemy, melee is 3"
             var attacker = MakeUnit(engaged, standoff);
             var defender = MakeUnit(MakeModel(new Position(2.5f, 1f)));
 

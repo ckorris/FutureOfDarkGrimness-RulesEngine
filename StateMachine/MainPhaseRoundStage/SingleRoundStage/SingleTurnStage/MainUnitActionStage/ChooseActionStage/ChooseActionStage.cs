@@ -645,7 +645,7 @@ namespace FDG.Stages
                 ? playerTeam.Players
                 : new List<PlayerID> { attackingPlayer };
 
-            // #022: melee range is the 2"-horizontal AND 4"-vertical cylinder (MeleeRangeUtilities),
+            // #022: melee range is the 3"-horizontal (#417) AND 4"-vertical cylinder (MeleeRangeUtilities),
             // not the horizontal half alone — so Charge grays out exactly when no enemy unit could be
             // selected as a defender, keeping this gate consistent with ChooseMeleeDefenderStage.
             // #029: an Aircraft can't be charged, so it isn't a valid charge target — exclude it here so Charge
@@ -659,7 +659,7 @@ namespace FDG.Stages
 
             if (!anyInRange)
             {
-                reasonIfCant = "No enemies within melee range.";
+                reasonIfCant = $"No enemies within the {GameWideConstants.MELEE_RANGE_INCHES_HORIZONTAL}\" melee range.";
                 return false;
             }
 
@@ -696,9 +696,9 @@ namespace FDG.Stages
             //rather than at move time (the movement validator no longer rejects ending in the standoff band).
             //A unit standing within ENEMY_STANDOFF_DISTANCE_INCHES (base-to-base) of an enemy can't idle in its
             //face: Pass is gated so it must Charge (or reposition, e.g. Teleport, then re-evaluate). The "can
-            //charge" band is wider (melee range, 2"), so a unit at 1"-2" may Charge but is NOT forced — it may
-            //still Pass. Teleporting out past the standoff restores Pass; teleporting but staying inside it does
-            //not. Measured over living models only, against non-allied units.
+            //charge" band is wider (melee range, 3" since #417), so a unit at 1"-3" may Charge but is NOT
+            //forced — it may still Pass. Teleporting out past the standoff restores Pass; teleporting but
+            //staying inside it does not. Measured over living models only, against non-allied units.
             IUnit unit = context.ActivatingUnit.GetValue();
 
             //#029 — an Aircraft MUST make its forced Advance every activation, so it can't Pass without moving.

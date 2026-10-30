@@ -8,6 +8,9 @@ namespace FDG.Stages
 {
     public class ConsolidateStage : StageBase<ICombatActionContext>
     {
+        // Core Rules v3.6.0: "If either unit is destroyed, the other may move by up to 3", else chargers
+        // must move back and separate by 1" (if possible)." Both figures unchanged from v3.5.1 (re-checked
+        // in #417); #339 lets the survivor of a wipeout consolidate from either seat.
         public const float WIPEOUT_MAX_DISTANCE_INCHES = 3f;
         public const float DISENGAGE_MAX_DISTANCE_INCHES = 1f;
 

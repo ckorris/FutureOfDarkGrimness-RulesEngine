@@ -87,7 +87,7 @@ namespace FDG.Ai.Tactician
 
         /// <summary>
         /// How far away the charger is genuinely DANGEROUS (#191 A5-6): its charge budget plus the
-        /// 2" horizontal melee cylinder (a charge only needs to END within melee range, not in
+        /// 3" horizontal melee cylinder (#417; a charge only needs to END within melee range, not in
         /// base contact). Centroid-based callers get a little extra slack on top.
         /// </summary>
         public static float MeleeThreatReach(IUnit charger, IUnit target, RuleEvaluator evaluator,

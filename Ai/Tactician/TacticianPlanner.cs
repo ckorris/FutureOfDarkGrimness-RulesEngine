@@ -895,7 +895,7 @@ namespace FDG.Ai.Tactician
                             ? RouteMetrics.RemainingFrom(route, end, routeTerrain, routeRadius)
                             : endDistance) - reach);
                         // A5-6 (Chris): charging beats being charged. No credit for walking INSIDE
-                        // the enemy's own threat reach (charge budget + the 2" melee cylinder,
+                        // the enemy's own threat reach (charge budget + the 3" melee cylinder,
                         // +1.5" centroid slack) - the approach stages at their line and takes the
                         // charge on OUR next activation instead of eating theirs.
                         // The stage gap stays a STRAIGHT-line quantity: it models weapon threat,
@@ -921,7 +921,7 @@ namespace FDG.Ai.Tactician
                     new AttackContext(theirReach, AttackerMoved: true));
                 float incomingValue = ValueFraction(incoming.ExpectedWounds, self);
 
-                // Melee threat: if they can charge the endpoint (charge + 2" melee cylinder),
+                // Melee threat: if they can charge the endpoint (charge + 3" melee cylinder),
                 // count their melee margin too.
                 float meleeThreat =
                     facts.ThreatReach >= endDistance - 1f && facts.HasMelee

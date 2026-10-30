@@ -262,6 +262,13 @@ namespace FDG.Tests
         /// identical (ObjectiveApproach projects onto the route and discards lateral offset). The
         /// left-hand one is shadowed from the gunline at (4,34) by the left wall; the right-hand one
         /// has a clear lane. Where the swordsmen stand decides which endpoints they can charge.
+        ///
+        /// #417 re-pin: we start at (24,8), not (24,10). The swordsmen's threat reach is charge 12" +
+        /// the strike range, which 3.6 raised from 2" to 3" (15", 16" with the planner's 1" slack). The
+        /// projected-melee forecast rushes them onto our start, and from (24,10) the open endpoint sat
+        /// 15.4" from it: 0.4" outside the old 15" edge, 0.6" inside the new 16" one, so the "open and
+        /// out of their reach" side was no longer out of reach next round. 2" straight back puts it
+        /// 17.3" away again; the swordsmen, the endpoints and the walls are unchanged.
         /// </summary>
         private (float ShadowedNearSwords, float OpenAwayFromSwords) CorridorScene(Position swordsmen,
             IReadOnlyList<Position>? distantMelee = null)
@@ -269,7 +276,7 @@ namespace FDG.Tests
             SetUp();
             Wall(14f, 16f, 18f, 28f);
             Wall(32f, 34f, 18f, 30f);
-            DataBinding<UnitData> us = Squad(_us, Carbine(), new Position(24f, 10f));
+            DataBinding<UnitData> us = Squad(_us, Carbine(), new Position(24f, 8f));
             Squad(_them, Rifle(), new Position(4f, 34f));
             Squad(_them, GreatSword(), swordsmen);
             foreach (Position far in distantMelee ?? Array.Empty<Position>())

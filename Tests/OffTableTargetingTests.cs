@@ -17,7 +17,7 @@ namespace FDG.Tests
     public class OffTableTargetingTests
     {
         // Attacker model at (1.5, 0), radius 0.5" — base-to-base gap to a model at the origin is
-        // 0.5": inside the 1" forced-charge standoff AND the 2" melee band. Reserve tests leave the
+        // 0.5": inside the 1" forced-charge standoff AND the 3" melee band. Reserve tests leave the
         // enemy model at the origin (the default position every never-placed model has); the on-table
         // controls place it at (0.5, 0) instead, because a model centred exactly at (0,0) IS the
         // engine's never-placed marker and cannot occur in real play — the controls prove the same

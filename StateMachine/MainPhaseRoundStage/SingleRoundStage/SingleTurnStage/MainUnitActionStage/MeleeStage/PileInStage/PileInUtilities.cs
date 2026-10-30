@@ -3,9 +3,10 @@ using FDG.Data;
 namespace FDG.Stages
 {
     /// <summary>
-    /// Computes the defender's reactive pile-in moves after a charge. GF v3.5.1 p.9:
-    /// defender models not in base contact must move by up to 3" to get into base contact
-    /// with a charging model, or as close as possible, maintaining unit coherency.
+    /// Computes the defender's reactive pile-in moves after a charge. Core Rules v3.6.0: "Charging
+    /// models must move into base contact with targets, or as close as possible, and then defenders
+    /// must do the same by moving up to 3"." Unit coherency is maintained throughout. The 3" cap is
+    /// unchanged from v3.5.1 (re-checked against the v3.6.0 text in #417).
     /// <para>
     /// #330: "into base contact" is read as maximize-the-contact-count, the way a player would
     /// actually pile in. Contact slots are sampled around every charging model's base and

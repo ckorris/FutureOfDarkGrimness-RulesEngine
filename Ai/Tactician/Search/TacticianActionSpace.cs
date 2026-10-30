@@ -136,7 +136,7 @@ namespace FDG.Ai.Tactician.Search
                 MacroAction candidate = candidates[i];
                 string? action = TacticianPlanner.ActionNameFor(candidate, offered);
                 // #191 search perf pass 2: the engine's Charge menu entry means "fight the enemy you are
-                // already touching" (ChooseActionStage.GetCanCharge: an enemy within the 2" melee
+                // already touching" (ChooseActionStage.GetCanCharge: an enemy within the 3" melee
                 // cylinder). A charge FROM RANGE is a Move that ends in contact, then Charge on the
                 // re-entry. Prescribing "Charge" at the first entry fell through every time, the
                 // simulated unit re-decided naturally (a full Enumerate + scoring inside the

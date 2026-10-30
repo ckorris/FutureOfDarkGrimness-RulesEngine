@@ -138,12 +138,12 @@ namespace FDG.Stages
                 // the pass where declining it would mean anything.
                 if (gatedByDeadly) continue;
 
-                // #318: and ONLY for a once-per-game weapon. The melee rule is "models within 2" horizontally
-                // and 4" vertically of enemies must strike with all melee weapons" - there is no general
-                // opting out of a swing. Limited's "may only be used once per game" is the one clause that
-                // implies a choice about WHETHER to use it (otherwise the first melee of the game would
-                // always spend it, and "once per game" would mean "in your first fight"), so the exception
-                // is scoped to exactly the weapons that carry it.
+                // #318: and ONLY for a once-per-game weapon. The melee rule is "Models within 3" of enemies
+                // must strike with all melee weapons" (v3.6.0; the 4" vertical reach is our #022 convention) -
+                // there is no general opting out of a swing. Limited's "may only be used once per game" is the
+                // one clause that implies a choice about WHETHER to use it (otherwise the first melee of the
+                // game would always spend it, and "once per game" would mean "in your first fight"), so the
+                // exception is scoped to exactly the weapons that carry it.
                 if (LimitedRules.LimitedRuleName(kvp.Key) == null) continue;
 
                 string holdBackLabel = HOLD_BACK_PREFIX + label;

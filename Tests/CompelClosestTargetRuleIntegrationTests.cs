@@ -120,7 +120,7 @@ namespace FDG.Tests
             var requester = new RecordingActionRequester(ChooseActionStage.CHARGE_CHOICE_NAME);
             var ctx = new TestGameContext(_store, new FixedDiceRoller(4), playerRequester: requester);
             DataBinding<UnitData> mob = MakeCompelledBrawler(atX: 10f);
-            MakeEnemy("Adjacent", atX: 11.5f); // 1.5" - inside the 2" melee cylinder
+            MakeEnemy("Adjacent", atX: 11.5f); // 1.5" - inside the 3" melee cylinder
 
             await DriveChooseAction(ctx, mob, bindCharge: true);
 

@@ -73,7 +73,7 @@ namespace FDG.Tests
                 "the player-chosen Move action offers a Back button; a rule-triggered move does not.");
         }
 
-        // ── #197 Mobile Artillery: the round-scoped MovedThisRound stamp ────────────────────────────────
+        // ── #197 MovedThisRound (3.6 Artillery / Entrenched read it; 3.5 Mobile Artillery is gone): the round-scoped stamp ────────────────────────────────
 
         // The rule's defensive arm is Not(TokenPresent(MovedThisRound)), read during the ENEMY's activation,
         // so the fact has to be stamped on the UNIT when a move resolves - not inferred from the mover's own

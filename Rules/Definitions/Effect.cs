@@ -1753,8 +1753,14 @@ public abstract record Effect
     /// carries a concrete distance. Multiple entries SUM: Rapid Blink Boost widens "within D3\"" to
     /// "within 2D3\"" by contributing a second, independently rolled D3, which is the increment discipline
     /// every other Boost rule follows. The stage folds them into ONE placement rather than prompting twice.</para>
+    ///
+    /// <para>#434: <see cref="Move"/> makes it a real MOVE instead - OPR 3.6 rewrote the family as "you may move all
+    /// models with this rule in it by up to D3+1"" (Bounding, Dash, Nimble, Rapid Blink, Wolfborn), so the models
+    /// travel a path that terrain, other units and coherency constrain, through the same optional triggered move the
+    /// post-combat family uses (<see cref="TriggeredMove"/>'s <c>IOperationServices.MoveUnit</c>). False (the default,
+    /// and what an old book or saved list without the field parses to) keeps the 3.5 placement.</para>
     /// </summary>
-    public sealed record RepositionAtActivation(DiceExpression Distance, int PlusInches = 0) : Effect
+    public sealed record RepositionAtActivation(DiceExpression Distance, int PlusInches = 0, bool Move = false) : Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
@@ -1768,7 +1774,7 @@ public abstract record Effect
                 inches += face * results.At(face);
             }
 
-            operations.Add(new RuleOperation.RepositionModels(inches));
+            operations.Add(new RuleOperation.RepositionModels(inches, AsMove: Move));
         }
     }
 

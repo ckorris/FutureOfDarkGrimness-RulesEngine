@@ -106,12 +106,36 @@ namespace FDG.Stages
             List<RuleOperation.RepositionModels> repositions =
                 operations.OfType<RuleOperation.RepositionModels>().ToList();
             float inches = repositions.Sum(op => op.MaxInches);
+
+            // #434: the 3.6 family ("you may move all models with this rule in it by up to D3+1"") is a real move.
+            // One move entry makes the whole fold a move - an old placement-shaped copy summing with it (a saved
+            // list's Boost) widens the same move rather than raising a second prompt.
+            if (repositions.Any(op => op.AsMove))
+            {
+                return OfferMove(gameContext, unit, inches);
+            }
+
             RuleOperation.RepositionModels? clause = repositions
                 .Where(op => op.EnemyClearanceInches > 0f)
                 .OrderByDescending(op => op.EnemyClearanceInches)
                 .FirstOrDefault();
             return Offer(gameContext, unit, inches, clause?.EnemyClearanceInches ?? 0f, clause?.ExemptEnemyRule,
                 taskName);
+        }
+
+        /// <summary>
+        /// #434 - the MOVE half of the activation-time family: one optional triggered move of up to
+        /// <paramref name="maxInches"/>, through <see cref="GameOperationServices.MoveUnit"/> - the movement request
+        /// the post-combat family (Harassing / Hit &amp; Run) already raises, so terrain, other units, coherency and
+        /// the Dangerous terrain test all apply, and declining (Cancel, or a zero move) leaves the unit where it is.
+        /// A no-op when the distance is not positive or nothing is alive.
+        /// </summary>
+        public static async Task OfferMove(IGameContext gameContext, UnitData unit, float maxInches)
+        {
+            if (maxInches <= 0f || !unit.ModelBindings.Any(binding => binding.GetValue().GetIsAlive())) return;
+
+            gameContext.Log($"{unit.Name} may move up to {maxInches:0.##}\".");
+            await new GameOperationServices(gameContext).MoveUnit(unit, maxInches, isOptional: true);
         }
 
         /// <summary>
@@ -125,6 +149,8 @@ namespace FDG.Stages
         /// its unconditional Yes/No for Vanguard and Fanatic: that prompting is shipped behaviour its tests
         /// pin, and changing it was out of scope for the Dash slice. Recorded rather than silently unified.</para>
         /// </summary>
+        /// <para>#434: the move form of <see cref="Effect.RepositionAtActivation"/> qualifies too - its triggered move is
+        /// optional (Cancel / a zero move declines), so it is its own "you may".</para>
         public static bool IsCancellablePlacement(Effect effect) =>
             effect is Effect.RepositionAtActivation or Effect.RepositionOnDeploy;
     }

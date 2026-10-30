@@ -391,10 +391,14 @@ public abstract record RuleOperation
     /// "over 9" away from non-Vanguard enemy units" (see <see cref="Effect.RepositionOnDeploy"/>); 0 / null for
     /// every activation-time reposition.</para>
     /// </summary>
+    /// <para>#434: <see cref="AsMove"/> - the 3.6 activation-time family MOVES its models (a path, terrain, coherency)
+    /// rather than placing them; the folding stage offers one optional triggered move for the summed distance.</para>
     public sealed record RepositionModels(float MaxInches, float EnemyClearanceInches = 0f,
-        string? ExemptEnemyRule = null) : RuleOperation
+        string? ExemptEnemyRule = null, bool AsMove = false) : RuleOperation
     {
-        public override string Describe() => $"repositioned its models up to {MaxInches:0.##}\"" +
+        public override string Describe() => AsMove
+            ? $"may move its models up to {MaxInches:0.##}\""
+            : $"repositioned its models up to {MaxInches:0.##}\"" +
             (EnemyClearanceInches > 0f
                 ? $", over {EnemyClearanceInches:0.##}\" from " +
                   (ExemptEnemyRule != null ? $"non-{ExemptEnemyRule} enemy units" : "enemy units")

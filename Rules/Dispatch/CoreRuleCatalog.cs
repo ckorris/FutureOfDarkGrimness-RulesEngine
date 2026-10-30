@@ -25,7 +25,7 @@ public static class CoreRuleCatalog
         Stealth, Artillery, Indirect, Reliable, Fast, VeryFast, Slow, Surge, Relentless, Furious,
         Deadly, Regeneration, Unstoppable, Tough, Rending, Bane, Shred, Vanguard, Scout, Ambush, Thrust,
         Blast, Takedown, Limited, Impact, Counter, Brace, MartialProwess, Strafing, Fear, Fearless, Hero, Transport,
-        FuriousBuff, Mend, Immobile, Caster,
+        FuriousBuff, Mend, Immobile, Caster, SpellAmplifier,
         Evasive, MeleeEvasion, Precise, GoodShot,
         Agile, Quick, RapidAdvance, RapidRush, RapidCharge,
         Lacerate, Crack,
@@ -1332,6 +1332,29 @@ public static class CoreRuleCatalog
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Positive,
         Description: "At the start of each round, gains spell tokens to cast spells from its army's spell list.");
+
+    /// <summary>
+    /// Spell Amplifier (#427; Core Rules v3.6.0, new in 3.6): "Gets +1 to casting rolls." Printed on a weapon
+    /// (a Caster Staff, "Psy-Hacker Gear"), so it is weapon-scoped - a unit-level grant of it is re-homed onto
+    /// every weapon of the unit at army load, and a token-granted copy is read off the unit. One passive at
+    /// <see cref="EHookID.Casting_OnSpellCastAttempt"/> emitting <see cref="Effect.RollModifier"/> of
+    /// <see cref="ERollKind.Cast"/> +1, folded into the cast threshold by <see cref="CastRollRules.Net"/> from
+    /// <c>CastSpellStage</c> (and into the spell picker's "roll needed"). No argument, so several copies on one
+    /// unit are still +1 ("multiple instances of the same rule do not stack"). Clamped with everything else by
+    /// the cast roll's 2+..6+ floor.
+    /// </summary>
+    public static SpecialRuleDefinition SpellAmplifier { get; } = new SpecialRuleDefinition("Spell Amplifier",
+        new[]
+        {
+            new HookEntry(EHookID.Casting_OnSpellCastAttempt,
+                new Condition.Always(),
+                new Effect.RollModifier(ERollKind.Cast, Delta: +1),
+                ELifetime.ThisActivation),
+        },
+        Array.Empty<ActivatedAbility>(),
+        ERuleScope.Weapon,
+        Valence: EValence.Positive,
+        Description: "Gets +1 to casting rolls.");
 
     /// <summary>
     /// Transport(X) (#035): a marker rule, like <see cref="Hero"/>. A transport carries friendly units

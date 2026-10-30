@@ -46,7 +46,9 @@ namespace FDG.StageResolution.Requests
         /// <c>AvailableTokens - Cost</c> of the chosen spell.</summary>
         public int AvailableTokens { get; }
 
-        /// <summary>The unmodified cast success threshold (roll this or higher succeeds; base 4).</summary>
+        /// <summary>The caster's own cast success threshold before token boosts, assists and relays (roll this or
+        /// higher succeeds): the base 4+ less any passive casting modifier its rules give it (#427 Spell
+        /// Amplifier: "+1 to casting rolls" reads 3+). The 2+ floor still applies.</summary>
         public int BaseThreshold { get; }
 
         /// <summary>Total spell tokens held by enemy Casters within assist range of the caster right now —

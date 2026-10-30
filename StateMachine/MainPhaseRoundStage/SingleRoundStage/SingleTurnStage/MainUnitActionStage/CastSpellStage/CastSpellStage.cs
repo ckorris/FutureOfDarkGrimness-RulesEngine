@@ -204,7 +204,12 @@ namespace FDG.Stages
             // removed by ConsumeNet, duration grants are left for the token sweep. Read after the cost has
             // been spent so a browsed-and-cancelled spell never burns the debuff.
             int granted = GrantedRollModifiers.ConsumeNet(caster, ERollKind.Cast);
-            int netModifier = boost + assist + granted + castOrigin.RollBonus;
+
+            // #427 - the caster's own passive casting modifiers (Core Rules v3.6.0 Spell Amplifier: "Gets +1 to
+            // casting rolls"): rules at Casting_OnSpellCastAttempt, evaluated live so each narrates itself in the
+            // game log. #429's other "+1 to casting rolls" rules add to this same fold - author them at that hook.
+            int rules = CastRollRules.Net(caster, GameContext.RuleEvaluator, live: true);
+            int netModifier = boost + assist + granted + castOrigin.RollBonus + rules;
 
             // #274 — the caster's own models, reused by every spell visual below.
             List<Position> casterPositions = AttackBeatPositions.AlivePlaced(context.ActivatingUnit);
@@ -232,7 +237,7 @@ namespace FDG.Stages
             // the base 4+ was shifted. Assisters' own contributions were announced as they spent. The result
             // rides an on-screen text beat: blue on success, red on failure. ASCII only (the log font has no
             // em-dash glyph, #151).
-            string breakdown = BuildRollBreakdown(boost, assist, granted, castOrigin.RollBonus);
+            string breakdown = BuildRollBreakdown(boost, assist, granted, castOrigin.RollBonus, rules);
             string tokensSpent = boost > 0
                 ? $"spent {chosen.Threshold + boost} tokens ({chosen.Threshold} cost + {boost} boost)"
                 : $"spent {chosen.Threshold} token{(chosen.Threshold == 1 ? "" : "s")}";
@@ -526,8 +531,14 @@ namespace FDG.Stages
                 .Select(origin => new ChooseSpellRequest.RelayOption(origin.Unit.Name, origin.RollBonus))
                 .ToList();
 
+            // #427 - the picker's "roll needed" and the boost cap start from the caster's OWN threshold: the base 4+
+            // less its passive casting modifier (Spell Amplifier). Read-only (live: false) - the roll itself
+            // evaluates again, live, after the cost is spent.
+            int passive = CastRollRules.Net(casterBinding.GetValue(), GameContext.RuleEvaluator, live: false);
+            int ownThreshold = DiceUtilities.ClampSuccessRollNeeded(CAST_SUCCESS_THRESHOLD - passive);
+
             ChooseSpellRequest request = new ChooseSpellRequest(player, casterBinding, tokens,
-                CAST_SUCCESS_THRESHOLD, hinderTokens, options, relays);
+                ownThreshold, hinderTokens, options, relays);
 
             ChooseSpellReply reply = await GameContext.PlayerRequester
                 .RequestDecision<ChooseSpellRequest, ChooseSpellReply>(request);
@@ -543,14 +554,15 @@ namespace FDG.Stages
             return (spell, boost);
         }
 
-        // "(base 4+, relay +1, self +1, assists -2, granted -1)" — only the parts that apply; empty when the
-        // roll is unmodified. "granted" is the #197 P6 token delta (Casting Debuff / Casting Buff); "relay"
+        // "(base 4+, rules +1, relay +1, self +1, assists -2, granted -1)" — only the parts that apply; empty when
+        // the roll is unmodified. "granted" is the #197 P6 token delta (Casting Debuff / Casting Buff); "relay"
         // is the #197 P23 Spell Conduit bonus, listed first because it is the one the player did not ask
-        // for by name.
-        private static string BuildRollBreakdown(int boost, int assist, int granted, int relay)
+        // for by name; "rules" (#427) is the caster's own passive modifier (Spell Amplifier), also unasked.
+        private static string BuildRollBreakdown(int boost, int assist, int granted, int relay, int rules = 0)
         {
-            if (boost == 0 && assist == 0 && granted == 0 && relay == 0) return "";
+            if (boost == 0 && assist == 0 && granted == 0 && relay == 0 && rules == 0) return "";
             List<string> parts = new List<string> { $"base {CAST_SUCCESS_THRESHOLD}+" };
+            if (rules != 0) parts.Add($"rules {(rules > 0 ? "+" : "")}{rules}");
             if (relay != 0) parts.Add($"relay +{relay}");
             if (boost != 0) parts.Add($"self +{boost}");
             if (assist != 0) parts.Add($"assists {(assist > 0 ? "+" : "")}{assist}");

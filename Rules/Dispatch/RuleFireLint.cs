@@ -364,6 +364,9 @@ public static class RuleFireLint
 
             EHookID.Shooting_OnPreApplyWound => op is RuleOperation.MultiplyWounds,
             EHookID.Shooting_OnRangeCheck => op is RuleOperation.ApplyRangeModifier,
+
+            // CastSpellStage via CastRollRules: folds the Cast deltas into the cast threshold.
+            EHookID.Casting_OnSpellCastAttempt => op is RuleOperation.ApplyRollModifier { Roll: ERollKind.Cast },
             EHookID.Shooting_OnShootTargetsSelected => op is RuleOperation.TargetIndividualModel,
             EHookID.Shooting_OnPostShoot => op is RuleOperation.InvokeTriggeredMove,
 
@@ -791,6 +794,10 @@ public static class RuleFireLint
                 break;
             case EHookID.Morale_OnMoraleTestComplete:
                 yield return new MoraleTestContext(bearer);
+                break;
+            case EHookID.Casting_OnSpellCastAttempt:
+                // #427 Spell Amplifier: the caster's own casting-roll modifiers.
+                yield return new SpellCastAttemptContext(bearer);
                 break;
         }
     }

@@ -310,6 +310,7 @@ namespace FDG.Ai.Tactician.Resolvers
                     new AttackContext(reach, AttackerMoved: true));
                 float value = ValueFraction(incoming.ExpectedWounds, arriver.GetValue());
                 if (enemy.GetValue().GetMeleeWeapons().Count > 0
+                    && TacticalAnalysis.MayCharge(enemy.GetValue(), _evaluator) // #442 (#425)
                     && TacticalAnalysis.MeleeThreatReach(enemy.GetValue(), arriver.GetValue(), _evaluator,
                         Terrain) >= distance - 1f)
                 {

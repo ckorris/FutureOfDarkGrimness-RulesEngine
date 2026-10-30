@@ -73,6 +73,33 @@ namespace FDG.Tests
                 brawler.GetValue(), target.GetValue(), _evaluator), Is.EqualTo(0f));
         }
 
+        // #442 (#425): a Cumbersome brawler may not declare a Charge, so its threat range is its guns' alone (none
+        // here) - the kite band no longer stays out of a charge that cannot happen.
+        [Test]
+        public void ThreatRange_CumbersomeBrawler_ThreatensNoCharge()
+        {
+            var brawler = MakeUnit(3, Blade());
+            brawler.GetValue().AttachRuleDefinition(new ResolvedRule("Cumbersome", CoreRuleCatalog.Cumbersome));
+            var target = MakeUnit(3, null);
+
+            Assert.That(TacticalAnalysis.MayCharge(brawler.GetValue(), _evaluator), Is.False);
+            Assert.That(TacticalAnalysis.ThreatRangeAgainst(brawler.GetValue(), target.GetValue(), _evaluator),
+                Is.EqualTo(0f));
+        }
+
+        // #442 (#432): the charge-origin distance is base edge to base edge, as the engine snapshots it.
+        [Test]
+        public void ChargeOriginDistance_IsTheBaseEdgeGap_AndSpreadReachesTheFarthestBaseEdge()
+        {
+            var charger = MakeUnit(1, Blade(), atX: 0f, atZ: 0f);
+            var target = MakeUnit(3, null, atX: 8f, atZ: 0f);
+
+            Assert.That(TacticalAnalysis.ChargeOriginDistance(new TableState(_store), charger.GetValue(),
+                target.GetValue()), Is.EqualTo(7f).Within(0.01f), "8\" centre to centre, two 0.5\" bases");
+            Assert.That(TacticalAnalysis.Spread(target.GetValue()), Is.EqualTo(1.7f).Within(0.01f),
+                "three models 1.2\" apart: 1.2\" from the middle one, plus a 0.5\" base");
+        }
+
         // --- Objective projection -----------------------------------------------------------------
 
         [Test]

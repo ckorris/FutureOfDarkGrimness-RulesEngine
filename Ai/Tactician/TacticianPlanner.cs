@@ -813,7 +813,7 @@ namespace FDG.Ai.Tactician
                 incoming = Math.Max(incoming, CombatMath.EstimateShooting(_evaluator, enemyBinding,
                     transport, new AttackContext(theirReach, AttackerMoved: true)).ExpectedWounds);
                 // #355: an impact-only enemy can still charge this transport.
-                if (ChargeContactRules.CanFightInMelee(enemy)
+                if (ChargeContactRules.CanFightInMelee(enemy) && TacticalAnalysis.MayCharge(enemy, _evaluator)
                     && MeleeReachOf(enemyBinding, transport.GetValue()) >= d - 1f)
                 {
                     incoming = Math.Max(incoming, CombatMath.EstimateMelee(_evaluator, enemyBinding,
@@ -1214,7 +1214,8 @@ namespace FDG.Ai.Tactician
             // ANYONE. Ward = the friendly that stands to LOSE the most value to the melee threat
             // nearest it (A5-4b margin, so a counter-blade powerhouse still needs no screen).
             List<DataBinding<UnitData>> meleeEnemies = EnemyBindings(self.PlayerID)
-                .Where(e => e.GetValue().GetMeleeWeapons().Count > 0).ToList();
+                .Where(e => e.GetValue().GetMeleeWeapons().Count > 0
+                    && TacticalAnalysis.MayCharge(e.GetValue(), _evaluator)).ToList(); // #442 (#425)
             DataBinding<UnitData>? ward = null;
             DataBinding<UnitData>? threat = null;
             float wardThreatValue = 0f;
@@ -1462,7 +1463,10 @@ namespace FDG.Ai.Tactician
             if (_enemyFacts.TryGetValue(enemyBinding.Reference, out EnemyFacts cached)) return cached;
             UnitData enemy = enemyBinding.GetValue();
             UnitData self = _activeUnit!.GetValue();
-            var facts = new EnemyFacts(Centroid(enemy), enemy.GetMeleeWeapons().Count > 0,
+            // #442 (#425): HasMelee means "can charge us with melee weapons" everywhere it is read (retaliation,
+            // projected threat, approach staging, the cover habit's melee share) - a Cumbersome enemy may not charge.
+            var facts = new EnemyFacts(Centroid(enemy),
+                enemy.GetMeleeWeapons().Count > 0 && TacticalAnalysis.MayCharge(enemy, _evaluator),
                 BudgetsOf(enemyBinding).Advance,
                 MeleeReachOf(enemyBinding, self));
             _enemyFacts[enemyBinding.Reference] = facts;

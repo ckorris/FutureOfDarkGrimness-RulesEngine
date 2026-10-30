@@ -682,6 +682,50 @@ namespace FDG.Tests
             else Assert.That(ferocious, Is.EqualTo(plain).Within(0.0001f), "inside 6\" the arm adds nothing");
         }
 
+        // #442 (#425): an ENEMY that may not charge (Cumbersome: "may only use Hold or Advance actions") is no melee
+        // threat to a candidate endpoint inside its charge reach - its swords cost the Hold candidate nothing.
+        [Test]
+        public void CumbersomeEnemy_IsNoChargeThreat()
+        {
+            float cumbersome = HoldScoreNextToBrutes(cumbersome: true);
+            float plain = HoldScoreNextToBrutes(cumbersome: false);
+
+            Assert.That(cumbersome, Is.GreaterThan(plain + 0.001f),
+                $"the Cumbersome brutes cannot charge, so standing 8\" from them is cheaper (cumbersome={cumbersome:F4}, plain={plain:F4})");
+        }
+
+        private static float HoldScoreNextToBrutes(bool cumbersome)
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var tableState = new TableState(store);
+            var us = new PlayerID(Guid.NewGuid());
+            var them = new PlayerID(Guid.NewGuid());
+            DataBinding<UnitData> Unit(PlayerID owner, Weapon weapon, float x)
+            {
+                var models = new List<DataBinding<ModelData>>();
+                for (int i = 0; i < 3; i++)
+                    models.Add(store.GetDataBinding<ModelData>(store.Create(new ModelData(0.5f,
+                        new List<Weapon> { weapon }, new Position(x, 24f + i * 1.1f), store))));
+                var binding = store.GetDataBinding<UnitData>(store.Create(new UnitData(owner, $"U{x}", 4, 4,
+                    modelBindings: models)));
+                store.Create(new ArmyData(owner, new List<DataBinding<UnitData>> { binding }));
+                return binding;
+            }
+
+            var gunners = Unit(us, Rifle(), 20f);
+            var brutes = Unit(them, Blade(attacks: 4), 29f);
+            if (cumbersome)
+                brutes.GetValue().AttachRuleDefinition(new Rules.Dispatch.ResolvedRule("Cumbersome",
+                    Rules.Dispatch.CoreRuleCatalog.Cumbersome));
+            var planner = new TacticianPlanner(tableState, new RuleEvaluator(new ProbabilisticDiceRoller()));
+            planner.BeginActivation(gunners);
+
+            MacroAction hold = MacroActionGenerator.Enumerate(new RuleEvaluator(new ProbabilisticDiceRoller()),
+                    tableState, gunners)
+                .First(c => c.Intent == EMacroIntent.Hold);
+            return planner.Score(hold);
+        }
+
         private static float ChargeCandidateScore(float gap, bool ferocious)
         {
             var store = GameDataStore.GameDataStoreBuilder.GetDefault();

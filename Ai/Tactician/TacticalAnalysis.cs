@@ -96,6 +96,14 @@ namespace FDG.Ai.Tactician
             + GameWideConstants.MELEE_RANGE_INCHES_HORIZONTAL;
 
         /// <summary>
+        /// #442 (#425 Cumbersome, "may only use Hold or Advance actions"): whether the unit may declare a Charge at
+        /// all - the gate ChooseActionStage applies (<see cref="ActionRestrictionQueries.MayDeclare"/>). An ENEMY
+        /// that may not charge is no charge threat, however good its melee weapons are; it still strikes back.
+        /// </summary>
+        public static bool MayCharge(IUnit unit, RuleEvaluator evaluator) =>
+            ActionRestrictionQueries.MayDeclare(unit, evaluator, EActionType.Charge);
+
+        /// <summary>
         /// #442 (#432's charge arms): the charge-origin distance the engine would record if
         /// <paramref name="charger"/> charged <paramref name="target"/> from where they stand now - closest living
         /// models base to base, vertical included, measured from the charger's transport while it is embarked
@@ -196,8 +204,9 @@ namespace FDG.Ai.Tactician
         {
             float shooting = MaxWeaponRange(unit, target, evaluator);
             float shootingThreat = shooting > 0f ? AdvanceDistance(unit, evaluator, terrain) + shooting : 0f;
-            // #355: a ramming vehicle threatens its charge reach even with no melee weapon.
-            float meleeThreat = ChargeContactRules.CanFightInMelee(unit)
+            // #355: a ramming vehicle threatens its charge reach even with no melee weapon. #442: a unit that may
+            // not charge (#425 Cumbersome) threatens nothing in melee.
+            float meleeThreat = ChargeContactRules.CanFightInMelee(unit) && MayCharge(unit, evaluator)
                 ? ChargeDistanceAgainst(unit, target, evaluator, terrain) : 0f;
             return Math.Max(shootingThreat, meleeThreat);
         }

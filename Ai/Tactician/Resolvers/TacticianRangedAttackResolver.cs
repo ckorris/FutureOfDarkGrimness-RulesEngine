@@ -71,7 +71,9 @@ namespace FDG.Ai.Tactician.Resolvers
                         ? TacticalAnalysis.UnitValueWithCargo(target, _tableState, _evaluator)
                         : TacticalAnalysis.UnitValue(target);
                     // #355: a unit that can only ram still threatens to charge us.
+                    // #442 (#425): a target that may not charge (Cumbersome) does not threaten us in melee.
                     bool threatensUs = ChargeContactRules.CanFightInMelee(target)
+                        && TacticalAnalysis.MayCharge(target, _evaluator)
                         && TacticalAnalysis.MeleeThreatReach(target,
                             request.AttackingUnit.GetValue(), _evaluator, Terrain) >= distance - 1f;
                     float score = fractionKilled * targetValue

@@ -101,15 +101,17 @@ namespace FDG.Replay
         private bool _dirty;
 
         /// <summary>
-        /// Indexes nothing itself - <paramref name="timeline"/> already has - and starts at the first step (or at
-        /// the end, for a recording with no steps). Throws <see cref="ReplayPlaybackException"/> when the recording
-        /// has no snapshot to start from.
+        /// Describes every step (<see cref="ReplayStep.Summary"/>, one forward walk - skipped when another player
+        /// already described this timeline), then starts at the first step, or at the end for a recording with no
+        /// steps. Throws <see cref="ReplayPlaybackException"/> when the recording has no snapshot to start from.
         /// </summary>
         public ReplayPlayer(ReplayTimeline timeline)
         {
             Timeline = timeline;
             Store = null!;      // both set by the first rebuild, below
             TableState = null!;
+
+            DescribeSteps();
 
             if (Steps.Count > 0)
             {
@@ -152,19 +154,7 @@ namespace FDG.Replay
             }
 
             int next = _stepIndex + 1;
-            long target = next < Steps.Count ? Steps[next].RequestSeq : LastSeq;
-
-            PlaybackSpan span;
-            if (_dirty || CrossesResume(_cursorSeq, target))
-            {
-                span = Rebuild(target);
-            }
-            else
-            {
-                long from = _cursorSeq;
-                span = ApplyRange(from, target, storeReplaced: false);
-            }
-
+            PlaybackSpan span = Advance(next < Steps.Count ? Steps[next].RequestSeq : LastSeq, readBeats: true);
             _stepIndex = next;
             return span;
         }
@@ -185,7 +175,42 @@ namespace FDG.Replay
 
         private long LastSeq => Timeline.Events.Count > 0 ? Timeline.Events[^1].Seq : -1;
 
-        private PlaybackSpan Rebuild(long target)
+        // Forward from the cursor: in place, unless the store must be rebuilt (a failed apply, or a resume).
+        private PlaybackSpan Advance(long target, bool readBeats)
+        {
+            return _dirty || CrossesResume(_cursorSeq, target)
+                ? Rebuild(target, readBeats)
+                : ApplyRange(_cursorSeq, target, storeReplaced: false, readBeats);
+        }
+
+        // One forward walk describing each step against the state it was asked in. Beats are not read on the
+        // way. If a delta will not apply, the remaining steps keep their display names; the error surfaces
+        // when playback itself reaches that point.
+        private void DescribeSteps()
+        {
+            if (Timeline.StepsDescribed || Steps.Count == 0)
+            {
+                return;
+            }
+
+            try
+            {
+                for (int i = 0; i < Steps.Count; i++)
+                {
+                    if (i == 0) Rebuild(Steps[0].RequestSeq, readBeats: false);
+                    else Advance(Steps[i].RequestSeq, readBeats: false);
+
+                    Steps[i].Summary = ReplayDecisionDescriber.Describe(Steps[i], Store, Timeline.Header);
+                }
+            }
+            catch (ReplayPlaybackException)
+            {
+            }
+
+            Timeline.StepsDescribed = true;
+        }
+
+        private PlaybackSpan Rebuild(long target, bool readBeats = true)
         {
             SnapshotEvent snapshot = Timeline.SnapshotFor(target)
                 ?? throw new ReplayPlaybackException(Timeline.Snapshots.Count == 0
@@ -208,11 +233,11 @@ namespace FDG.Replay
             _dirty = false;
             OnStoreReplaced?.Invoke(store);
 
-            return ApplyRange(snapshot.Seq, target, storeReplaced: true);
+            return ApplyRange(snapshot.Seq, target, storeReplaced: true, readBeats);
         }
 
         // Applies every event in (from, to] to Store in Seq order, collecting the span.
-        private PlaybackSpan ApplyRange(long from, long to, bool storeReplaced)
+        private PlaybackSpan ApplyRange(long from, long to, bool storeReplaced, bool readBeats)
         {
             var events = new List<ReplayEvent>();
             var beats = new List<PresentationBeat>();
@@ -243,7 +268,7 @@ namespace FDG.Replay
                         }
                         break;
 
-                    case BeatEvent beat:
+                    case BeatEvent beat when readBeats:
                         beatSettings ??= WireJsonSettings.For(Store);
                         try
                         {

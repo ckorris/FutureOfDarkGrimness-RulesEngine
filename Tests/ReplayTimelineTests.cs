@@ -110,6 +110,17 @@ namespace FDG.Tests
             Assert.That(timeline.Steps[0].Folded.Select(f => f.Request), Is.EqualTo(new[] { forced }));
             Assert.That(DefaultStepFilter.CountOptions(cancellable), Is.EqualTo(2), "a CancellableResult reply offers Back");
             Assert.That(DefaultStepFilter.CountOptions(yesNo), Is.Null, "not a pick from a list");
+
+            // The two lists named otherwise: an ability's effects, and the deployment zones.
+            var effectRequest = new ChooseAbilityEffectRequest(PlayerA, "Pick an effect", "Rule", "Bearer",
+                new[] { new ChooseAbilityEffectRequest.EffectOption("Only", "") });
+            RequestEvent effect = new RequestEvent(effectRequest.TaskID, PlayerA, typeof(ChooseAbilityEffectRequest).FullName!,
+                "System.Int32", "Choosing an Effect", JsonConvert.SerializeObject(effectRequest, WireJsonSettings.For(doc.Store)));
+            Assert.That(DefaultStepFilter.CountOptions(effect), Is.EqualTo(1));
+            RequestEvent zone = new RequestEvent(new TaskID(Guid.NewGuid()), PlayerA,
+                "FDG.StageResolution.Requests.ChooseDeploymentZoneRequest", "x", "Choosing a Deployment Zone",
+                "{\"AvailableZones\":{\"$type\":\"list\",\"$values\":[{\"TypeID\":{\"ID\":11},\"Index\":0,\"Generation\":1}]}}");
+            Assert.That(DefaultStepFilter.CountOptions(zone), Is.EqualTo(1));
             Assert.That(timeline.Steps.Select(s => s.Index), Is.EqualTo(new[] { 0, 1, 2, 3 }));
         }
 

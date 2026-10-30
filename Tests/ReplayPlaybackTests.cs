@@ -167,6 +167,10 @@ namespace FDG.Tests
             Assert.That(timeline.Steps, Is.Not.Empty);
 
             var player = new ReplayPlayer(timeline);
+            Assert.That(timeline.Steps.Select(s => s.Summary), Has.All.Match(@"^[ -~]+$"), "every step is described, in ASCII");
+            Assert.That(timeline.Steps.Count(s => s.Summary != s.DisplayName), Is.GreaterThan(timeline.Steps.Count / 2),
+                "most steps get a line of their own rather than the fallback");
+
             int replaced = 0;
             player.OnStoreReplaced += _ => replaced++;
             var walked = new List<string> { Save(player.Store) };

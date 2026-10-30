@@ -102,11 +102,12 @@ namespace FDG.Replay
     /// at most one option, which folds. Requests that failed or never got an answer fold too.
     /// <para>
     /// The option count is read off the recorded request JSON as a plain token tree, never by binding it to
-    /// its CLR type: any request with a top-level <c>ValidOptions</c> list (<c>SelectionRequest&lt;T&gt;</c>,
+    /// its CLR type: any request with a top-level option list - <c>ValidOptions</c> (<c>SelectionRequest&lt;T&gt;</c>,
     /// <c>CancellableSelectionRequest&lt;T&gt;</c>, <c>StringSelectionRequest</c>, <c>ChooseActionRequest</c> and
-    /// their subclasses) counts its entries, plus one for a Back option - offered when the request says
-    /// <c>AllowCancel</c> or its reply type is a <c>CancellableResult</c>. A request without such a list
-    /// (yes/no, movement, wounds, placement) is always a real decision.
+    /// their subclasses), <c>Options</c> (<c>ChooseAbilityEffectRequest</c>) or <c>AvailableZones</c>
+    /// (<c>ChooseDeploymentZoneRequest</c>) - counts its entries, plus one for a Back option, offered when the
+    /// request says <c>AllowCancel</c> or its reply type is a <c>CancellableResult</c>. A request without such a
+    /// list (yes/no, movement, shooting, spells, wounds, placement) is always a real decision.
     /// </para>
     /// </summary>
     public sealed class DefaultStepFilter : IStepFilter
@@ -114,6 +115,9 @@ namespace FDG.Replay
         public static DefaultStepFilter Instance { get; } = new DefaultStepFilter();
 
         private static readonly string CancellableReplyPrefix = typeof(CancellableResult<>).FullName!;
+
+        // The request fields that hold "pick one of these" lists.
+        private static readonly string[] OptionListFields = { "ValidOptions", "Options", "AvailableZones" };
 
         public bool IsStep(ReplayRequest request)
         {
@@ -135,7 +139,11 @@ namespace FDG.Replay
                 return null;
             }
 
-            JArray? validOptions = RecordedJson.AsArray(root["ValidOptions"]);
+            JArray? validOptions = null;
+            foreach (string field in OptionListFields)
+            {
+                validOptions ??= RecordedJson.AsArray(root[field]);
+            }
             if (validOptions == null)
             {
                 return null;
@@ -216,6 +224,9 @@ namespace FDG.Replay
 
         /// <summary>Folded requests made before the first step (a forced first deployment pick, say).</summary>
         public IReadOnlyList<ReplayRequest> FoldedBeforeFirstStep { get; }
+
+        /// <summary>Set once a <c>ReplayPlayer</c> has filled every step's Summary.</summary>
+        internal bool StepsDescribed { get; set; }
 
         private readonly Dictionary<TaskID, ReplayRequest> _requestsByTask = new Dictionary<TaskID, ReplayRequest>();
 

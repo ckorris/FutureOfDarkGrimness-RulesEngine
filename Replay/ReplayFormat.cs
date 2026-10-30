@@ -71,4 +71,27 @@ namespace FDG.Replay
 
         public ReplayFormatException(string message, Exception inner) : base(message, inner) { }
     }
+
+    /// <summary>Player-facing replay text (warnings, failure lines, decision summaries).</summary>
+    internal static class ReplayText
+    {
+        /// <summary>
+        /// Game text is ASCII-only (the ImGui atlas renders anything else as '?'), but names, exception messages
+        /// and a replay file's own strings may not be: fold typographic punctuation and accents the way army
+        /// import does, then replace whatever is left, and any control character but a newline, with '?'.
+        /// </summary>
+        public static string Ascii(string text)
+        {
+            char[] chars = FDG.ArmyBuilding.OprBookImporter.AsciiFold(text).ToCharArray();
+            for (int i = 0; i < chars.Length; i++)
+            {
+                if (chars[i] > '~' || (chars[i] < ' ' && chars[i] != '\n'))
+                {
+                    chars[i] = '?';
+                }
+            }
+
+            return new string(chars);
+        }
+    }
 }

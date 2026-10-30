@@ -368,28 +368,13 @@ namespace FDG.Replay
 
             try
             {
-                _failureOutput.Log(Ascii($"[replay] Recording stopped: a {what} could not be recorded " +
+                _failureOutput.Log(ReplayText.Ascii($"[replay] Recording stopped: a {what} could not be recorded " +
                     $"({exception.GetType().Name}: {exception.Message}). This game's replay ends here."));
             }
             catch
             {
                 // The failure line is best effort; the recorder must never throw into the engine.
             }
-        }
-
-        // Game text is ASCII-only (the ImGui atlas renders anything else as '?'); exception text may not be.
-        private static string Ascii(string text)
-        {
-            char[] chars = text.ToCharArray();
-            for (int i = 0; i < chars.Length; i++)
-            {
-                if (chars[i] > '~' || (chars[i] < ' ' && chars[i] != '\n'))
-                {
-                    chars[i] = '?';
-                }
-            }
-
-            return new string(chars);
         }
 
         // Before AttachStore (scripted use): the wire's binder and enum policy without the store's

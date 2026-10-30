@@ -137,8 +137,8 @@ namespace FDG.Replay
             List<string> warnings = new List<string>();
             if (header.BuildVersion != ReplayFormat.BuildVersion)
             {
-                warnings.Add($"This replay was recorded by build {Describe(header.BuildVersion)}; this is build " +
-                    $"{ReplayFormat.BuildVersion}. It plays back what was recorded, but rules and visuals may differ.");
+                warnings.Add(ReplayText.Ascii($"This replay was recorded by build {Describe(header.BuildVersion)}; this is build " +
+                    $"{ReplayFormat.BuildVersion}. It plays back what was recorded, but rules and visuals may differ."));
             }
 
             return new ReplayDocument(header, events, warnings);

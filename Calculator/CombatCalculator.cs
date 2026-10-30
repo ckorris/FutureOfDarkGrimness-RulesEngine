@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using FDG.Data;
 using FDG.GameModel;
+using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
@@ -132,6 +133,14 @@ namespace FDG.Calculator
                 if (impact is not null) volleys.Add(impact);
             }
 
+            // #442 (#434): then the striker's own pre-strike dice - Ravage, Regenerative Strength's tokens - through
+            // the real ResolveRavageWoundsStage, "when it's this model's turn to strike in melee" (charge or not).
+            if (melee)
+            {
+                VolleyReport? ravage = await ResolveRavage(context, attacker, defender, situation.AttackerCharging);
+                if (ravage is not null) volleys.Add(ravage);
+            }
+
             foreach ((Weapon weapon, int copies) in Batches(attackingUnit, melee))
             {
                 volleys.Add(await ResolveVolley(context, attacker, defender, weapon, copies, situation, melee));
@@ -196,10 +205,13 @@ namespace FDG.Calculator
                 ? 1
                 : 0;
 
+            // #442 (#432): a charging swing carries the charge's launch distance, as CombatActionContext snapshots it.
+            bool charging = melee && situation.AttackerCharging;
             var metadata = new CombatMetadata(context, attacker, defender, weapon, firing,
                 attackerMoved: situation.AttackerMoved,
                 isMelee: melee,
-                isCharging: melee && situation.AttackerCharging);
+                isCharging: charging,
+                chargeOriginDistanceInches: charging ? MathF.Max(0f, situation.ChargeFromInches) : 0f);
             metadata.AddResult(new CoverCheckResults(coverBonus));
 
             float woundsBefore = defendingUnit.RemainingWounds;
@@ -283,6 +295,51 @@ namespace FDG.Calculator
                 ExpectedHits: expectedHits, Saves: Array.Empty<SaveBucket>(),
                 SaveTags: Array.Empty<string>(), ExpectedWounds: dealt,
                 Notes: new[] { "Auto-hits on the charge, before any weapon swings." });
+        }
+
+        /// <summary>
+        /// #442 (#434): the striker's pre-strike auto-wound pools (Ravage at 6+, Regenerative Strength's tokens at 4+),
+        /// run through the engine's own <see cref="ResolveRavageWoundsStage"/> - unsaveable wounds that land before
+        /// the swings. Null when the striker has none (or is Fatigued, which each rule's own condition reads).
+        /// </summary>
+        private static async Task<VolleyReport?> ResolveRavage(SandboxGameContext context,
+            DataBinding<UnitData> attacker, DataBinding<UnitData> defender, bool charging)
+        {
+            UnitData attackingUnit = attacker.GetValue();
+            UnitData defendingUnit = defender.GetValue();
+
+            // The stage's participant shape, read-only, to know whether there is a row at all and what it rolls.
+            var participants = new List<RuleParticipant> { ResolveImpactHitsStage.ChargerParticipant(attackingUnit) };
+            participants.AddRange(DetermineStrikeOrderStage.SubjectWithMeleeWeapons(defendingUnit));
+            var pools = context.RuleEvaluator.EvaluateAllNamed(new ChargeContactContext(attackingUnit, defendingUnit),
+                    participants.ToArray())
+                .Select(n => n.Op).OfType<RuleOperation.InvokeDealAutoWounds>()
+                .Where(op => op.DiceCount > 0).ToList();
+            if (pools.Count == 0)
+            {
+                return null;
+            }
+
+            float woundsBefore = defendingUnit.RemainingWounds;
+            var actionContext = new CombatActionContext(context, attacker, isMelee: true, isCharging: charging);
+            actionContext.SetDefender(defender);
+            var stage = new ResolveRavageWoundsStage(context, new PassThroughLayer<ICombatActionContext>());
+            stage.OnRavageResolved.Bind("done");
+            await stage.Enter(actionContext);
+            float dealt = woundsBefore - defendingUnit.RemainingWounds;
+
+            int dice = pools.Sum(pool => pool.DiceCount);
+            float expected = pools.Sum(pool => pool.DiceCount * (7 - pool.SuccessThreshold) / 6f);
+            List<string> tags = pools.GroupBy(pool => pool.SuccessThreshold)
+                .Select(g => $"{g.Sum(p => p.DiceCount)} dice, wounds on {g.Key}+")
+                .Prepend("Pre-strike dice, no save")
+                .ToList();
+            var weapon = new Weapon("Ravage", rangeInches: 0f, attacks: 0, armorPenetration: 0);
+            return new VolleyReport(weapon, Copies: 1, InRange: true, EffectiveRangeInches: 0f,
+                AttackDice: dice, HitRollNeeded: pools.Min(pool => pool.SuccessThreshold), HitTags: tags,
+                ExpectedHits: expected, Saves: Array.Empty<SaveBucket>(), SaveTags: Array.Empty<string>(),
+                ExpectedWounds: dealt,
+                Notes: new[] { "Rolled before the swings, once per round; the wounds take no armor save." });
         }
 
         /// <summary>Binds the stage's exit to a sink and runs exactly that stage.</summary>

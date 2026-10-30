@@ -14,13 +14,18 @@ namespace FDG.Calculator
     /// calculator has no table. Everything here is an INPUT the caller controls; anything derived from
     /// the units themselves (thresholds, ranges, which rules fire) is computed by the engine.
     /// </summary>
+    /// <param name="ChargeFromInches">#442 (#432): how far, base to base, the charger stood from the defender when it
+    /// declared the charge - what the engine snapshots at activation start and the "charges / is charged from over
+    /// 6"" rules read (Ferocious's extra hit, a Changebound defender's -1). Only a charging melee carries it; 0 (the
+    /// default) means not given, and no charge arm fires.</param>
     public sealed record CombatSituation(
         ECombatMode Mode = ECombatMode.Shooting,
         float DistanceInches = 12f,
         bool DefenderInCover = false,
         bool AttackerMoved = false,
         bool AttackerCharging = false,
-        bool AttackerFatigued = false);
+        bool AttackerFatigued = false,
+        float ChargeFromInches = 0f);
 
     /// <summary>
     /// One save-threshold group within a volley - the shape the save stage produces when a per-hit rule

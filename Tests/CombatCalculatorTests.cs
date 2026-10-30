@@ -371,6 +371,43 @@ namespace FDG.Tests
                 "the missing half of a melee must be stated, not silently omitted");
         }
 
+        // #442 (#432): the charge's launch distance is an input now, and it reaches the real stages - so a Ferocious
+        // charger's extra hit on each natural 6 appears charging from 7" and not from 5" (or when no distance is given).
+        [Test]
+        public void ChargeFrom_ReachesTheChargeArms()
+        {
+            ArmyListFile chargers = Army(Unit("Raiders", 5, 4, 4, new[] { "Ferocious" }, Blade(5, attacks: 3)));
+            chargers.RuleDefinitions.Add(RangeConditional36Definitions.ExtraHit("Ferocious"));
+            ArmyListFile targets = Army(Unit("Targets", 20, 4, 6));
+
+            float Wounds(float from) => CombatCalculator.Run(chargers, targets,
+                new CombatSituation(ECombatMode.Melee, AttackerCharging: true, ChargeFromInches: from)).ExpectedWounds;
+
+            // 15 attacks at 4+ = 7.5 hits, +1/6 per die (2.5) from over 6"; Defense 6 lets 5/6 through.
+            Assert.That(Wounds(7f), Is.EqualTo(10f * 5f / 6f).Within(Tolerance));
+            Assert.That(Wounds(5f), Is.EqualTo(7.5f * 5f / 6f).Within(Tolerance));
+            Assert.That(Wounds(0f), Is.EqualTo(Wounds(5f)).Within(Tolerance), "no distance given: no charge arm");
+        }
+
+        // #442 (#434): Ravage's pre-strike dice run through the real ResolveRavageWoundsStage and get their own row -
+        // unsaveable wounds, before the swings.
+        [Test]
+        public void ARavageUnit_GetsAPreStrikeRow_WithNoSave()
+        {
+            CombatReport report = CombatCalculator.Run(
+                Army(Unit("Brutes", 2, 4, 4, new[] { "Ravage(3)" }, Blade(2))),
+                Army(Unit("Knights", 10, 4, 2)),
+                new CombatSituation(ECombatMode.Melee, AttackerCharging: true));
+
+            VolleyReport ravage = report.Volleys.Single(v => v.Weapon.Name == "Ravage");
+            Assert.Multiple(() =>
+            {
+                Assert.That(ravage.AttackDice, Is.EqualTo(6f).Within(Tolerance), "2 models x Ravage(3)");
+                Assert.That(ravage.ExpectedWounds, Is.EqualTo(1f).Within(Tolerance), "6 dice at 6+, Defense 2 never rolled");
+                Assert.That(report.Volleys.ToList().IndexOf(ravage), Is.LessThan(report.Volleys.Count - 1), "before the swings");
+            });
+        }
+
         // ---- fixture helpers ---------------------------------------------------------------------
 
         private const float Tolerance = 0.001f;

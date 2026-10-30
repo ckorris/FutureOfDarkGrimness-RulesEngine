@@ -71,6 +71,30 @@ namespace FDG.Tests
                 Is.Not.EqualTo(ChooseActionStage.CAST_CHOICE_NAME));
         }
 
+        // #429 - Core Rules v3.6.0 put "in line of sight" into each spell's text, so the valuation mirror must read
+        // the SPELL's flag (TargetSelector.RequireLineOfSight), never assume one for the caster: a juicy target
+        // behind a wall is worth casting at with a no-LoS spell and worth nothing to a LoS one.
+        [TestCase(false, true)]
+        [TestCase(true, false)]
+        public void Casting_ReadsLineOfSightFromTheSpell_NotTheCaster(bool spellNeedsLineOfSight, bool expectCast)
+        {
+            var caster = MakeUnit(_us, 1, Rifle(), 20f, 24f);
+            GiveTokens(caster, 3);
+            DataBinding<UnitData> target = MakeUnit(_them, 5, Blade(), 30f, 24f); // 10" away, inside 18"
+            _store.Create(new TerrainData(ETerrainType.Blocking, new RectangularZone(24f, 26f, 14f, 34f)));
+            RuntimeSpell zap = DamageSpell("Zap", threshold: 2, hits: 6, lineOfSight: spellNeedsLineOfSight);
+            BuildArmies(zap);
+            _planner.BeginActivation(caster);
+
+            var ranked = SpellValuation.RankEligibleTargets(_evaluator, _tableState, caster, zap,
+                seeThroughFriendlyUnits: false);
+            Assert.That(ranked.Any(r => r.Unit.Reference.Equals(target.Reference)), Is.EqualTo(expectCast),
+                spellNeedsLineOfSight ? "the wall hides the only target from a LoS spell"
+                                      : "no 'in line of sight' clause: the hidden target is fair game");
+            Assert.That(_planner.ChooseAction(CastableActions) == ChooseActionStage.CAST_CHOICE_NAME,
+                Is.EqualTo(expectCast));
+        }
+
         [Test]
         public void SpellPicker_TakesTheHighestValueSpell_NotTheFirst_AndNeverCancels()
         {
@@ -151,9 +175,10 @@ namespace FDG.Tests
 
         // --- fixtures ---
 
-        private static RuntimeSpell DamageSpell(string name, int threshold, int hits, int ap = 0) =>
+        private static RuntimeSpell DamageSpell(string name, int threshold, int hits, int ap = 0,
+            bool lineOfSight = false) =>
             new RuntimeSpell(new SpellDefinition(name, threshold,
-                new TargetSelector(18f, 1, 1, ETargetAffinity.Foe, RequireLineOfSight: false),
+                new TargetSelector(18f, 1, 1, ETargetAffinity.Foe, RequireLineOfSight: lineOfSight),
                 new Effect.DealHits(hits, Array.Empty<string>(), ap)), Array.Empty<ResolvedRule>());
 
         private static void GiveTokens(DataBinding<UnitData> unit, int count) =>

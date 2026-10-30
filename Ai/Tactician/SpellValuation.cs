@@ -21,6 +21,14 @@ namespace FDG.Ai.Tactician
     /// always comes from the engine's own option lists, so a divergence can cost value but never
     /// legality.
     /// </para>
+    /// <para>
+    /// #429 (Core Rules v3.6.0): line of sight is read from each spell's own
+    /// <see cref="TargetSelector.RequireLineOfSight"/> (the importer sets it from the spell's "in line of sight"
+    /// clause) - there is no caster-level LoS assumption, so a spell without the clause values targets behind
+    /// terrain. Known pricing gaps, recorded on #442: the success chance is the flat
+    /// <see cref="BaseCastSuccessChance"/> (no Spell Amplifier, granted cast tokens, relay bonus, boost or
+    /// hinder), and targets are measured from the caster only (no Spell Conduit relay origin).
+    /// </para>
     /// </summary>
     public static class SpellValuation
     {

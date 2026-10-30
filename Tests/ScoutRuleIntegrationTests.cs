@@ -74,19 +74,22 @@ namespace FDG.Tests
             await stage.Enter(deployment);
 
             float center = GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES / 2f;
-            float expectedTop = System.Math.Min(GameWideConstants.DEPLOYMENT_DISTANCE_INCHES + 12f, center);
+            float expectedTop = System.Math.Min(GameWideConstants.DEPLOYMENT_DISTANCE_INCHES + 9f, center);
 
             Assert.That(requester.PlacementCount, Is.EqualTo(2), "every reserved Scout is placed");
             Assert.That(requester.LastZone!.Bounds.Top, Is.EqualTo(expectedTop).Within(0.001f),
-                "Scout's zone is extended 12\" forward (toward table center), clamped at center.");
+                "#426: Scout's zone is extended 9\" forward (toward table center), clamped at center.");
 
             foreach (DataBinding<UnitData> scout in new[] { scoutA, scoutB })
             {
                 foreach (DataBinding<ModelData> model in scout.GetValue().ModelBindings)
                 {
+                    // #426: "anywhere fully within 9in of their deployment zone" includes the zone itself, so
+                    // the claim is the band, not "forward of the zone" (the canned requester stacks both
+                    // units on the band's centre and the commit guard moves the second one aside).
                     Position pos = model.GetValue().PositionBinding.GetValue();
-                    Assert.That(pos.z, Is.GreaterThan(GameWideConstants.DEPLOYMENT_DISTANCE_INCHES - 0.001f),
-                        $"{scout.GetValue().Name} models end forward of the original deployment zone.");
+                    Assert.That(pos.z, Is.InRange(0f, expectedTop + 0.001f),
+                        $"{scout.GetValue().Name} models end inside the Scout band.");
                 }
             }
         }

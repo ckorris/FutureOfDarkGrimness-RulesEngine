@@ -20,8 +20,9 @@ namespace FDG.Ai.Tactician.Resolvers
         /// <summary>DeployUnitStage's literal TaskName - the deployment discriminator.</summary>
         public const string DeploymentTaskName = "Place Unit Models";
         /// <summary>PlaceDeferredUnitsStage's literal - Scout placement into the forward-extended
-        /// zone works exactly like deployment (#191 A5-2).</summary>
-        public const string ScoutTaskName = "Place Scout Unit";
+        /// zone works exactly like deployment (#191 A5-2). #426: the request also carries keep-out discs
+        /// (over 9" from non-Scout enemies), which the base class's block search honours like any other.</summary>
+        public const string ScoutTaskName = Stages.PlaceDeferredUnitsStage.ScoutTaskName;
         /// <summary>StartOfRoundExtraActionStage's literal - Ambush arrival over the whole table.</summary>
         public const string AmbushTaskName = "Ambush Deploy";
 

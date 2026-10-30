@@ -1154,7 +1154,10 @@ public abstract record RuleOperation
     /// on: 2 for core Ambush, 1 for Rapid Ambush ("may be deployed at the start of any round,
     /// including the first"). <see cref="MandatoryArrival"/> makes the arrival pass PLACE the unit
     /// rather than offer it (Ambush Re-Deployment's return leg - owner-ruled mandatory next round,
-    /// 2026-07-28). Resolution of <see cref="Effect.DeferDeployment"/>.
+    /// 2026-07-28). <see cref="EnemyClearanceInches"/> (#426, <see cref="EDeferTiming.AfterNormalDeployment"/>
+    /// only) is Scout 3.6's "over 9\" away from non-Scout enemy units" - <c>PlaceDeferredUnitsStage</c> turns it
+    /// into keep-out discs around every enemy unit that was not set aside by the same pass. Resolution of
+    /// <see cref="Effect.DeferDeployment"/>.
     ///
     /// Stays a plain <see cref="RuleOperation"/> — NOT an <see cref="ExecutableOperation"/>: it is a
     /// marker the deployment subsystem <em>reads</em> (a query, like <see cref="RuleOperation.SuppressRule"/>) to decide
@@ -1165,14 +1168,18 @@ public abstract record RuleOperation
         EDeferTiming Timing = EDeferTiming.AfterNormalDeployment,
         float PlacementRangeInches = 0f,
         int MinArrivalRound = 2,
-        bool MandatoryArrival = false) : RuleOperation
+        bool MandatoryArrival = false,
+        float EnemyClearanceInches = 0f) : RuleOperation
     {
         // PlacementRangeInches means different things per timing (Scout: how far forward the zone
         // extends; Ambush: how far from enemies it must arrive), so each branch names its own.
         public override string Describe() => Timing == EDeferTiming.LaterRound
             ? $"was held in reserve, {(MandatoryArrival ? "arriving" : "able to arrive")} from round " +
               $"{MinArrivalRound} over {PlacementRangeInches:0.##}\" from enemies"
-            : $"deployed after everything else, up to {PlacementRangeInches:0.##}\" forward of its zone";
+            : $"deployed after everything else, within {PlacementRangeInches:0.##}\" of its zone" +
+              (EnemyClearanceInches > 0f
+                  ? $" and over {EnemyClearanceInches:0.##}\" from enemies that deployed normally"
+                  : "");
     }
 }
 

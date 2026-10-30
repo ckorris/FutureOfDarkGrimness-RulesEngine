@@ -1879,23 +1879,32 @@ public static class CoreRuleCatalog
     // Deferred-deployment primitive (PlaceDeferredUnitsStage) ---------------------
 
     /// <summary>
-    /// Scout: this unit is set aside during normal deployment and placed after all other units,
-    /// within 12" of its deployment zone (forward deploy). A passive rule at
+    /// Scout (Core Rules v3.6.0, #426): "May be set aside before deployment. After all other units are
+    /// deployed, may be deployed anywhere fully within 9" of their deployment zone, over 9" away from
+    /// non-Scout enemy units. Players alternate in placing Scout units, starting with the player that
+    /// activates next." (3.5: within 12" of the zone, no enemy clause.) A passive rule at
     /// <see cref="EHookID.Deployment_OnPreDeploymentSelect"/> that queues
-    /// <see cref="RuleOperation.DeferDeployment"/>; the deployment subsystem reserves the unit and
-    /// the Scout pass places it forward.
+    /// <see cref="RuleOperation.DeferDeployment"/>; the deployment subsystem reserves the unit and the
+    /// Scout pass (<c>PlaceDeferredUnitsStage</c>) places it: the zone extended
+    /// <see cref="Effect.DeferDeployment.PlacementRangeInches"/> toward the centre, and keep-out discs of
+    /// <see cref="Effect.DeferDeployment.EnemyClearanceInches"/> around every enemy unit that was not set
+    /// aside by the same pass (an enemy Scout does not push back).
     /// </summary>
     public static SpecialRuleDefinition Scout { get; } = new SpecialRuleDefinition("Scout",
         new[]
         {
             new HookEntry(EHookID.Deployment_OnPreDeploymentSelect,
                 new Condition.Always(),
-                new Effect.DeferDeployment(EDeferTiming.AfterNormalDeployment, PlacementRangeInches: 12f),
+                new Effect.DeferDeployment(EDeferTiming.AfterNormalDeployment, PlacementRangeInches: 9f,
+                    EnemyClearanceInches: 9f),
                 ELifetime.UntilEndOfGame),
         },
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Positive,
-        Description: "Deploys after all other units, up to 12\" forward of its deployment zone.");
+        Description: "May be set aside before deployment. After all other units are deployed, may be deployed " +
+                     "anywhere fully within 9\" of their deployment zone, over 9\" away from non-Scout enemy " +
+                     "units. Players alternate in placing Scout units, starting with the player that activates " +
+                     "next.");
 
     /// <summary>
     /// Ambush: this unit is kept in reserve instead of deploying normally, and the owner may bring it

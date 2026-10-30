@@ -200,8 +200,13 @@ namespace FDG.Tests
                 "left it unable to act");
             yield return Case(
                 new RuleOperation.DeferDeployment(EDeferTiming.AfterNormalDeployment,
-                    PlacementRangeInches: 12f),
-                "deployed after everything else, up to 12\" forward of its zone");
+                    PlacementRangeInches: 9f),
+                "deployed after everything else, within 9\" of its zone");
+            yield return Case(
+                new RuleOperation.DeferDeployment(EDeferTiming.AfterNormalDeployment,
+                    PlacementRangeInches: 9f, EnemyClearanceInches: 9f),
+                "deployed after everything else, within 9\" of its zone and over 9\" from enemies that " +
+                "deployed normally");
             yield return Case(
                 new RuleOperation.DeferDeployment(EDeferTiming.LaterRound, PlacementRangeInches: 9f,
                     MinArrivalRound: 2),

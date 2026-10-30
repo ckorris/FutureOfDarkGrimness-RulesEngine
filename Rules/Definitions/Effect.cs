@@ -1590,17 +1590,21 @@ public abstract record Effect
     /// <see cref="Timing"/> selects the pass; <see cref="PlacementRangeInches"/>'s meaning depends on
     /// it (zone-forward-extension for Scout, min-distance-from-enemies for Ambush). Both default so a
     /// bare <c>DeferDeployment()</c> (used by the queue-level shape tests) keeps compiling.
+    /// <see cref="EnemyClearanceInches"/> (#426, <see cref="EDeferTiming.AfterNormalDeployment"/> only) is
+    /// Scout 3.6's "over 9\" away from non-Scout enemy units": the set-aside placement must keep that far from
+    /// every enemy unit that did NOT come through the same set-aside pass. 0 = no enemy clause.
     /// </summary>
     public sealed record DeferDeployment(
         EDeferTiming Timing = EDeferTiming.AfterNormalDeployment,
         float PlacementRangeInches = 0f,
         int MinArrivalRound = 2,
-        bool MandatoryArrival = false) : Effect
+        bool MandatoryArrival = false,
+        float EnemyClearanceInches = 0f) : Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.DeferDeployment(Timing, PlacementRangeInches, MinArrivalRound,
-                MandatoryArrival));
+                MandatoryArrival, EnemyClearanceInches));
         }
     }
 

@@ -2013,9 +2013,12 @@ public static class CoreRuleCatalog
         Description: "Ignores the movement penalty for Difficult terrain.");
 
     /// <summary>
-    /// Flying (#029): the bearer ignores ALL terrain movement effects — the difficult-terrain cap, Dangerous-
+    /// Flying (#029; Core Rules v3.6.0 "May move through units and terrain, and ignores the effects of Difficult
+    /// and Dangerous terrain"): the bearer ignores ALL terrain movement effects — the difficult-terrain cap, Dangerous-
     /// terrain wound rolls, and Impassible-terrain blocking — AND may move through enemy units (it still may
-    /// not END a move stacked on an enemy). Two passives: an <see cref="Effect.IgnoreTerrainEffects"/> with the
+    /// not END a move stacked on an enemy). Impassable is included on purpose (#427 D3): "move through ...
+    /// terrain" is the rule that lets a flyer cross it, the 3.6 Beginner's Guide's "units may not move through
+    /// Impassable terrain, unless they have any rules that allow them to ignore it". Two passives: an <see cref="Effect.IgnoreTerrainEffects"/> with the
     /// <see cref="ETerrainIgnoreScope.AllTerrain"/> scope at <see cref="EHookID.Movement_OnMoveThroughTerrain"/>
     /// (read by <see cref="MovementRuleQueries.IgnoresAllTerrain"/> and threaded as the difficult + impassible
     /// waivers + the Dangerous-stage skip), and an <see cref="Effect.IgnoreEnemyMovementBlock"/> at
@@ -2035,7 +2038,7 @@ public static class CoreRuleCatalog
         },
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Positive,
-        Description: "Ignores all terrain when moving and may move through enemy units (but may not end on them).");
+        Description: "May move through units and terrain, and ignores the effects of Difficult and Dangerous terrain.");
 
     /// <summary>
     /// Aircraft (#029): a fast flyer with strong defensive properties — fully implemented.

@@ -131,6 +131,55 @@ namespace FDG.Tests
             await AssertVolleyPinned(attacker, defender, weapon, weaponCount: 3);
         }
 
+        // --- #427 Unstoppable: "ignores all negative modifiers to this weapon which are not from this model's
+        // special rules". The estimate runs the engine's own rule evaluation, so the evaluator-level immunity
+        // reaches the AI and the calculator with no CombatMath change - these pin that it does.
+        [Test]
+        public async Task UnstoppableWeapon_AgainstStealth_MatchesEngine_AndOutdamagesAPlainOne()
+        {
+            var unstoppable = Rifle();
+            unstoppable.AttachRuleDefinition(new ResolvedRule("Unstoppable", CoreRuleCatalog.Unstoppable));
+            var attacker = MakeUnit(3, unstoppable);
+            var defender = MakeUnit(5, null, atX: 40f);
+            AttachUnitRule(defender, "Stealth", CoreRuleCatalog.Stealth);
+
+            await AssertVolleyPinned(attacker, defender, unstoppable, weaponCount: 3);
+
+            var plain = Rifle();
+            var plainAttacker = MakeUnit(3, plain);
+            AttackContext far = new AttackContext(Distance(plainAttacker, defender));
+            float withStealth = CombatMath.EstimateVolley(_ctx.RuleEvaluator, plainAttacker, defender, plain, 3, far,
+                new List<string>());
+            float ignoring = CombatMath.EstimateVolley(_ctx.RuleEvaluator, attacker, defender, unstoppable, 3, far,
+                new List<string>());
+            Assert.That(ignoring, Is.GreaterThan(withStealth + 0.1f), "the estimate prices Stealth away");
+        }
+
+        [Test]
+        public async Task UnstoppableWeapon_AgainstFortified_MatchesEngine()
+        {
+            var weapon = Rifle(ap: 2);
+            weapon.AttachRuleDefinition(new ResolvedRule("Unstoppable", CoreRuleCatalog.Unstoppable));
+            var attacker = MakeUnit(3, weapon);
+            var defender = MakeUnit(5, null);
+            AttachUnitRule(defender, "Fortified", CoreRuleCatalog.Fortified);
+
+            await AssertVolleyPinned(attacker, defender, weapon, weaponCount: 3);
+        }
+
+        [Test]
+        public async Task UnstoppableWeapon_KeepsItsOwnPenalty_MatchesEngine()
+        {
+            var weapon = Rifle();
+            weapon.AttachRuleDefinition(new ResolvedRule("Unstoppable", CoreRuleCatalog.Unstoppable));
+            weapon.AttachRuleDefinition(new ResolvedRule("Imprecise", WeaponRules36Definitions.Imprecise));
+            var attacker = MakeUnit(3, weapon);
+            var defender = MakeUnit(5, null, atX: 40f);
+            AttachUnitRule(defender, "Stealth", CoreRuleCatalog.Stealth);
+
+            await AssertVolleyPinned(attacker, defender, weapon, weaponCount: 3);
+        }
+
         // --- Natural-6 / per-hit AP rules ---------------------------------------------------------
 
         [Test]

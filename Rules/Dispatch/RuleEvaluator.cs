@@ -1118,7 +1118,8 @@ public sealed class RuleEvaluator
             // ValueSource.Arg resolves against the real value rather than throwing on an empty list, and
             // the offering weapon (#197 Strafing), so "attack it with THIS weapon" has one.
             var invocation = new RuleInvocation(
-                Hook: null, offer.Bearer, offer.ResolvedArguments, target, _diceRoller, offer.Weapon);
+                Hook: null, offer.Bearer, offer.ResolvedArguments, target, _diceRoller, offer.Weapon,
+                TargetCount: targets.Count);
             offer.Ability.Effect.Apply(invocation, operations);
         }
 

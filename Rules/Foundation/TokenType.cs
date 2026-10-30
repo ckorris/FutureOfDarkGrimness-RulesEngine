@@ -40,6 +40,11 @@ public readonly record struct TokenType(string Id)
     public const string SPENDABLE_AP_BONUS_ID = "SpendableApBonusMarker";
     public const string PERSISTENT_HIT_BONUS_ID = "PersistentHitBonusMarker";
     public const string PERSISTENT_AP_BONUS_ID = "PersistentApBonusMarker";
+    // #434: OPR 3.6 Piercing / Precision Tag - "When attacking, friendly units may remove ONE token from their target
+    // before rolling to block / to hit to get AP(+1) / +1 to hit". Unlike the Spotter's spendable markers (remove any
+    // number, +1 each), one per attack.
+    public const string SINGLE_SPEND_HIT_BONUS_ID = "SingleSpendHitBonusToken";
+    public const string SINGLE_SPEND_AP_BONUS_ID = "SingleSpendApBonusToken";
 
     // #197 Inquisitorial Agent: stamped on a unit that spent a quota-gated reactivation this round, so the
     // army-wide "only up to one third of them per round" cap can count the uses. Cleared at round end -
@@ -188,6 +193,8 @@ public readonly record struct TokenType(string Id)
     public static readonly TokenType SpendableApBonus = new(SPENDABLE_AP_BONUS_ID);
     public static readonly TokenType PersistentHitBonus = new(PERSISTENT_HIT_BONUS_ID);
     public static readonly TokenType PersistentApBonus = new(PERSISTENT_AP_BONUS_ID);
+    public static readonly TokenType SingleSpendHitBonus = new(SINGLE_SPEND_HIT_BONUS_ID);
+    public static readonly TokenType SingleSpendApBonus = new(SINGLE_SPEND_AP_BONUS_ID);
 
     /// <summary>
     /// Marks a unit that arrived from reserve (Ambush) this round. Engine-known because

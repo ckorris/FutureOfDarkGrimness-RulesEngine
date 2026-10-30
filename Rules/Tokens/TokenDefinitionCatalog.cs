@@ -160,6 +160,15 @@ public static class TokenDefinitionCatalog
                 DefaultClearTrigger: new TokenClearTrigger.ManualOnly(),
                 Description: "Attackers may spend these markers before this unit rolls to block: AP(+1) per marker removed."),
 
+            // #434: 3.6 Tag tokens - one removed per attack.
+            new(TokenType.SINGLE_SPEND_HIT_BONUS_ID, "Hit tag", EValence.Negative, ETokenProminence.Normal,
+                DefaultClearTrigger: new TokenClearTrigger.ManualOnly(),
+                Description: "An attacker may remove one of these before rolling to hit: +1 to hit rolls."),
+
+            new(TokenType.SINGLE_SPEND_AP_BONUS_ID, "AP tag", EValence.Negative, ETokenProminence.Normal,
+                DefaultClearTrigger: new TokenClearTrigger.ManualOnly(),
+                Description: "An attacker may remove one of these before this unit rolls to block: AP(+1)."),
+
             new(TokenType.PERSISTENT_HIT_BONUS_ID, "Targeted (hit)", EValence.Negative, ETokenProminence.Normal,
                 DefaultClearTrigger: new TokenClearTrigger.ManualOnly(),
                 Description: "Attackers get +1 to hit rolls per marker while these sit on this unit."),

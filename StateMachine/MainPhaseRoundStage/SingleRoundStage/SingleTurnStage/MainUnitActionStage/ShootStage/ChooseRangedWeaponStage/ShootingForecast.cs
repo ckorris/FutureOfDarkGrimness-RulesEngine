@@ -187,6 +187,19 @@ namespace FDG.Stages
                     $"AP(+{spendableAp}), claimed at roll time.");
             }
 
+            // #434: 3.6 Tag tokens - one removable per attack.
+            int tagHit = defender.Tokens.GetTokenCount(TokenType.SingleSpendHitBonus);
+            if (tagHit > 0)
+            {
+                notes.Add($"Target carries {tagHit} Tag token(s): remove one for +1 to hit, claimed at roll time.");
+            }
+
+            int tagAp = defender.Tokens.GetTokenCount(TokenType.SingleSpendApBonus);
+            if (tagAp > 0)
+            {
+                notes.Add($"Target carries {tagAp} Tag token(s): remove one for AP(+1), claimed at roll time.");
+            }
+
             if (defender.Tokens.GetAllTokens(TokenType.Mark).Any())
             {
                 notes.Add("Mark on target: the first attack into it claims the marked bonus at roll time.");

@@ -20,6 +20,9 @@ namespace FDG.Rules.Definitions;
 /// fresh army's weapons, one per weapon after a resume rehydrates them). Null off the passive
 /// dispatch path (activated abilities, hand-built invocations).
 /// </summary>
+// #434: TargetCount - how many units the activated ability was resolved against (1 on the passive path), so a value can
+// depend on the spread: 3.6 Piercing / Precision Tag "place X tokens on one enemy unit, or one token on X enemy units"
+// (ValueSource.ArgIfSoleTarget).
 public sealed record RuleInvocation(
     IHookContext? Hook,
     IUnit Bearer,
@@ -28,7 +31,8 @@ public sealed record RuleInvocation(
     IDiceRoller? DiceRoller = null,
     IWeapon? Weapon = null,
     SpecialRuleDefinition? Definition = null,
-    Dispatch.ResolvedRule? Attachment = null)
+    Dispatch.ResolvedRule? Attachment = null,
+    int TargetCount = 1)
 {
     /// <summary>
     /// The unit an effect lands on: the explicit <see cref="Target"/> for activated

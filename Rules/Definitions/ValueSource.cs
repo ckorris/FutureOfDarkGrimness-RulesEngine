@@ -24,6 +24,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(Arg), "arg")]
 [JsonDerivedType(typeof(RuleCarrierCount), "ruleCarrierCount")]
 [JsonDerivedType(typeof(TokenTotal), "tokenTotal")]
+[JsonDerivedType(typeof(ArgIfSoleTarget), "argIfSoleTarget")]
 public abstract record ValueSource
 {
     public abstract int Resolve(RuleInvocation invocation);
@@ -107,5 +108,16 @@ public abstract record ValueSource
             float total = magnitude > 0f ? magnitude : invocation.Bearer.Tokens.GetTokenCount(TType);
             return (int)System.MathF.Round(total, System.MidpointRounding.AwayFromZero);
         }
+    }
+
+    /// <summary>
+    /// #434: the bearing rule's argument at <see cref="Index"/> when the activated ability was resolved against ONE
+    /// unit, else 1 - OPR 3.6 Piercing / Precision Tag(X): "place X tokens on one enemy unit ..., or one token on X enemy
+    /// units". Paired with <see cref="Foundation.TargetSelector.MaxCountFromArgument"/> (pick up to X units).
+    /// </summary>
+    public sealed record ArgIfSoleTarget(int Index) : ValueSource
+    {
+        public override int Resolve(RuleInvocation invocation) =>
+            invocation.TargetCount <= 1 ? new Arg(Index).Resolve(invocation) : 1;
     }
 }

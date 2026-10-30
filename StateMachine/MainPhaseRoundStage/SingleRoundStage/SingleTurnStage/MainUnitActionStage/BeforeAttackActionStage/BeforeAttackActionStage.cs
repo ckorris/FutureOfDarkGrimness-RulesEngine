@@ -70,7 +70,8 @@ namespace FDG.Stages
             IUnit unit = context.ActivatingUnit.GetValue();
 
             IReadOnlyList<DataBinding<UnitData>>? targetBindings =
-                await SelectTargets(context, offer.Ability.TargetSelector);
+                await SelectTargets(context, offer.Ability.TargetSelector,
+                    offer.Ability.TargetSelector.EffectiveMaxCount(offer.ResolvedArguments));
             if (targetBindings == null)
             {
                 // Backed out of (or couldn't complete) target selection - nothing applied, no cost paid.
@@ -198,7 +199,7 @@ namespace FDG.Stages
         /// a DealHits ability can seed the child pipeline's CombatMetadata with the picked target.
         /// </summary>
         private async Task<IReadOnlyList<DataBinding<UnitData>>?> SelectTargets(IUnitActionContext context,
-            TargetSelector selector)
+            TargetSelector selector, int maxCount)
         {
             if (selector.TargetAffinity == ETargetAffinity.Self)
             {
@@ -209,7 +210,7 @@ namespace FDG.Stages
                 context.ActivatingUnit, selector, GameContext);
             List<DataBinding<UnitData>> chosen = new List<DataBinding<UnitData>>();
 
-            while (chosen.Count < selector.MaxCount && remaining.Count > 0)
+            while (chosen.Count < maxCount && remaining.Count > 0)
             {
                 List<CancellableSelectionRequest<UnitData>.ValidOption> valid = remaining
                     .Select(b => new CancellableSelectionRequest<UnitData>.ValidOption(b, b.GetValue().Name))
@@ -217,7 +218,7 @@ namespace FDG.Stages
 
                 CancellableSelectionRequest<UnitData> request = new CancellableSelectionRequest<UnitData>(
                     context.ActivatingPlayer(),
-                    $"Choose target ({chosen.Count + 1} of up to {selector.MaxCount})",
+                    $"Choose target ({chosen.Count + 1} of up to {maxCount})",
                     valid, new List<CancellableSelectionRequest<UnitData>.InvalidOption>(),
                     displayName: "Choosing a Target");
 

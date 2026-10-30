@@ -61,6 +61,11 @@ public static class RuleArgumentArity
             {
                 max = Max(max, arg.Index);
             }
+            else if (property.GetValue(effect) is ValueSource.ArgIfSoleTarget sole)
+            {
+                // #434: reads the argument when the ability lands on one unit.
+                max = Max(max, sole.Index);
+            }
         }
 
         return max;

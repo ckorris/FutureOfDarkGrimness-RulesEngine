@@ -252,6 +252,49 @@ namespace FDG.Tests
                 "the disembark placement offers a Back button; deployment and spillout do not.");
         }
 
+        // #427 - OPR 3.6 Transport: units "may enter/exit by using any move action, getting in contact to enter,
+        // and staying fully within 6" when exiting". The exit half is unchanged from 3.5 (the entry half is
+        // pinned in TransportEmbarkTests): the placement zone is the 6" circle around the transport.
+        [Test]
+        public async Task DisembarkStage_PlacementZone_IsTheSixInchCircleAroundTheTransport()
+        {
+            var requester = new CannedPlaceRequester(new Position(12f, 10f));
+            var ctx = new TriggeredMoveTestContext(_store, requester);
+            DataBinding<UnitData> transport = MakeTransport("Rhino", capacity: 6, deployed: true); // at (10,10)
+            DataBinding<UnitData> squad = MakeSquadWithDisembark("Grunts", modelCount: 2);
+            TransportUtilities.Embark(squad.GetValue(), transport.GetValue());
+
+            var stage = new DisembarkStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            stage.OnBackToChooseAction.Bind("OnBackToChooseAction");
+            await stage.Enter(NewActivation(ctx, squad));
+
+            var zone = requester.LastRequest!.DeploymentZone as CircularZone;
+            Assert.That(zone, Is.Not.Null, "an exit is placed inside a circle around the transport");
+            Assert.That(zone!.Radius, Is.EqualTo(6f));
+            Assert.That(zone.Center.X, Is.EqualTo(10f));
+            Assert.That(zone.Center.Y, Is.EqualTo(10f));
+            Assert.That(zone.IsPointWithinZone(new Float2(15f, 10f)), Is.True, "5in out is inside");
+            Assert.That(zone.IsPointWithinZone(new Float2(17f, 10f)), Is.False, "7in out is not");
+        }
+
+        [Test]
+        public void TheTransportRules_CarryTheCore360Wording()
+        {
+            Assert.That(CoreRuleCatalog.Transport.Description, Is.EqualTo(
+                "May transport up to X friendly models or Heroes with up to Tough(6), and non-Heroes with up to " +
+                "Tough(3) which occupy 3 spaces each. Transports may deploy with units inside, and units may " +
+                "enter/exit by using any move action, getting in contact to enter, and staying fully within 6\" " +
+                "when exiting. Units inside/outside transports may not target other units that are outside/inside, " +
+                "but may target the transport itself. When a transport is destroyed, units inside must take a " +
+                "Dangerous terrain test, are Shaken, and must be placed fully within 6\" of the transport before " +
+                "it's removed."));
+            Assert.That(CoreRuleCatalog.Embark.Description, Is.EqualTo(
+                "Use a move action to board a friendly transport that has room, getting in contact with it."));
+            Assert.That(CoreRuleCatalog.Disembark.Description, Is.EqualTo(
+                "Use a move action to leave the transport this unit is embarked in, staying fully within 6\" of it."));
+        }
+
         // --- helpers ---
 
         private static UnitActionContext NewActivation(IGameContext ctx, DataBinding<UnitData> unit)

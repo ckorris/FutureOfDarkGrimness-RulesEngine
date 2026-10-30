@@ -1364,7 +1364,13 @@ public static class CoreRuleCatalog
         Array.Empty<ActivatedAbility>(),
         EngineArgumentCount: 1,
         Valence: EValence.Positive,
-        Description: "Carries friendly units inside it (capacity in spaces); they embark and disembark via move actions.");
+        Description: "May transport up to X friendly models or Heroes with up to Tough(6), and non-Heroes with up to " +
+            "Tough(3) which occupy 3 spaces each. Transports may deploy with units inside, and units may " +
+            "enter/exit by using any move action, getting in contact to enter, and staying fully within 6\" " +
+            "when exiting. Units inside/outside transports may not target other units that are outside/inside, " +
+            "but may target the transport itself. When a transport is destroyed, units inside must take a " +
+            "Dangerous terrain test, are Shaken, and must be placed fully within 6\" of the transport before " +
+            "it's removed.");
 
     /// <summary> Canonical name of the engine-internal Disembark ability (#035). </summary>
     public const string DisembarkRuleName = "Disembark";
@@ -1390,7 +1396,7 @@ public static class CoreRuleCatalog
                 new Condition.TokenPresent(TokenType.EmbarkedIn)),
         },
         Valence: EValence.Neutral,
-        Description: "Leave the transport this unit is embarked in, placing within 6\" of it.");
+        Description: "Use a move action to leave the transport this unit is embarked in, staying fully within 6\" of it.");
 
     /// <summary> Canonical name of the engine-internal Embark ability (#035 slice D). </summary>
     public const string EmbarkRuleName = "Embark";
@@ -1415,7 +1421,7 @@ public static class CoreRuleCatalog
                 new Condition.Always()),
         },
         Valence: EValence.Neutral,
-        Description: "Board a friendly transport that has room, within move range.");
+        Description: "Use a move action to board a friendly transport that has room, getting in contact with it.");
 
     /// <summary> Canonical name of the Delayed Action rule (#197). </summary>
     public const string DelayedActionRuleName = "Delayed Action";

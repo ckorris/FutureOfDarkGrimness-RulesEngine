@@ -275,6 +275,21 @@ namespace FDG.Ai.Tactician.Resolvers
                         SightFactor: hasLane ? 1f : 0f));
                 kill = Math.Max(kill, ValueFraction(ours.ExpectedWounds, enemy));
 
+                // #442 (#425 / #434): the HOLD volley from where the unit stands is a volley it could take too, and
+                // it is the one the Hold-only rules price - Indirect's line-of-sight bypass (a wall between does not
+                // silence it), Slayer / Ranged Slayer's AP(+2), Artillery. The planner's Score already weighs Hold
+                // candidates this way; the urgency term only ever priced the advance. (A Cumbersome unit's volley
+                // above already IS its Hold.)
+                if (shootsAfterMoving && ourClosest != null && theirClosest != null)
+                {
+                    bool laneHere = LineOfSightUtilities.HasLineOfSight(ourClosest.Position, theirClosest.Position,
+                        sightBlockers);
+                    AttackEstimate held = CombatMath.EstimateShooting(_evaluator, unitBinding, enemyBinding,
+                        new AttackContext(Math.Max(1f, distance), AttackerMoved: false,
+                            SightFactor: laneHere ? 1f : 0f));
+                    kill = Math.Max(kill, ValueFraction(held.ExpectedWounds, enemy));
+                }
+
                 // What could THEY do to us from where things stand (their advance included)?
                 float theirReach = Math.Max(1f,
                     distance - EnemyAdvanceOf(enemyBinding, enemy, enemyAdvance));

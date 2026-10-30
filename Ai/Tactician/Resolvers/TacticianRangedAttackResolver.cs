@@ -41,6 +41,11 @@ namespace FDG.Ai.Tactician.Resolvers
             Weapon? bestWeapon = null;
             WeaponTargetStats? bestStats = null;
             float bestScore = float.NegativeInfinity;
+            // #442 (#425 / #434): whether this shot follows a move - the engine's AttackerMoved (ShootStage passes the
+            // activation's HasMoved). A unit that moved this round carries MovedThisRound (one activation per round),
+            // so a Hold is priced as a Hold: Slayer / Ranged Slayer's AP(+2), Indirect's and Artillery's arms. (Was
+            // always "moved", the pessimistic side.)
+            bool moved = request.AttackingUnit.GetValue().Tokens.HasToken(Rules.Foundation.TokenType.MovedThisRound);
 
             foreach (WeaponOption option in request.WeaponOptions)
             {
@@ -55,9 +60,9 @@ namespace FDG.Ai.Tactician.Resolvers
                     // so the "shot from over 9"" arms (Stealth, Devout, Hive Bond, ...) price on the right side.
                     float attackDistance = UnitCompareUtilities.MinDistanceBetweenUnits(
                         request.AttackingUnit.GetValue(), target, out _, out _, includeVertical: true);
-                    (float wounds, float counted) = CombatMath.EstimateVolleyWithCounted(_evaluator,
+                    (float wounds, float counted, float selfWounds) = CombatMath.EstimateVolleyWithCounted(_evaluator,
                         request.AttackingUnit, stats.TargetUnit, option.Weapon, stats.modelsThatCanShoot.Count,
-                        new AttackContext(attackDistance, AttackerMoved: true, DefenderInCover: stats.HasCover),
+                        new AttackContext(attackDistance, AttackerMoved: moved, DefenderInCover: stats.HasCover),
                         new List<string>());
 
                     float remaining = Math.Max(1f, target.RemainingWounds);
@@ -95,6 +100,13 @@ namespace FDG.Ai.Tactician.Resolvers
                         * (wounds >= remaining ? TacticianWeights.ShootingKillBonus
                            : breaks ? breakBonus : 1f)
                         * (threatensUs ? TacticianWeights.ShootThreatFactor : 1f);
+                    // #442 (#434 Hazardous): the shooters' own expected losses, in the same value currency.
+                    if (selfWounds > 0f)
+                    {
+                        UnitData self = request.AttackingUnit.GetValue();
+                        score -= Math.Min(1f, selfWounds / Math.Max(1f, self.RemainingWounds))
+                            * TacticalAnalysis.UnitValue(self);
+                    }
 
                     if (score > bestScore)
                     {

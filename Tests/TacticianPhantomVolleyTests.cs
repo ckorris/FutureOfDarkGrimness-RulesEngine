@@ -160,6 +160,28 @@ namespace FDG.Tests
                 $"Cumbersome may not shoot after moving - out of range from where it stands (open={open:F4}, cumbersome={cumbersome:F4})");
         }
 
+        // #442 (#425): an Indirect gun ignores line of sight on a HOLD only - so a wall across the lane silences the
+        // advance-then-shoot volley but not the shot from where it stands. The urgency's kill term now prices that
+        // Hold volley (it used to see only the advance, and read the walled mortar as having nothing to shoot).
+        [Test]
+        public void Urgency_IndirectGunBehindAWall_PricesTheHoldVolley()
+        {
+            var mortar = new Weapon("Mortar", rangeInches: 30f, attacks: 2, armorPenetration: 0);
+            mortar.AttachRuleDefinition(new ResolvedRule("Indirect", CoreRuleCatalog.Indirect));
+            DataBinding<UnitData> crew = MakeUnitAt(_us, 2, mortar, i => new Position(24f + i * 1.1f, 20f));
+            MakeUnitAt(_them, 3, Claws(), i => new Position(24f + i * 1.1f, 44f));
+            _store.Create(new TerrainData(ETerrainType.Blocking, new RectangularZone(10f, 40f, 30f, 31f)));
+
+            float indirect = new TacticianActivationResolver(_tableState, _evaluator).Urgency(crew);
+
+            var plainGun = new Weapon("Cannon", rangeInches: 30f, attacks: 2, armorPenetration: 0);
+            DataBinding<UnitData> gunners = MakeUnitAt(_us, 2, plainGun, i => new Position(24f + i * 1.1f, 19f));
+            float plain = new TacticianActivationResolver(_tableState, _evaluator).Urgency(gunners);
+
+            Assert.That(indirect, Is.GreaterThan(plain + 0.01f),
+                $"the wall stops the cannon but not the Hold mortar (indirect={indirect:F4}, plain={plain:F4})");
+        }
+
         [Test]
         public void Urgency_BlockingTerrainAcrossTheLane_DoesNotPriceTheVolley()
         {

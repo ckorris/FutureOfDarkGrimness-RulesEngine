@@ -46,13 +46,17 @@ namespace FDG.Ai.Tactician
     /// <param name="ExpectedCountedWounds">#442 (#431 Scourge): wounds the defender only COUNTS as having taken - for
     /// who won a melee and for whether a shooting attack's wounds trigger a Morale Test - folded from the same
     /// save-complete operations <c>AssignWoundsStage</c> banks (<c>CountedWounds</c>). Never dealt.</param>
+    /// <param name="ExpectedSelfWounds">#442 (#434 Hazardous): wounds the ATTACKER is expected to take from its own
+    /// attack - each unmodified 1 to hit worth one wound, or the weapon's Blast(X) / Deadly(X), landing on one model
+    /// with any excess lost (so a die is worth at most one model's wounds). Not capped by anything else.</param>
     public sealed record AttackEstimate(
         float ExpectedWounds,
         float ExpectedWoundsUncapped,
         float ExpectedKills,
         bool DestroysUnit,
         IReadOnlyList<string> Notes,
-        float ExpectedCountedWounds = 0f)
+        float ExpectedCountedWounds = 0f,
+        float ExpectedSelfWounds = 0f)
     {
         public static readonly AttackEstimate Zero =
             new(0f, 0f, 0f, false, Array.Empty<string>());
@@ -104,9 +108,11 @@ namespace FDG.Ai.Tactician
     /// </para>
     /// <para>
     /// Known deliberate gaps (also surfaced per-call via Notes; see the A1 ledger entry in #191):
-    /// granted one-shot roll-modifier tokens (engine's only accessor consumes them), target Marks
-    /// (claiming them mutates tokens), and per-volley casualty carry-over within one unit's attack
-    /// (volleys are priced against the defender's current strength and summed).
+    /// target Marks (claiming them mutates tokens), and per-volley casualty carry-over within one unit's attack
+    /// (volleys are priced against the defender's current strength and summed). #442: granted roll-modifier
+    /// tokens and the Target / Spotter / Tag markers are priced (read with the non-consuming peeks), and so are
+    /// the 3.6 range arms (shooting distance and charge origin), Scourge's counted wounds, Hazardous self-wounds
+    /// and the charger's Unwieldy.
     /// </para>
     /// </summary>
     public static class CombatMath
@@ -166,7 +172,7 @@ namespace FDG.Ai.Tactician
                 total += sight < 1f ? sight * volley : volley;
             }
 
-            return Finish(total, defender, notes, tally.Counted);
+            return Finish(total, defender, notes, tally.Counted, tally.SelfWounds);
         }
             finally { global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.Combat, __probe); }
         }
@@ -312,16 +318,28 @@ namespace FDG.Ai.Tactician
             var meleeContext = new AttackContext(distanceInches, IsMelee: true,
                 IsCharging: !defenderStrikesFirst, ChargeOriginInches: chargeOriginInches);
 
+            // --- ResolveRavageWoundsStage mirror (#442, #434): each striker, right before its own swings, rolls its
+            // auto-wound pools - Ravage at 6+, Regenerative Strength's tokens at 4+ - once per round (a striker already
+            // stamped StrikeDiceUsed rolls none) and not while Fatigued (each rule's own condition, in the
+            // evaluation). The attacker's pools come out of the very charge-contact evaluation above (the stage's
+            // participant shape); the defender's twin is evaluated with the roles reversed, as StrikeBackStage runs it.
+            // Unsaveable: the wounds enter wound assignment pre-failed. Not mirrored: carriers the first striker kills
+            // still roll (the pool is priced at full strength).
+            float attackerAuto = AutoWounds(evaluator, atk, def, contactOps, notes, attackerTally);
+            float DefenderAuto() => AutoWounds(evaluator, def, atk, Ops(evaluator.EvaluateAllNamed(
+                new ChargeContactContext(def, atk), DefenderStrikerParticipants(def, atk))), notes, defenderTally);
+
             // --- Swings. The first striker attacks at full strength; the second striker's weapon pool
             // loses the models the first side is expected to kill (probabilistic play kills models only
             // via whole-wound allocation, which is exactly what SurvivorWeaponBatches mirrors).
-            float attackerSwings, defenderSwings;
+            float attackerSwings, defenderSwings, defenderAuto;
             if (defenderStrikesFirst)
             {
+                defenderAuto = DefenderAuto();
                 defenderSwings = SwingAllBatches(evaluator, defender, attacker,
                     WeaponBatches(def, melee: true), meleeContext with { IsCharging = false }, notes,
                     tally: defenderTally);
-                float attackerCasualties = defenderSwings;
+                float attackerCasualties = defenderAuto + defenderSwings;
                 attackerSwings = SwingAllBatches(evaluator, attacker, defender,
                     SurvivorWeaponBatches(atk, attackerCasualties), meleeContext, notes, carrier, attackerTally);
             }
@@ -329,8 +347,9 @@ namespace FDG.Ai.Tactician
             {
                 attackerSwings = SwingAllBatches(evaluator, attacker, defender,
                     WeaponBatches(atk, melee: true), meleeContext, notes, carrier, attackerTally);
+                defenderAuto = DefenderAuto();
                 defenderSwings = SwingAllBatches(evaluator, defender, attacker,
-                    SurvivorWeaponBatches(def, impactWounds + attackerSwings),
+                    SurvivorWeaponBatches(def, impactWounds + attackerAuto + attackerSwings),
                     meleeContext with { IsCharging = false }, notes, tally: defenderTally);
             }
 
@@ -342,9 +361,9 @@ namespace FDG.Ai.Tactician
             float attackerFear = SumFear(evaluator, resolution, atk);
             float defenderFear = SumFear(evaluator, resolution, def);
 
-            AttackEstimate attackerEstimate = Finish(impactWounds + attackerSwings, defender, notes,
+            AttackEstimate attackerEstimate = Finish(impactWounds + attackerAuto + attackerSwings, defender, notes,
                 attackerTally.Counted);
-            AttackEstimate defenderEstimate = Finish(defenderSwings, attacker, Array.Empty<string>(),
+            AttackEstimate defenderEstimate = Finish(defenderAuto + defenderSwings, attacker, Array.Empty<string>(),
                 defenderTally.Counted);
 
             return new MeleeEstimate(attackerEstimate, defenderEstimate, defenderStrikesFirst,
@@ -370,14 +389,14 @@ namespace FDG.Ai.Tactician
         /// #442 (#431 Scourge): <see cref="EstimateVolley"/> plus the wounds the defender only COUNTS as taken - the
         /// figure the shooting morale check allocates virtually (<c>MoraleUtilities.WoundsLeftUnitAtHalfStrength</c>).
         /// </summary>
-        public static (float Wounds, float CountedWounds) EstimateVolleyWithCounted(RuleEvaluator evaluator,
-            DataBinding<UnitData> attacker, DataBinding<UnitData> defender,
+        public static (float Wounds, float CountedWounds, float SelfWounds) EstimateVolleyWithCounted(
+            RuleEvaluator evaluator, DataBinding<UnitData> attacker, DataBinding<UnitData> defender,
             Weapon weapon, int weaponCount, AttackContext context, List<string> notes)
         {
             var tally = new Tally();
             float wounds = EstimateVolleyCore(evaluator, attacker, defender, weapon, weaponCount, context, notes,
                 carrier: null, tally);
-            return (wounds, tally.Counted);
+            return (wounds, tally.Counted, tally.SelfWounds);
         }
 
         // #442: wounds an attack only makes its target COUNT as taken (#431 Scourge), summed across the volleys and
@@ -385,6 +404,8 @@ namespace FDG.Ai.Tactician
         private sealed class Tally
         {
             public float Counted;
+            // #442 (#434 Hazardous): the attacker's own expected self-wounds across the estimate's volleys.
+            public float SelfWounds;
         }
 
         private static float EstimateVolleyCore(RuleEvaluator evaluator,
@@ -396,8 +417,8 @@ namespace FDG.Ai.Tactician
             UnitData def = defender.GetValue();
             var __hitProbe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
 
-            // --- DetermineHitRollStage mirror. (Not mirrored: ClaimTargetMarks - claiming mutates
-            // tokens - and granted one-shot hit buffs - the engine's only accessor consumes them.)
+            // --- DetermineHitRollStage mirror. (Not mirrored: ClaimTargetMarks - claiming mutates tokens. #442:
+            // granted hit buffs and the Target/Spotter/Tag markers ARE mirrored now, read with PeekNet / counts.)
             NoteIf(def.Tokens.GetAllTokens(TokenType.Mark).Any(),
                 "defender carries Mark tokens: unpriced (claiming them mutates state)", notes);
 
@@ -424,6 +445,7 @@ namespace FDG.Ai.Tactician
 
             int baseQuality = HeroStatRules.GetAttackQuality(atk, weapon);
             int hitNet = 0;
+            bool ignoresNegative = false;
             if (hitModOps.Count > 0)
             {
                 var qualityFloor = new QualityFloorSink();
@@ -434,12 +456,26 @@ namespace FDG.Ai.Tactician
                 var hitModifiers = new RollModifierSink();
                 hitModifiers.ApplyFrom(hitModOps);
                 hitNet = hitModifiers.Net(ERollKind.Hit);
+                for (int i = 0; i < hitModOps.Count && !ignoresNegative; i++)
+                    ignoresNegative = hitModOps[i] is RuleOperation.IgnoreNegativeWeaponModifiers;
             }
 
             float attackCount = weapon.Attacks * weaponCount;
             int hitRollNeeded = baseQuality - hitNet;
 
-            if (context.IsMelee && FatigueUtilities.CountsAsFatiguedInMelee(atk))
+            bool fatiguedInMelee = context.IsMelee && FatigueUtilities.CountsAsFatiguedInMelee(atk);
+            if (!fatiguedInMelee)
+            {
+                // #442 (#427 / #434): DetermineHitRollStage's two token folds, read without spending - the attacker's
+                // granted "+X to hit" (#033; Unstoppable leaves out another unit's negative grant) and the attacker-
+                // bonus markers on the defender (TargetMarkerSpend: persistent Target markers, the spendable Spotter
+                // markers and one Tag token, which the AI always claims - the prompts' aggressive default).
+                hitRollNeeded -= GrantedRollModifiers.PeekNet(atk, ERollKind.Hit,
+                    ignoreOtherUnitsNegative: ignoresNegative);
+                hitRollNeeded -= MarkerNet(def, ERollKind.Hit);
+            }
+
+            if (fatiguedInMelee)
                 hitRollNeeded = 6; // fatigue overrides every modifier
 
             // --- RollToHitStage mirror.
@@ -466,6 +502,7 @@ namespace FDG.Ai.Tactician
 
             int saveNet = 0;
             int apReduction = 0;
+            bool ignoresPositiveDefense = false;
             if (completeOps.Count > 0)
             {
                 var hitInjection = new HitInjectionSink();
@@ -488,10 +525,18 @@ namespace FDG.Ai.Tactician
                 }
 
                 // #431 Pierce: the stage's own fold, so an ignored Defense bonus is ignored here too.
-                saveNet = RollToHitStage<ICombatMetadata>.WholeAttackSaveModifier(completeOps, out _);
+                saveNet = RollToHitStage<ICombatMetadata>.WholeAttackSaveModifier(completeOps,
+                    out ignoresPositiveDefense);
                 foreach (RuleOperation op in completeOps)
                 {
                     if (op is RuleOperation.ReduceArmorPenetration reduce) apReduction += reduce.Amount;
+                    // #442 (#434 Hazardous): RollToHitStage carries these to ApplyWoundsStage, which lands each die's
+                    // wounds on one firing model with the excess lost - so a die is worth at most one model's wounds.
+                    else if (tally != null && op is RuleOperation.InflictSelfWounds self && self.Wounds > 0f)
+                    {
+                        float perDie = Math.Max(1f, self.WoundsPerDie);
+                        tally.SelfWounds += self.Wounds / perDie * Math.Min(perDie, MaxModelWounds(atk));
+                    }
                 }
             }
 
@@ -499,7 +544,7 @@ namespace FDG.Ai.Tactician
 
             // --- CoverCheckStage stand-in: cover is a caller-supplied fact about the hypothetical
             // position; the ignore rules (Blast/Indirect/Takedown) are still the engine's own query.
-            int coverBonus = !context.IsMelee && context.DefenderInCover
+            int coverBonus = !context.IsMelee && context.DefenderInCover && !ignoresPositiveDefense
                 && !SightRuleQueries.IgnoresCover(atk, weapon, evaluator, context.AttackerMoved) ? 1 : 0;
             global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.VolleyHit, __hitProbe);
 
@@ -507,7 +552,7 @@ namespace FDG.Ai.Tactician
             var __saveProbe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
             float wounds = ResolveSaves(evaluator, atk, def, weapon, groups, apReduction,
                 saveNet, coverBonus, context.IsMelee, notes, bonusAttacks, defenderModels, carrier,
-                context.DistanceInches, chargeOrigin, tally: tally);
+                context.DistanceInches, chargeOrigin, tally: tally, ignoresPositiveDefense: ignoresPositiveDefense);
             global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.VolleySave, __saveProbe);
 
             // --- ResolveBonusMeleeAttacksStage mirror (#376 Bloodthirsty): the follow-up batch earned
@@ -526,7 +571,7 @@ namespace FDG.Ai.Tactician
                         new List<SuccessfulHitInfo> { SingleGroupInfo(bonusHits) }, apReduction,
                         saveNet, coverBonus, context.IsMelee, notes, defenderModels: defenderModels,
                         carrier: carrier, distanceInches: context.DistanceInches, chargeOriginInches: chargeOrigin,
-                        tally: tally);
+                        tally: tally, ignoresPositiveDefense: ignoresPositiveDefense);
                 }
             }
             return wounds;
@@ -539,16 +584,29 @@ namespace FDG.Ai.Tactician
             Weapon weapon, List<SuccessfulHitInfo> groups, int apReduction, int wholeAttackSaveModifier,
             int coverBonus, bool isMelee, List<string> notes, BonusAttackSink? bonusAttackSink = null,
             IReadOnlyList<IModel>? defenderModels = null, Weapon? carrier = null,
-            float distanceInches = 0f, float chargeOriginInches = 0f, bool isSpell = false, Tally? tally = null)
+            float distanceInches = 0f, float chargeOriginInches = 0f, bool isSpell = false, Tally? tally = null,
+            bool ignoresPositiveDefense = false, float preFailedWounds = 0f)
         {
             int baseDefense = HeroStatRules.GetSaveDefense(def);
             int ap = Math.Max(0, weapon.ArmorPenetration - apReduction);
-            // Granted "+X to defense" tokens are skipped: the engine's only accessor consumes them.
-            int baseDefenseWithAP = baseDefense + ap - coverBonus - wholeAttackSaveModifier;
+            // #442: DetermineSaveRollsNeededStage's token folds, peeked - the defender's granted "+X to defense"
+            // (#033; Pierce drops the positive ones) and the AP-side attacker-bonus markers (TargetMarkerSpend). Every
+            // save pipeline runs that stage - volleys, impact hits and spell damage alike - so they apply to all three.
+            int grantedDefense = GrantedRollModifiers.PeekNet(def, ERollKind.Save, ignorePositive: ignoresPositiveDefense);
+            int baseDefenseWithAP = baseDefense + ap - coverBonus - wholeAttackSaveModifier
+                - grantedDefense + MarkerNet(def, ERollKind.Save);
 
             float totalWounds = 0f;
             float[] combinedSaveFaces = new float[IDiceRollerExtensions.DEFAULT_SIDE_COUNT];
             var savedGroups = new List<(IDiceResults Saved, int SaveNeeded)>();
+
+            // #442 (#434 Ravage): an auto-wound pool skips the save stages - SyntheticWoundResolution.AsUnsavedWounds
+            // hands AssignWoundsStage the wound dice (top face) as PRE-FAILED saves, so only the wound-side rules apply.
+            if (preFailedWounds > 0f)
+            {
+                totalWounds += preFailedWounds;
+                combinedSaveFaces[^1] += preFailedWounds;
+            }
 
             foreach (SuccessfulHitInfo hits in groups)
             {
@@ -744,6 +802,39 @@ namespace FDG.Ai.Tactician
             return total;
         }
 
+        // #442 (#434): the striker's auto-wound pools (InvokeDealAutoWounds) from a charge-contact evaluation, rolled
+        // on the probabilistic roller and landed through wound assignment with pre-failed saves (ResolveRavageWounds-
+        // Stage's child pipeline: a bare AP-0 "Ravage" weapon, so only the target's wound-side rules fold). 0 when the
+        // striker already rolled its once-per-round strike dice.
+        private static float AutoWounds(RuleEvaluator evaluator, UnitData striker, UnitData target,
+            IReadOnlyList<RuleOperation> contactOps, List<string> notes, Tally tally)
+        {
+            if (striker.Tokens.HasToken(TokenType.StrikeDiceUsed)) return 0f;
+            float expected = 0f;
+            foreach (RuleOperation op in contactOps)
+            {
+                if (op is RuleOperation.InvokeDealAutoWounds { DiceCount: > 0 } pool)
+                    expected += Dice.Roll(pool.DiceCount)
+                        .AtOrAbove(DiceUtilities.ClampSuccessRollNeeded(pool.SuccessThreshold));
+            }
+            if (expected <= 0f) return 0f;
+            return ResolveSaves(evaluator, striker, target,
+                new Weapon("Ravage", rangeInches: 0f, attacks: 0, armorPenetration: 0),
+                new List<SuccessfulHitInfo>(), apReduction: 0, wholeAttackSaveModifier: 0, coverBonus: 0,
+                isMelee: true, notes, tally: tally, preFailedWounds: expected);
+        }
+
+        // The striking-back defender in the charger's seat (ResolveImpactHitsStage.ChargerParticipant) facing the
+        // charger as the subject - StrikeBackStage's reversed Ravage evaluation.
+        private static RuleParticipant[] DefenderStrikerParticipants(UnitData striker, UnitData target)
+        {
+            RuleParticipant[] subject = DetermineStrikeOrderStage.SubjectWithMeleeWeapons(target);
+            var participants = new RuleParticipant[subject.Length + 1];
+            participants[0] = ResolveImpactHitsStage.ChargerParticipant(striker);
+            Array.Copy(subject, 0, participants, 1, subject.Length);
+            return participants;
+        }
+
         /// <summary>
         /// #442: a rule-only stand-in weapon carrying <paramref name="rule"/>, added to an evaluation as an extra Actor
         /// participant of the SAME attacking unit. The evaluator's per-event dedup is keyed on (bearer, rule), so the
@@ -778,12 +869,34 @@ namespace FDG.Ai.Tactician
             => ExpectedKills(defender, Math.Min(wounds, defender.RemainingWounds), out _);
 
         private static AttackEstimate Finish(float totalWounds, DataBinding<UnitData> defender,
-            IReadOnlyList<string> notes, float countedWounds = 0f)
+            IReadOnlyList<string> notes, float countedWounds = 0f, float selfWounds = 0f)
         {
             float remaining = defender.GetValue().RemainingWounds;
             float capped = Math.Min(totalWounds, remaining);
             float kills = ExpectedKills(defender.GetValue(), capped, out bool destroys);
-            return new AttackEstimate(capped, totalWounds, kills, destroys, notes, countedWounds);
+            return new AttackEstimate(capped, totalWounds, kills, destroys, notes, countedWounds, selfWounds);
+        }
+
+        // #442: TargetMarkerSpend.ConsumeNet's total for one attack, as the AI answers its prompts (spend every Spotter
+        // marker, remove one Tag token): persistent + spendable + one single-spend. Read-only. Approximation: the engine
+        // spends spendable markers on the FIRST volley that rolls, this gives them to each volley of a multi-weapon
+        // attack (the Tactician places no markers itself; they reach it only from an opponent's Spotters).
+        private static int MarkerNet(UnitData defender, ERollKind roll)
+        {
+            (TokenType persistent, TokenType spendable, TokenType singleSpend) = roll == ERollKind.Hit
+                ? (TokenType.PersistentHitBonus, TokenType.SpendableHitBonus, TokenType.SingleSpendHitBonus)
+                : (TokenType.PersistentApBonus, TokenType.SpendableApBonus, TokenType.SingleSpendApBonus);
+            return defender.Tokens.GetTokenCount(persistent) + defender.Tokens.GetTokenCount(spendable)
+                + (defender.Tokens.GetTokenCount(singleSpend) > 0 ? 1 : 0);
+        }
+
+        // The most wounds any living model of the unit has left - the most one Hazardous die can take off it.
+        private static float MaxModelWounds(UnitData unit)
+        {
+            float best = 1f;
+            foreach (IModel model in unit.Models)
+                if (model.GetIsAlive()) best = Math.Max(best, model.TotalWounds - model.WoundsDealt);
+            return best;
         }
 
         private static RuleParticipant ActorWithBatch(UnitData attacker, Weapon weapon) =>

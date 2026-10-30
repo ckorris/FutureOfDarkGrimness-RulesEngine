@@ -816,7 +816,7 @@ namespace FDG.Tests
 
             float engineWounds = await EngineVolleyWounds(attacker, defender, weapon, 5);
             float engineCounted = CountedWounds.Peek(defender.GetValue());
-            (float wounds, float counted) = CombatMath.EstimateVolleyWithCounted(_ctx.RuleEvaluator, attacker,
+            (float wounds, float counted, _) = CombatMath.EstimateVolleyWithCounted(_ctx.RuleEvaluator, attacker,
                 defender, weapon, 5, new AttackContext(distance), new List<string>());
 
             Assert.That(engineCounted, Is.GreaterThan(0f), "scene check: Scourge banked something");
@@ -876,6 +876,191 @@ namespace FDG.Tests
                 new AttackContext(Distance(champion, defender)), new List<string>());
             Assert.That(sergeant, Is.GreaterThan(plain + 0.01f), "AP(+2) into Defense 3");
         }
+
+        // #434 Hazardous: "on unmodified results of 1 to hit this model takes one wound, or X wounds if this weapon has
+        // Blast(X)/Deadly(X)" - each die's wounds on one firing model, the excess lost. The estimate's self-wounds are
+        // the engine's 1s (RollToHitStage's carried count) at min(X, a model's wounds) each.
+        [TestCase(1, 1f)]
+        [TestCase(3, 3f)]
+        public async Task Hazardous_SelfWounds_MatchTheEnginesOnes_CappedPerModel(int woundsPerModel, float perDieExpected)
+        {
+            var cannon = Rifle(attacks: 3);
+            cannon.AttachRuleDefinition(new ResolvedRule("Blast", CoreRuleCatalog.Blast,
+                new RuleArgument[] { new RuleArgument.Int(3) }));
+            cannon.AttachRuleDefinition(new ResolvedRule("Hazardous", HazardousBlast()));
+            var crew = MakeUnit(2, cannon, atX: 0f, woundsPerModel: woundsPerModel);
+            var defender = MakeUnit(10, null, atX: 10f);
+
+            var metadata = new CombatMetadata(_ctx, crew, defender, cannon, 2);
+            metadata.AddResult(new CoverCheckResults(0));
+            await RunStage(new DetermineHitRollStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>()), metadata);
+            await RunStage(new RollToHitStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>()), metadata);
+            Assert.That(metadata.QueryForResult(out RollToHitResults hits), Is.True);
+            float engineOnes = hits.SelfWounds / hits.SelfWoundsPerDie;
+
+            (_, _, float selfWounds) = CombatMath.EstimateVolleyWithCounted(_ctx.RuleEvaluator, crew, defender, cannon,
+                2, new AttackContext(Distance(crew, defender)), new List<string>());
+
+            Assert.That(engineOnes, Is.EqualTo(1f).Within(0.0001f), "scene check: 6 dice, one natural 1 expected");
+            Assert.That(selfWounds, Is.EqualTo(engineOnes * perDieExpected).Within(0.0001f));
+        }
+
+        // --- #442 (#427 / #434): granted roll modifiers and attacker-bonus markers, read without spending -------
+
+        [Test]
+        public async Task GrantedHitBuff_AndGrantedDefenseBuff_MatchEngine()
+        {
+            var weapon = Rifle(attacks: 2, ap: 1);
+            var attacker = MakeUnit(4, weapon, atX: 0f);
+            var defender = MakeUnit(6, null, defense: 4, atX: 10f);
+            // Duration grants (cleared at round end), so the engine's ConsumeNet leaves them for the estimate too.
+            attacker.GetValue().Tokens.AddToken(new Token(TokenType.HitRollModifier, 1,
+                new TokenClearTrigger.RoundEnd(), Payload: new TokenPayload.StatModifier(1)));
+            defender.GetValue().Tokens.AddToken(new Token(TokenType.SaveRollModifier, 1,
+                new TokenClearTrigger.RoundEnd(), Payload: new TokenPayload.StatModifier(1)));
+
+            await AssertVolleyPinned(attacker, defender, weapon, weaponCount: 4);
+        }
+
+        [Test]
+        public void OneShotGrant_IsPricedWithoutBeingSpent()
+        {
+            var weapon = Rifle(attacks: 2);
+            var attacker = MakeUnit(4, weapon, atX: 0f);
+            var defender = MakeUnit(6, null, atX: 10f);
+            float plain = CombatMath.EstimateVolley(_ctx.RuleEvaluator, attacker, defender, weapon, 4,
+                new AttackContext(Distance(attacker, defender)), new List<string>());
+            attacker.GetValue().Tokens.AddToken(new Token(TokenType.HitRollModifier, 1,
+                new TokenClearTrigger.FirstTrigger(), Payload: new TokenPayload.StatModifier(1)));
+
+            float buffed = CombatMath.EstimateVolley(_ctx.RuleEvaluator, attacker, defender, weapon, 4,
+                new AttackContext(Distance(attacker, defender)), new List<string>());
+
+            Assert.That(buffed, Is.GreaterThan(plain + 0.01f), "+1 to hit next time: priced");
+            Assert.That(attacker.GetValue().Tokens.GetTokenCount(TokenType.HitRollModifier), Is.EqualTo(1),
+                "an estimate must never spend the grant");
+        }
+
+        [Test]
+        public async Task PersistentTargetMarkers_MatchEngine()
+        {
+            var weapon = Rifle(attacks: 2);
+            var attacker = MakeUnit(4, weapon, atX: 0f);
+            var defender = MakeUnit(6, null, defense: 3, atX: 10f);
+            defender.GetValue().Tokens.AddToken(new Token(TokenType.PersistentHitBonus, 1,
+                new TokenClearTrigger.ManualOnly()));
+            defender.GetValue().Tokens.AddToken(new Token(TokenType.PersistentApBonus, 1,
+                new TokenClearTrigger.ManualOnly()));
+
+            await AssertVolleyPinned(attacker, defender, weapon, weaponCount: 4);
+        }
+
+        // A 3.6 Tag token is worth one +1 per attack - as much as one persistent marker on a single volley.
+        [Test]
+        public void TagToken_IsOneMarkerPerAttack()
+        {
+            var weapon = Rifle(attacks: 2);
+            var attacker = MakeUnit(4, weapon, atX: 0f);
+            var tagged = MakeUnit(6, null, defense: 3, atX: 10f);
+            tagged.GetValue().Tokens.AddToken(new Token(TokenType.SingleSpendApBonus, 2, new TokenClearTrigger.ManualOnly()));
+            var targeted = MakeUnit(6, null, defense: 3, atX: 10f);
+            targeted.GetValue().Tokens.AddToken(new Token(TokenType.PersistentApBonus, 1, new TokenClearTrigger.ManualOnly()));
+
+            float viaTag = CombatMath.EstimateVolley(_ctx.RuleEvaluator, attacker, tagged, weapon, 4,
+                new AttackContext(10f), new List<string>());
+            float viaTarget = CombatMath.EstimateVolley(_ctx.RuleEvaluator, attacker, targeted, weapon, 4,
+                new AttackContext(10f), new List<string>());
+
+            Assert.That(viaTag, Is.EqualTo(viaTarget).Within(0.0001f));
+            Assert.That(tagged.GetValue().Tokens.GetTokenCount(TokenType.SingleSpendApBonus), Is.EqualTo(2), "unspent");
+        }
+
+        // #431 Pierce ignores positive Defense modifiers - cover's +1 included, as DetermineSaveRollsNeededStage drops it.
+        [Test]
+        public async Task PierceWeapon_IgnoresCover_MatchesEngine()
+        {
+            var weapon = Rifle(attacks: 2, ap: 1);
+            weapon.AttachRuleDefinition(new ResolvedRule("Pierce", WeaponRules36Definitions.Pierce));
+            var attacker = MakeUnit(4, weapon, atX: 0f);
+            var defender = MakeUnit(6, null, defense: 4, atX: 6f);
+
+            await AssertVolleyPinned(attacker, defender, weapon, weaponCount: 4, defenderInCover: true);
+        }
+
+        // --- #442 (#434 Ravage / Regenerative Strength): the pre-strike auto-wound pools ------------------------
+
+        // A charger whose only melee output is Ravage: the estimate's attack is the pool, unsaveable, through the
+        // defender's wound-side rules - pinned against the REAL ResolveRavageWoundsStage (with and without a 5+ ignore).
+        [TestCase(false)]
+        [TestCase(true)]
+        public async Task Ravage_Pool_MatchesTheRealStage(bool regenerating)
+        {
+            var charger = MakeUnit(2, null, atX: 0f);
+            charger.GetValue().AttachRuleDefinition(new ResolvedRule("Ravage", CoreRuleCatalog.Ravage,
+                new RuleArgument[] { new RuleArgument.Int(3) }));
+            var defender = MakeUnit(10, null, defense: 2, atX: 1f);
+            if (regenerating) AttachUnitRule(defender, "Regeneration", CoreRuleCatalog.Regeneration);
+
+            MeleeEstimate estimate = CombatMath.EstimateMelee(_ctx.RuleEvaluator, charger, defender);
+
+            var stage = new ResolveRavageWoundsStage(_ctx, new NoOpLayer<ICombatActionContext>());
+            stage.OnRavageResolved.Bind("done");
+            var combat = new CombatActionContext(_ctx, charger, isMelee: true, isCharging: true);
+            combat.SetDefender(defender);
+            await stage.Enter(combat);
+            float engine = _requester.Captured?.TotalWoundsToAssign ?? 0f;
+
+            // 2 models x Ravage(3) = 6 dice at 6+ = 1 wound, no save (Defense 2 would stop most of it).
+            Assert.That(estimate.AttackerAttack.ExpectedWounds, Is.EqualTo(engine).Within(0.05f));
+            Assert.That(engine, Is.EqualTo(regenerating ? 2f / 3f : 1f).Within(0.01f), "scene check: a 5+ ignore keeps 2/3");
+        }
+
+        [Test]
+        public void Ravage_OncePerRound_AndNotWhileFatigued()
+        {
+            var charger = MakeUnit(2, null, atX: 0f);
+            charger.GetValue().AttachRuleDefinition(new ResolvedRule("Ravage", CoreRuleCatalog.Ravage,
+                new RuleArgument[] { new RuleArgument.Int(3) }));
+            var defender = MakeUnit(10, null, atX: 1f);
+            Assert.That(CombatMath.EstimateMelee(_ctx.RuleEvaluator, charger, defender).AttackerAttack.ExpectedWounds,
+                Is.EqualTo(1f).Within(0.0001f));
+
+            FatigueUtilities.ApplyFatigued(charger.GetValue());
+            Assert.That(CombatMath.EstimateMelee(_ctx.RuleEvaluator, charger, defender).AttackerAttack.ExpectedWounds,
+                Is.EqualTo(0f), "'unless this unit is Fatigued'");
+
+            var rested = MakeUnit(2, null, atX: 0f);
+            rested.GetValue().AttachRuleDefinition(new ResolvedRule("Ravage", CoreRuleCatalog.Ravage,
+                new RuleArgument[] { new RuleArgument.Int(3) }));
+            rested.GetValue().Tokens.AddToken(TokenDefinitionCatalog.Create(TokenType.StrikeDiceUsed));
+            Assert.That(CombatMath.EstimateMelee(_ctx.RuleEvaluator, rested, defender).AttackerAttack.ExpectedWounds,
+                Is.EqualTo(0f), "'once per round': already rolled this round");
+        }
+
+        // The struck-back defender rolls its own pool (StrikeBackStage's twin), before its swings.
+        [Test]
+        public void Ravage_DefendersPool_LandsOnTheCharger()
+        {
+            var charger = MakeUnit(5, Blade(), atX: 0f);
+            var defender = MakeUnit(2, Blade(), atX: 1f);
+            MeleeEstimate plain = CombatMath.EstimateMelee(_ctx.RuleEvaluator, charger, defender);
+            defender.GetValue().AttachRuleDefinition(new ResolvedRule("Ravage", CoreRuleCatalog.Ravage,
+                new RuleArgument[] { new RuleArgument.Int(3) }));
+
+            MeleeEstimate ravaging = CombatMath.EstimateMelee(_ctx.RuleEvaluator, charger, defender);
+
+            Assert.That(ravaging.DefenderReturn.ExpectedWounds,
+                Is.EqualTo(plain.DefenderReturn.ExpectedWounds + 1f).Within(0.0001f));
+        }
+
+        private static SpecialRuleDefinition HazardousBlast() => new("Hazardous",
+            new[]
+            {
+                new HookEntry(EHookID.Shooting_OnHitRollComplete, new Condition.UnmodifiedRollEquals(1),
+                    new Effect.SelfWoundOnUnmodifiedRoll(OnRollValue: 1, CountFromBlastOrDeadly: true),
+                    ELifetime.ThisAttack),
+            },
+            Array.Empty<ActivatedAbility>(), Scope: ERuleScope.Weapon);
 
         // --- Harness --------------------------------------------------------------------------------
 

@@ -1026,7 +1026,9 @@ namespace FDG.Ai.Tactician
                         new AttackContext(Math.Max(1f, endDistance),
                             AttackerMoved: candidate.Intent != EMacroIntent.Hold,
                             SightFactor: hasLane ? 1f : 0f));
-                    offense = Math.Max(offense, ValueFraction(shot.ExpectedWounds, enemy));
+                    // #442 (#434 Hazardous): a volley that wounds its own shooters is worth that much less.
+                    offense = Math.Max(offense, ValueFraction(shot.ExpectedWounds, enemy)
+                        - ValueFraction(shot.ExpectedSelfWounds, self));
                 }
 
                 // Approach value (#191 A4 gate fix - the mechanism behind the two failed gates:

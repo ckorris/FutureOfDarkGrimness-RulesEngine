@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using FDG.Rules.Dispatch;
 using FDG.SaveLoad;
 
 namespace FDG.ArmyBuilding
@@ -51,13 +52,17 @@ namespace FDG.ArmyBuilding
                         $"{roster.Name}: {models} models (allowed {roster.MinModels}-{roster.MaxModels}).",
                         ListIssueSeverity.Error, i));
 
-                // Unique — "This unit may only be taken once per army." An absolute list-building rule
-                // (unlike the size-dependent force-org copy caps below, which stay Warnings), so each
-                // copy beyond the first is an Error.
-                if (HasRule(roster.Rules, "Unique")
+                // Unique - "This unit may only be taken once per army." / Unique Hero (#430, 3.6) - "this
+                // model may only be taken once per army." An absolute list-building rule (unlike the
+                // size-dependent force-org caps below, which stay Warnings), so each copy beyond the first
+                // is an Error.
+                string? uniqueRule = HasRule(roster.Rules, CoreRuleCatalog.UniqueHeroName) ? CoreRuleCatalog.UniqueHeroName
+                    : HasRule(roster.Rules, "Unique") ? "Unique"
+                    : null;
+                if (uniqueRule != null
                     && list.Units.Take(i).Any(prev => prev.RosterUnitId == bu.RosterUnitId))
                     issues.Add(new ListIssue(
-                        $"{roster.Name}: Unique - the army may only include one copy.",
+                        $"{roster.Name}: {uniqueRule} - the army may only include one copy.",
                         ListIssueSeverity.Error, i));
 
                 foreach (UpgradeSection section in roster.Sections)
@@ -119,9 +124,10 @@ namespace FDG.ArmyBuilding
             // Army-composition caps (reuse the engine validator) as Warnings, on the MERGED output:
             // a combined pair is ONE squad toward the copy cap (Chris, 2026-07-10 - doubled-up
             // squads must not count twice; supersedes the earlier count-as-two-copies reading).
-            // The points cap is already an Error above, so drop its duplicate from the warning set.
+            // The points cap is already an Error above, so drop its duplicate from the warning set; so is the
+            // Unique Hero duplicate (an Error per row above, where this validator only has the name).
             foreach (string warning in ForceOrgValidator.Validate(compiled))
-                if (!warning.StartsWith("Over points limit"))
+                if (!warning.StartsWith("Over points limit") && !warning.StartsWith("Unique Hero"))
                     issues.Add(new ListIssue(warning, ListIssueSeverity.Warning));
 
             return issues;
@@ -188,9 +194,9 @@ namespace FDG.ArmyBuilding
                 if (unit.ModelCount != 1)
                     issues.Add(new ListIssue($"{unit.Name}: a Hero must be a single model to join a unit.",
                         ListIssueSeverity.Warning, i));
-                if (TryGetToughValue(unit, out int tough) && tough > Rules.Dispatch.HeroJoinResolver.MaxHeroToughForJoin)
+                if (TryGetToughValue(unit, out int tough) && tough > HeroJoinResolver.MaxHeroToughForJoin)
                     issues.Add(new ListIssue(
-                        $"{unit.Name}: Tough({tough}) exceeds the join cap (Tough({Rules.Dispatch.HeroJoinResolver.MaxHeroToughForJoin})); it will deploy solo.",
+                        $"{unit.Name}: Tough({tough}) exceeds the join cap (Tough({HeroJoinResolver.MaxHeroToughForJoin})); it will deploy solo.",
                         ListIssueSeverity.Warning, i));
 
                 UnitFileEntry? host = compiled.Units.FirstOrDefault(u =>
@@ -229,6 +235,9 @@ namespace FDG.ArmyBuilding
             tough = 0;
             return false;
         }
+
+        /// <summary>Reads the Tough(X) value of one rule entry (alias-aware). False for any other rule.</summary>
+        internal static bool TryGetToughRule(SpecialRuleEntry entry, out int tough) => TryGetTough(entry, out tough);
 
         private static bool TryGetTough(SpecialRuleEntry entry, out int tough)
         {

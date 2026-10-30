@@ -62,6 +62,39 @@ public class LaunchGateTests
     }
 
     [Test]
+    public void DuplicateUniqueHero_IsOverridable_NeverBlocking()
+    {
+        // #430: the 3.6 Unique Hero rule is an Error in the catalog validator, so the launch gate treats it like
+        // any catalog Error - the "launch anyway?" confirm (house rules), not a block.
+        var book = DemoBook.Build();
+        book.Units[0].Rules.Add(new SpecialRuleEntry_Core("Unique Hero"));
+        var list = new BuilderList { Name = "L", PointsLimit = 100000 };
+        list.Units.Add(new BuilderUnit { RosterUnitId = "warriors" });
+        list.Units.Add(new BuilderUnit { RosterUnitId = "warriors" });
+        BuiltArmyFile army = ListCompiler.Compile(book, list);
+
+        var problems = LaunchGate.OverridableProblems(new[] { ("Bob", (ArmyListFile?)army) });
+
+        Assert.That(problems, Has.One.Contains("Bob").And.One.Contains("Unique Hero"));
+        Assert.That(Blocking(("Bob", army), lobbyPointsLimit: 100000), Is.Empty);
+    }
+
+    [Test]
+    public void OverEveryForceOrgCap_IsOnlyAWarning_TheGateNeverSeesIt()
+    {
+        // #430: the optional Force Org caps (Hero / copies / 35% / units / models) are Warnings; neither half
+        // of the gate carries them, so an over-cap Forge list launches without even a confirm. 12 plain
+        // squads at 500 pts trips the copy, unit-count and model caps at once.
+        BuilderUnit[] squads = Enumerable.Range(0, 12).Select(_ => new BuilderUnit { RosterUnitId = "warriors" }).ToArray();
+        BuiltArmyFile army = ForgeArmy(pointsLimit: 500, units: squads);
+        var issues = ListValidator.Validate(DemoBook.Build(), ((BuiltArmyFile)army).Selections!, army);
+
+        Assert.That(issues.Count(i => i.Severity == ListIssueSeverity.Warning && i.Message.StartsWith("Too many")), Is.GreaterThan(1));
+        Assert.That(LaunchGate.OverridableProblems(new[] { ("Alice", (ArmyListFile?)army) }), Is.Empty);
+        Assert.That(Blocking(("Alice", army), lobbyPointsLimit: 100000), Is.Empty);
+    }
+
+    [Test]
     public void HandAuthoredArmy_OnlyGetsThePointsCheck()
     {
         var plain = new ArmyListFile { Name = "Hand", Units = { new UnitFileEntry { Name = "U", PointCost = 80 } } };

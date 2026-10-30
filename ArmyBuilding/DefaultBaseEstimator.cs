@@ -53,7 +53,7 @@ namespace FDG.ArmyBuilding
         /// </summary>
         public static BaseFileEntry Estimate(IEnumerable<SpecialRuleEntry> rules, out string describe)
         {
-            bool isHero = HasRule(rules, "Hero");
+            bool isHero = ForceOrgValidator.HasHeroRule(rules); // Hero, or a rule that counts as having it (Unique Hero, #430)
             int tough = ToughValue(rules);
 
             if (isHero)

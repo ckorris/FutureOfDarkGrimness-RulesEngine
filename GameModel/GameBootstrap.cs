@@ -228,6 +228,8 @@ namespace FDG.GameModel
                 AttachToEveryWeapon(unitData, ruleEntry, resolved);
             }
 
+            AttachImpliedRules(unitData, ruleResolver);
+
             AttachModelGrants(unitData, unitEntry, ruleResolver);
 
             // #035: every unit carries the engine-internal Disembark + Embark abilities (slice C/D), each
@@ -236,6 +238,30 @@ namespace FDG.GameModel
             // army-load rule lifecycle and are restored by the #094 resume rehydration.
             unitData.AttachRuleDefinition(new ResolvedRule(CoreRuleCatalog.DisembarkRuleName, CoreRuleCatalog.Disembark));
             unitData.AttachRuleDefinition(new ResolvedRule(CoreRuleCatalog.EmbarkRuleName, CoreRuleCatalog.Embark));
+        }
+
+        //#430: "counts as having" rules. A unit carrying Unique Hero ("Counts as having Hero ...") also gets the
+        //real Hero rule, so everything that asks whether a unit is a Hero - the #006 join, the transport ride cap,
+        //the resume snapshot - answers yes without knowing the 3.6 book rule exists. Runs after the whole entry
+        //list so a unit that names both Hero and Unique Hero ends up with one Hero, whichever came first. The
+        //implied rule is resolved through the army's resolver, so an army that embeds its own Hero is honoured.
+        private static void AttachImpliedRules(UnitData unitData, IRuleResolver ruleResolver)
+        {
+            foreach (ResolvedRule attached in unitData.RuleDefinitions.ToList())
+            {
+                string? impliedName = CoreRuleCatalog.ImpliedRuleName(attached.Definition.Name);
+                if (impliedName == null
+                    || unitData.RuleDefinitions.Any(rule => string.Equals(rule.Definition.Name, impliedName,
+                        StringComparison.Ordinal)))
+                {
+                    continue;
+                }
+
+                if (ruleResolver.TryResolve(impliedName, out ResolvedRule implied))
+                {
+                    unitData.AttachRuleDefinition(new ResolvedRule(impliedName, implied.Definition));
+                }
+            }
         }
 
         //#407: rules only some models have (a one-model Weapon Team's Tough(3)) attach to the unit's LAST

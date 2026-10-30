@@ -56,6 +56,16 @@ public class DefaultBaseEstimatorTests
     }
 
     [Test]
+    public void UniqueHero_CountsAsAHero_ForTheEstimatedBase()
+    {
+        // #430: 3.6 named characters carry "Unique Hero" instead of Hero + Unique; it counts as Hero.
+        BaseFileEntry b = DefaultBaseEstimator.Estimate(Rules(Core("Unique Hero"), Tough(12)), out _);
+
+        Assert.That(b.Shape, Is.EqualTo(EBaseShapeKind.Circle));
+        Assert.That(b.DiameterInches, Is.EqualTo(60f / MmPerInch).Within(0.001f));
+    }
+
+    [Test]
     public void LargeHero_GetsABiggerCircle_StillNotARectangle()
     {
         // e.g. AlienHives "Drekhor the Vengeful" - Tough(12), Hero, Flying: a monster, not a tank.

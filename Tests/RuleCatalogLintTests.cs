@@ -23,6 +23,9 @@ namespace FDG.Tests
         {
             ["Hero"] = "engine-marker: no dispatch entries; consumed by HeroJoinResolver/HeroStatRules " +
                 "(join flow, stat substitution).",
+            ["Unique Hero"] = "engine-marker: no dispatch entries; army load grants the bearer the real Hero rule " +
+                "(CoreRuleCatalog.ImpliedRuleName via GameBootstrap.AttachRulesFromArmyList, #430) and ListValidator " +
+                "enforces once-per-army at list-build time.",
             ["Limited"] = "engine-marker: once-per-game weapon gating is enforced by LimitedRules " +
                 "reading the LimitedSpent token, not by dispatch entries.",
             ["Disembark"] = "stage-enacted: Effect.Disembark is a deliberate no-op marker; " +

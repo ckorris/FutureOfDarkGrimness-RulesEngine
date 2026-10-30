@@ -24,7 +24,7 @@ public static class CoreRuleCatalog
     {
         Stealth, Artillery, Indirect, Reliable, Fast, VeryFast, Slow, Surge, Relentless, Furious,
         Deadly, Regeneration, Unstoppable, Tough, Rending, Bane, Shred, Vanguard, Scout, Ambush, Thrust,
-        Blast, Takedown, Limited, Impact, Counter, Brace, MartialProwess, Strafing, Fear, Fearless, Hero, Transport,
+        Blast, Takedown, Limited, Impact, Counter, Brace, MartialProwess, Strafing, Fear, Fearless, Hero, UniqueHero, Transport,
         FuriousBuff, Mend, Immobile, Cumbersome, Caster, SpellAmplifier,
         Evasive, MeleeEvasion, Precise, GoodShot,
         Agile, Quick, RapidAdvance, RapidRush, RapidCharge,
@@ -1314,6 +1314,34 @@ public static class CoreRuleCatalog
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Positive,
         Description: "A leader that joins a friendly unit; the unit takes morale at the hero's Quality, and the hero is wounded last.");
+
+    /// <summary>The 3.6 book rule's name (#430): replaces the 3.5 "Unique".</summary>
+    public const string UniqueHeroName = "Unique Hero";
+
+    /// <summary>
+    /// Unique Hero (#430, 3.6 book rule on named characters): a marker whose entire effect is two
+    /// list-building facts, so it carries no hooks. The description is the 3.6.0 book text verbatim.
+    /// "Counts as having Hero" is delivered by granting the real <see cref="Hero"/> rule to the bearer at
+    /// army load (<see cref="ImpliedRuleName"/>, applied by <c>GameBootstrap.AttachRulesFromArmyList</c>),
+    /// so every engine read of Hero - the join in <see cref="HeroJoinResolver"/>, the transport ride cap,
+    /// the saved rule list - sees a Hero without a second name check. "Once per army" is enforced at
+    /// list-build time by <c>ListValidator</c> (an Error) and warned about for catalog-less armies by
+    /// <c>ForceOrgValidator</c>.
+    /// </summary>
+    public static SpecialRuleDefinition UniqueHero { get; } = new SpecialRuleDefinition(UniqueHeroName,
+        Array.Empty<HookEntry>(),
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Neutral,
+        Description: "Counts as having Hero, and this model may only be taken once per army.");
+
+    /// <summary>
+    /// The "counts as having" table (#430): a rule whose text says the bearer also has another core rule
+    /// maps to that rule's name. Applied once per unit at army load, so a unit carrying "Unique Hero" holds
+    /// a genuine Hero attachment. Ordinal, like the engine's own Hero name checks. Null when the rule
+    /// implies nothing.
+    /// </summary>
+    public static string? ImpliedRuleName(string ruleName) =>
+        string.Equals(ruleName, UniqueHeroName, StringComparison.Ordinal) ? Hero.Name : null;
 
     // Spell-token economy (round-start grant -> StartOfRoundExtraActionStage) ------
 

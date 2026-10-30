@@ -5,9 +5,10 @@ using NUnit.Framework;
 
 namespace FDG.Tests
 {
-    // #029 — Aircraft (PARTIAL). The ENFORCED facets are the defensive shooting (enemies get -12" range and -1
-    // to hit) plus Flying's terrain/unit ignore. The DEFERRED facets (forced straight-line movement, can't be
-    // charged, can't seize objectives, deploy-first) need new machinery and are NOT covered here.
+    // #029 — Aircraft. The facets covered HERE are the -12" range and Flying's terrain/unit ignore; the -1 to
+    // hit, the can't-be-moved-in-contact-with guard (pile-in, consolidation) and the 3.6 wording are in
+    // AircraftContactGuardTests (#427), forced movement is in ForcedAircraftMoveTests, objectives in
+    // ObjectiveOwnershipTests, the charge guard in MoveThroughEnemyValidationTests.
     [TestFixture]
     public class AircraftRuleIntegrationTests
     {

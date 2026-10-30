@@ -1597,5 +1597,23 @@ namespace FDG.Stages
             Zone = BaseShape.ToZone(Center, Facing);
             CircumscribedRadiusInches = BaseShape.CircumscribedRadiusInches;
         }
+
+        /// <summary>
+        /// #427: this footprint grown by <paramref name="inches"/> on every side - the keep-out zone an
+        /// obstacle-stop move (pile-in) treats as the obstacle when the thing may not be touched. A disc's
+        /// radius and a rectangle's half-extents each grow by the margin (a rectangle's corners are squared
+        /// off rather than rounded, which over-keeps by a fraction of an inch at the corner only). A shape
+        /// of any other kind is returned unchanged.
+        /// </summary>
+        public EnemyModelFootprint Inflated(float inches)
+        {
+            IBaseShape grown = BaseShape switch
+            {
+                CircleBase circle => new CircleBase(circle.RadiusInches + inches),
+                RectangleBase rect => new RectangleBase(rect.WidthInches + 2f * inches, rect.HeightInches + 2f * inches),
+                _ => BaseShape,
+            };
+            return new EnemyModelFootprint(Center, BaseRadiusInches + inches, UnitKey, Uncontactable, grown, Facing);
+        }
     }
 }

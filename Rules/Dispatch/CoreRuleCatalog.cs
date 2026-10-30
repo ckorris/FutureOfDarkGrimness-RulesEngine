@@ -2045,7 +2045,9 @@ public static class CoreRuleCatalog
     /// <see cref="Effect.RollModifier"/>(Hit) at <see cref="EHookID.Shooting_OnHitRollModifier"/>, like Stealth
     /// without the distance gate); ignores all terrain + moves through units (Flying's two ops).</item>
     /// <item>Stage gates (via <see cref="AircraftRules.IsAircraft"/>): can't seize/contest objectives; can't be
-    /// charged / moved into base contact with; must deploy before all other units.</item>
+    /// charged / moved into contact with (#427: the charge and consolidation validators enforce the 1" standoff
+    /// via <c>EnemyModelFootprint.Uncontactable</c>, and pile-in treats the Aircraft as an obstacle grown by that
+    /// standoff); must deploy before all other units.</item>
     /// <item>Forced movement: may only Advance (this <see cref="Effect.RestrictActions"/> at
     /// <see cref="EHookID.Activation_OnActionChoice"/>), which DefinePathStage turns into a forced straight-line
     /// 30–36" move along the unit's fixed heading (held on the models' <c>IModel.Facing</c>, set once toward the
@@ -2085,7 +2087,10 @@ public static class CoreRuleCatalog
         },
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Neutral,
-        Description: "A fast flyer: enemies get -12\" range and -1 to hit it, and it ignores terrain and units; but it can't seize objectives or be charged, and must fly straight each turn.");
+        Description: "May only use Advance actions, moving in a straight line, and adding 30\" to its total move " +
+            "(even if Shaken). Aircraft ignore all units and terrain when moving and stopping, can't seize or " +
+            "contest objectives, can't be moved in contact with or charged, and units targeting them get -12\" " +
+            "range and -1 to hit rolls.");
 
     /// <summary>
     /// Increased Shooting Range (#102): the bearer's own ranged weapons get +6" range. An Actor-seat passive

@@ -364,7 +364,8 @@ namespace FDG.Ai.Tactician
             // volley's 6s price no Furious/Surge extra hits and no Rending AP, exactly as they will roll.
             var hitContext = new HitRollCompleteContext(atk, def, rolls, context.DistanceInches,
                 context.IsMelee, context.IsCharging,
-                SixesCountForSpecialRules: FatigueUtilities.SixesCountForSpecialRules(atk, context.IsMelee));
+                SixesCountForSpecialRules: FatigueUtilities.SixesCountForSpecialRules(atk, context.IsMelee),
+                AttackerMoved: context.AttackerMoved);
 
             var __completeProbe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
             IReadOnlyList<RuleOperation> completeOps = Ops(evaluator.EvaluateAllNamed(

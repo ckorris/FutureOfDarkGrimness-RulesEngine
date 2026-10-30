@@ -1115,12 +1115,17 @@ public static class CoreRuleCatalog
     /// majority-Tough(3)+ targets when shooting from over 9" away or when charging — the same two-arm
     /// shape as <see cref="PiercingHunter"/> + the AoF Melee Slayer, at AP(+2) with the Tough gate.
     /// Printed text is identical in GDF and AoF.
+    /// <para>#434, OPR 3.6: "When using Hold actions and shooting, or when charging, this model's weapons get AP(+2) if
+    /// most models in the target have Tough(3) or higher." The shooting arm is a Hold (not after moving - the context
+    /// answers it since #434) instead of "over 9" away", and never a spell's hits (not this model's weapons).</para>
     /// </summary>
     public static SpecialRuleDefinition Slayer { get; } = new SpecialRuleDefinition("Slayer",
         new[]
         {
             new HookEntry(EHookID.Shooting_OnHitRollComplete,
-                new Condition.And(new Condition.DistanceGreaterThan(9f), new Condition.TargetMajorityHasTough(3)),
+                new Condition.And(new Condition.Not(new Condition.IsMelee()),
+                    new Condition.And(new Condition.Not(new Condition.AfterMoving()),
+                        new Condition.And(new Condition.IsNotSpell(), new Condition.TargetMajorityHasTough(3)))),
                 new Effect.RollModifier(ERollKind.Save, Delta: -2),
                 ELifetime.ThisAttack),
             new HookEntry(EHookID.Shooting_OnHitRollComplete,
@@ -1130,7 +1135,8 @@ public static class CoreRuleCatalog
         },
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Positive,
-        Description: "When shooting at enemies over 9\" away, or when charging, this unit's weapons get AP(+2) if most models in the target have Tough(3) or higher.");
+        Description: "When using Hold actions and shooting, or when charging, this model's weapons get AP(+2) if " +
+            "most models in the target have Tough(3) or higher.");
 
     /// <summary> "+6\" range when shooting": <see cref="IncreasedShootingRange"/>'s effect under the spell phrase (range checks only exist for shooting, so the qualifier is inherent). </summary>
     public static SpecialRuleDefinition RangeBonusWhenShooting { get; } =

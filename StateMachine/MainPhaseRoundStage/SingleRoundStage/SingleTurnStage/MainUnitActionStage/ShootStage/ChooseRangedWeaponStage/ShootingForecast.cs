@@ -136,7 +136,8 @@ namespace FDG.Stages
                     new HitRollCompleteContext(attacker, defender, EmptyRolls(), distance,
                         TerrainPieces: terrain,
                         SixesCountForSpecialRules: FatigueUtilities.SixesCountForSpecialRules(attacker,
-                            isMelee: false)),
+                            isMelee: false),
+                        AttackerMoved: attackerMoved),
                     actor, subject);
             List<RuleOperation> completeOps = completeNamed.Select(n => n.Op).ToList();
 

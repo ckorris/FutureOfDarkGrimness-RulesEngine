@@ -90,7 +90,9 @@ namespace FDG.Stages
                 // #197 misc (Grounded family): the terrain-proximity conditions read the bearer's
                 // models against the live terrain layout.
                 TerrainPieces: GameContext.TableState.Terrain.Objects.ToList(),
-                SixesCountForSpecialRules: FatigueUtilities.SixesCountForSpecialRules(attacker, metaData.IsMelee));
+                SixesCountForSpecialRules: FatigueUtilities.SixesCountForSpecialRules(attacker, metaData.IsMelee),
+                // #434: Slayer / Ranged Slayer's "when using Hold actions and shooting" reads it here.
+                AttackerMoved: metaData.AttackerMoved);
 
             // #204: the LIVE named evaluation - spends grants / narrates exactly like EvaluateAll, but also
             // pairs each op with the alias-aware rule name so the save presentation can say "+1 (Furious)",

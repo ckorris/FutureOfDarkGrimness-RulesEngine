@@ -31,15 +31,21 @@ namespace FDG.Rules.Dispatch.Contexts
     /// rolls of 6 for special rules" - <see cref="SpecialRuleHitRolls"/> then reads zero on face 6. Every
     /// builder of a melee hit context decides it through <c>FatigueUtilities.SixesCountForSpecialRules</c>;
     /// shooting, spells and synthetic hits are never Fatigued and keep the default.</param>
+    /// <param name="AttackerMoved">#434: whether the attacking unit moved this activation - false is a Hold. OPR 3.6
+    /// Slayer / Ranged Slayer give their AP(+2) "when using Hold actions and shooting", and AP folds at this hook, so
+    /// the Hold test (<see cref="Condition.AfterMoving"/>, Artillery's and Indirect's) must be answerable here too.
+    /// Synthetic hits (spells, abilities) never moved and keep the default.</param>
     public sealed record HitRollCompleteContext(
         IUnit Attacker, IUnit Target, IDiceResults UnmodifiedHitRolls,
         float DistanceInches = 0f, bool IsMelee = false, bool IsCharging = false, bool IsSpell = false,
         float ChargeOriginDistanceInches = 0f,
         EUnpredictableBranch UnpredictableBranch = EUnpredictableBranch.None,
         IReadOnlyList<ITerrain>? TerrainPieces = null,
-        bool SixesCountForSpecialRules = true)
+        bool SixesCountForSpecialRules = true,
+        bool AttackerMoved = false)
         : IHookContext, IHasUnmodifiedHitRolls, IHasDistance, IHasCombatKind, IHasCharging, IHasTarget,
-            IHasIsSpell, IHasAttackOriginDistance, IHasUnpredictableBranch, IHasTerrain, IHasShootChargeDistance
+            IHasIsSpell, IHasAttackOriginDistance, IHasUnpredictableBranch, IHasTerrain, IHasShootChargeDistance,
+            IHasAttackerMoved
     {
         public EHookID Hook => EHookID.Shooting_OnHitRollComplete;
 

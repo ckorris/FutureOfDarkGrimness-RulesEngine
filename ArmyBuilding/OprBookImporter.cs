@@ -344,18 +344,15 @@ namespace FDG.ArmyBuilding
         // supplement, so the bare name is no longer rewritten. The two catalog entries stay only for pre-3.6 army
         // files and the not-yet-rebaked books that name them (#436 removes them).
         //
-        // #197 P8 (Dangerous Terrain Debuff): the same reuse, six armies wide. Four books say "pick one
-        // enemy unit within 18" IN LINE OF SIGHT, which counts as being in Dangerous Terrain once (next
-        // time the effect would apply)" - a deferred debuff that only bites when the victim next moves.
-        // Lust Disciples and War Disciples say "pick one enemy unit within 18" [no line of sight], which
-        // must IMMEDIATELY take a Dangerous Terrain test" - it lands on the spot, move or no move. Only
-        // the minority variant is renamed: the bare name keeps the corpus wording for 12 of the 14
-        // references, and one of the two must diverge from its own book either way.
-        private static readonly Dictionary<(string Army, string Rule), string> AmbiguousRuleNames = new()
-        {
-            [("Lust Disciples", "Dangerous Terrain Debuff")] = "Dangerous Terrain Debuff (Immediate)",
-            [("War Disciples", "Dangerous Terrain Debuff")] = "Dangerous Terrain Debuff (Immediate)",
-        };
+        // #197 P8 (Dangerous Terrain Debuff) -> #434: OPR 3.5 reused the name six armies wide - four books printed
+        // the deferred "counts as being in Dangerous Terrain once (next time the effect would apply)", while Lust
+        // Disciples and War Disciples printed an IMMEDIATE "must take a Dangerous Terrain test", which the importer
+        // renamed to "Dangerous Terrain Debuff (Immediate)" for those two armies. OPR 3.6 prints the deferred text
+        // ("... in line of sight, which counts as being in Dangerous terrain once ...") in all six GDF books (and
+        // all five AoF ones), so nothing is renamed any more. The "(Immediate)" definition stays only for the
+        // not-yet-rebaked 3.5 books and pre-3.6 army files that name it (#436 removes it, #438 re-bakes). The map
+        // and its plumbing stay: a future book that reuses a name for two rules needs exactly this.
+        private static readonly Dictionary<(string Army, string Rule), string> AmbiguousRuleNames = new();
 
         private static void DisambiguateAmbiguousRuleNames(BookFile book)
         {

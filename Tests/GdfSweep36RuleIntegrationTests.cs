@@ -191,6 +191,19 @@ namespace FDG.Tests
                 "control: a weapon without the champion's copy");
         }
 
+        // --- Ranged Slayer ---------------------------------------------------------------------------------------
+
+        [TestCase(false, 3, 6)]
+        [TestCase(true, 3, 4)]
+        [TestCase(false, 1, 4)]
+        public async Task RangedSlayer_ApPlusTwo_OnAHold_AgainstToughTargets(bool moved, int tough, int expected)
+        {
+            DataBinding<UnitData> shooter = MakeUnit("Hunters", 0f, 1, GdfSweep36Definitions.RangedSlayer());
+
+            Assert.That(await SaveNeeded(PlainWeapon(), MakeDefender(tough: tough), 5f, attacker: shooter, moved: moved),
+                Is.EqualTo(expected), "3.6: 'when using Hold actions and shooting', at any range");
+        }
+
         // --- Piercing Marksman / Piercing Charge ----------------------------------------------------------------
 
         [TestCase(10f, false, 5)]
@@ -377,10 +390,10 @@ namespace FDG.Tests
         }
 
         private async Task<int> SaveNeeded(Weapon weapon, DataBinding<UnitData> defender, float distance,
-            DataBinding<UnitData>? attacker = null, bool isMelee = false, bool charging = false)
+            DataBinding<UnitData>? attacker = null, bool isMelee = false, bool charging = false, bool moved = false)
         {
             attacker ??= MakeUnit("Attacker", 0f, 1, rule: null);
-            RollToHitResults hits = await Hits(weapon, defender, distance, attacker, isMelee, charging);
+            RollToHitResults hits = await Hits(weapon, defender, distance, attacker, isMelee, charging, moved);
 
             var stage = new DetermineSaveRollsNeededStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>());
             stage.NextStage.Bind("done");
@@ -394,7 +407,7 @@ namespace FDG.Tests
         }
 
         private async Task<RollToHitResults> Hits(Weapon weapon, DataBinding<UnitData> defender, float distance,
-            DataBinding<UnitData>? attacker = null, bool isMelee = false, bool charging = false)
+            DataBinding<UnitData>? attacker = null, bool isMelee = false, bool charging = false, bool moved = false)
         {
             attacker ??= MakeUnit("Attacker", 0f, 1, rule: null);
             Place(defender, distance);
@@ -402,7 +415,7 @@ namespace FDG.Tests
             var stage = new RollToHitStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>());
             stage.NextStage.Bind("done");
             var metadata = new CombatMetadata(_ctx, attacker, defender, weapon, weaponCount: 1,
-                attackerMoved: false, isMelee: isMelee, isCharging: charging);
+                attackerMoved: moved, isMelee: isMelee, isCharging: charging);
             metadata.AddResult(new DetermineHitRollResults(4, 1));
             await stage.Enter(metadata);
 

@@ -263,12 +263,11 @@ public class OprBookImporterTests
             Has.None.StartsWith("Darkborn ("), "no 3.5 variant name is introduced");
     }
 
-    // #197 P8: the same reuse, six armies wide. Four books say the picked enemy "counts as being in
-    // Dangerous Terrain once (next time the effect would apply)"; Lust Disciples and War Disciples say it
-    // "must immediately take a Dangerous Terrain test" - a different mechanic that lands whether or not
-    // the victim ever moves. Only the minority variant is renamed, so the majority keeps the corpus
-    // wording. All 14 corpus references sit on a wargear item gained from an upgrade, which is the site
-    // this fixture uses.
+    // #197 P8: the same reuse, six armies wide in 3.5 - four books said the picked enemy "counts as being in
+    // Dangerous Terrain once (next time the effect would apply)"; Lust Disciples and War Disciples said it
+    // "must immediately take a Dangerous Terrain test", renamed to "(Immediate)". #434: 3.6 prints the deferred
+    // text in all six, so the importer renames nothing. The references sit on a wargear item gained from an
+    // upgrade, which is the site this fixture uses.
     private const string TerrainDebuffJson = """
     {
       "name": "%ARMY%", "versionString": "1.0",
@@ -288,8 +287,10 @@ public class OprBookImporterTests
     }
     """;
 
-    [TestCase("Lust Disciples", "Dangerous Terrain Debuff (Immediate)")]
-    [TestCase("War Disciples", "Dangerous Terrain Debuff (Immediate)")]
+    // #434: OPR 3.6 prints the deferred Dangerous Terrain Debuff in all six books, so no army is renamed any more
+    // (3.5 renamed Lust / War Disciples' immediate variant to "Dangerous Terrain Debuff (Immediate)").
+    [TestCase("Lust Disciples", "Dangerous Terrain Debuff")]
+    [TestCase("War Disciples", "Dangerous Terrain Debuff")]
     [TestCase("Change Disciples", "Dangerous Terrain Debuff")]
     [TestCase("Havoc Brothers", "Dangerous Terrain Debuff")]
     [TestCase("Plague Disciples", "Dangerous Terrain Debuff")]
@@ -301,7 +302,7 @@ public class OprBookImporterTests
         ItemEntry item = book.Units.Single().Sections.Single().Options.Single().ItemsGained.Single();
 
         Assert.That(item.Rules, Has.One.EqualTo(new SpecialRuleEntry_Core(expected)),
-            $"{army} prints the {(expected.EndsWith("(Immediate)") ? "immediate" : "deferred")} wording");
+            $"{army} prints the deferred wording in 3.6");
     }
 
     // Every bases variant observed in the real books: round number, round oval "WxH", round "none" with a

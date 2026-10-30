@@ -119,6 +119,18 @@ namespace FDG.Tests
             new HookEntry(EHookID.Shooting_OnHitRollModifier, new Condition.MostModelsWithinInchesOfTerrain(1f),
                 new Effect.RollModifier(ERollKind.Hit, 1), ELifetime.ThisAttack));
 
+        public const string RangedSlayerText =
+            "When using Hold actions and shooting, this model's weapons get AP(+2) if most models in the target have " +
+            "Tough(3) or higher.";
+
+        /// <summary>Ranged Slayer (3.6: "when using Hold actions and shooting"; 3.5 any shooting) - the Hold read off the
+        /// hit-complete context since #434, never a spell's hits.</summary>
+        public static SpecialRuleDefinition RangedSlayer() => Unit("Ranged Slayer", RangedSlayerText,
+            new HookEntry(EHookID.Shooting_OnHitRollComplete,
+                new Condition.And(NotMelee, new Condition.And(new Condition.Not(new Condition.AfterMoving()),
+                    new Condition.And(NotSpell, new Condition.TargetMajorityHasTough(3)))),
+                new Effect.RollModifier(ERollKind.Save, -2), ELifetime.ThisAttack));
+
         /// <summary>Piercing Marksman (new in 3.6): AP(+1) shooting over 9" - not in melee, not on a spell's hits.</summary>
         public static SpecialRuleDefinition PiercingMarksman() => Unit("Piercing Marksman", PiercingMarksmanText,
             new HookEntry(EHookID.Shooting_OnHitRollComplete,

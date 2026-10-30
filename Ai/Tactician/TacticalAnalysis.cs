@@ -490,7 +490,8 @@ namespace FDG.Ai.Tactician
                 if (!model.GetIsAlive()) continue;
                 foreach (Weapon weapon in model.Weapons)
                 {
-                    if (weapon.RangeInches <= 0f) continue;
+                    // #424: the seam, not the range - an Assault pistol is priced on both sides.
+                    if (!weapon.IsRanged()) continue;
                     int referenceSave = DiceUtilities.ClampSuccessRollNeeded(4 + weapon.ArmorPenetration);
                     output += weapon.Attacks * hitChance * (referenceSave - 1) / 6f;
                 }
@@ -512,7 +513,7 @@ namespace FDG.Ai.Tactician
                 if (!model.GetIsAlive()) continue;
                 foreach (Weapon weapon in model.Weapons)
                 {
-                    if (weapon.RangeInches > 0f) continue; // melee only
+                    if (!weapon.IsMelee()) continue; // #424: the seam - "range 0 or grants melee use"
                     int referenceSave = DiceUtilities.ClampSuccessRollNeeded(4 + weapon.ArmorPenetration);
                     output += weapon.Attacks * hitChance * (referenceSave - 1) / 6f;
                 }

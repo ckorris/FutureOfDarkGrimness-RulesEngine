@@ -1313,6 +1313,11 @@ public static class CoreRuleCatalog
     /// (not RoundEnd) and the 6-token cap (<see cref="GameWideConstants.MAX_SPELL_TOKENS"/>) is clamped at
     /// grant time, not by clearing. Casting itself (spell selection, target, the 4+ roll, the ±1 friendly
     /// assist) is the Cast stage, not this definition — this just seeds the per-round token pool.
+    /// <para>#429: the description is the Core Rules v3.6.0 text verbatim (ASCII-folded). 3.6 dropped the 3.5
+    /// "target in line of sight" from this rule - LoS is now each spell's own clause
+    /// (<see cref="TargetSelector.RequireLineOfSight"/>, set by the importer) - and boosters need only be within
+    /// 18" (<see cref="GameWideConstants.CASTER_ASSIST_RANGE_INCHES"/>, no LoS). "Once per activation ... (only one
+    /// try per spell)" is the cast stage's layered Cast action with the #249 one-try-per-spell gate.</para>
     /// </summary>
     public static SpecialRuleDefinition Caster { get; } = new SpecialRuleDefinition("Caster",
         new[]
@@ -1332,7 +1337,11 @@ public static class CoreRuleCatalog
         },
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Positive,
-        Description: "At the start of each round, gains spell tokens to cast spells from its army's spell list.");
+        Description: "Gets X spell tokens at the start of each round, but can't have more than 6 at once. Once per " +
+            "activation, before attacking, spend as many tokens as the spell's value to try casting one or more spells " +
+            "(only one try per spell). Pick a target and roll one die, and on 4+ resolve the spell's effect. Models " +
+            "within 18\" of the Caster may spend any number of spell tokens at the same time before rolling to give " +
+            "the Caster +1/-1 to the roll per token.");
 
     /// <summary>
     /// Spell Amplifier (#427; Core Rules v3.6.0, new in 3.6): "Gets +1 to casting rolls." Printed on a weapon

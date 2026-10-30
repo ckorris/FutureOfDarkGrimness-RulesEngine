@@ -85,8 +85,8 @@ namespace FDG.Stages
             IUnit caster = context.ActivatingUnit.GetValue();
             PlayerID player = context.ActivatingPlayer();
 
-            // #234 — mirror of ChooseActionStage.GetCanCast's HasAttacked gate: Caster(X) is "at any point
-            // before attacking" (GF v3.5.1). ChooseActionStage won't offer Cast once the unit has attacked,
+            // #234 — mirror of ChooseActionStage.GetCanCast's HasAttacked gate: Caster(X) is "Once per activation,
+            // before attacking" (Core Rules v3.6.0). ChooseActionStage won't offer Cast once the unit has attacked,
             // but this stage is reachable directly, so the rule is enforced here too rather than trusted
             // to the menu.
             if (context.HasAttacked)

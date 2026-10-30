@@ -1707,6 +1707,21 @@ namespace FDG.Tests
                 "the wall blocks the sight line");
         }
 
+        [Test]
+        public void Caster_CarriesTheCore360Wording_WithNoLineOfSightClause()
+        {
+            string description = CoreRuleCatalog.Caster.Description;
+
+            Assert.That(description, Is.EqualTo(
+                "Gets X spell tokens at the start of each round, but can't have more than 6 at once. Once per " +
+                "activation, before attacking, spend as many tokens as the spell's value to try casting one or more " +
+                "spells (only one try per spell). Pick a target and roll one die, and on 4+ resolve the spell's " +
+                "effect. Models within 18\" of the Caster may spend any number of spell tokens at the same time " +
+                "before rolling to give the Caster +1/-1 to the roll per token."));
+            Assert.That(description, Does.Not.Contain("line of sight"), "3.6 moved LoS into each spell's own text");
+            Assert.That(description.All(c => c < 128), Is.True, "game text is ASCII-only");
+        }
+
         private static readonly Position CasterBehindWall = new Position(10f, 10f);
         private static readonly Position TargetBehindWall = new Position(10f, 20f);
 

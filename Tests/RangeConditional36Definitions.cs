@@ -27,7 +27,7 @@ namespace FDG.Tests
             "enemies over 9\"/6\" away, all models with this rule in it either get AP(+1) or get +1 to hit rolls.";
         public const string MinusHitText =
             "If most models in this unit have this rule, enemy units shooting/charging them from over 9\"/6\" away " +
-            "get -1 to hit rolls .";
+            "get -1 to hit rolls."; // #436 D-whitespace: OPR prints "rolls ." - the stray space is normalised
         public const string PlusDefenseText =
             "If most models in this unit have this rule, they get +1 to Defense rolls when shot/charged from over " +
             "9\"/6\" away.";

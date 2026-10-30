@@ -911,15 +911,13 @@ namespace FDG.Tests
                 op.TokenToGrant.Type == TokenType.SpellTokens && op.TokenToGrant.Count == 2);
         }
 
-        // Artillery (core) — +1 to hit when shooting at enemies over 9" away. Reuses
-        // the roll-modifier vocabulary. The other facets — enemies get -2 to hit from
-        // over 9", and the unit may only Hold — are separate entries (RangeModifier /
-        // RestrictActions) added when modelled.
+        // A distance-gated +1 to hit (the shape of the pre-3.6 Artillery facet; the real 3.6 Artillery - Hold and
+        // over 12" - is pinned by ArtilleryRuleIntegrationTests, #425). Reuses the roll-modifier vocabulary.
         [Test]
-        public void Artillery_WhenShootingBeyond9_AddsOneToHit()
+        public void DistanceGatedHitBonus_WhenShootingBeyond9_AddsOneToHit()
         {
             var harness = new TestRuleHarness();
-            harness.Register(new SpecialRuleDefinition("Artillery",
+            harness.Register(new SpecialRuleDefinition("Long Shot",
                 new[]
                 {
                     new HookEntry(EHookID.Shooting_OnHitRollModifier,
@@ -929,7 +927,7 @@ namespace FDG.Tests
                 },
                 NoAbilities));
 
-            IUnit attacker = harness.BuildUnit("P1", modelCount: 1, "Artillery");
+            IUnit attacker = harness.BuildUnit("P1", modelCount: 1, "Long Shot");
             IUnit target = harness.BuildUnit("P2", modelCount: 5);
 
             var ops = harness.Evaluate(attacker, ERuleSeat.Actor, new HitRollModifierContext(attacker, target, DistanceInches: 12f));

@@ -105,28 +105,41 @@ public static class CoreRuleCatalog
         Description: "Enemies shooting this unit from over 9\" away take -1 to hit.");
 
     /// <summary>
-    /// Artillery: as an attacker, +1 to hit beyond 9" (Actor); as a target, enemies shooting it from
-    /// beyond 9" take -2 to hit (Subject). Both ride the existing hit-roll-modifier sink at
-    /// <see cref="EHookID.Shooting_OnHitRollModifier"/>; the <c>DistanceGreaterThan(9)</c> condition
-    /// naturally excludes melee (melee is within 3"), so neither needs a combat-kind gate. The
-    /// "Hold-only action restriction" facet (W5) is still deferred — see Appendix C.
+    /// Artillery (#425, Core Rules v3.6.0): "When this model uses Hold actions and shoots at enemies over 12"
+    /// away, it gets +1 to hit rolls. If most models in this unit have this rule, as long as they haven't moved
+    /// during this round, enemy units shooting at them from over 12" away get -1 to hit rolls." Both facets ride
+    /// the hit-roll-modifier sink at <see cref="EHookID.Shooting_OnHitRollModifier"/>:
+    /// <list type="bullet">
+    /// <item>Actor: +1 on Not(AfterMoving) - the Hold, a 0" Advance being a move (#425 D1) - over 12".</item>
+    /// <item>Subject: -1 to the shooter, gated on <see cref="Condition.MostModelsHaveThisRule"/> (#428), on the
+    /// unit carrying no <see cref="Rules.Foundation.TokenType.MovedThisRound"/> token (stamped by MovementStage when
+    /// a move of more than 0" resolves, cleared at round end - #425 D4), and over 12".</item>
+    /// </list>
+    /// The distance is the hit context's shooting distance (closest models, base to base - the same number #432's
+    /// <c>attackedFromOver</c> reads there), and <c>DistanceGreaterThan(12)</c> excludes melee by construction
+    /// (melee is within 3"), so neither entry needs a combat-kind gate. Artillery carries no action restriction;
+    /// the artillery units that cannot move-and-shoot carry <see cref="Cumbersome"/>.
     /// </summary>
     public static SpecialRuleDefinition Artillery { get; } = new SpecialRuleDefinition("Artillery",
         new[]
         {
             new HookEntry(EHookID.Shooting_OnHitRollModifier,
-                new Condition.DistanceGreaterThan(9f),
+                new Condition.And(new Condition.Not(new Condition.AfterMoving()), new Condition.DistanceGreaterThan(12f)),
                 new Effect.RollModifier(ERollKind.Hit, Delta: +1),
                 ELifetime.ThisAttack),
             new HookEntry(EHookID.Shooting_OnHitRollModifier,
-                new Condition.And(new Condition.DistanceGreaterThan(9f), new Condition.MostModelsHaveThisRule()),
-                new Effect.RollModifier(ERollKind.Hit, Delta: -2),
+                new Condition.And(new Condition.MostModelsHaveThisRule(),
+                    new Condition.And(new Condition.Not(new Condition.TokenPresent(Rules.Foundation.TokenType.MovedThisRound)),
+                        new Condition.DistanceGreaterThan(12f))),
+                new Effect.RollModifier(ERollKind.Hit, Delta: -1),
                 ELifetime.ThisAttack,
                 ERuleSeat.Subject),
         },
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Positive,
-        Description: "Beyond 9\", this unit gets +1 to hit when shooting, and enemies shooting it take -2 to hit.");
+        Description: "When this model uses Hold actions and shoots at enemies over 12\" away, it gets +1 to hit rolls. " +
+            "If most models in this unit have this rule, as long as they haven't moved during this round, enemy units " +
+            "shooting at them from over 12\" away get -1 to hit rolls.");
 
     /// <summary>
     /// Indirect (#425, Core Rules v3.6.0): "When using Hold actions and shooting, may target enemies that are not

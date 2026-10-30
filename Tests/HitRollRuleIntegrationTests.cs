@@ -82,79 +82,8 @@ namespace FDG.Tests
             Assert.That(result.HitRollNeeded, Is.EqualTo(4), "no rules → just the attacker's quality.");
         }
 
-        // Artillery is an attacker-seat (Actor) rule: +1 to hit beyond 9", which LOWERS the
-        // threshold (easier). It reuses the distance the stage already computes — pure attach,
-        // no new wiring beyond Stealth's.
-        [Test]
-        public async Task ArtilleryAttacker_BeyondNine_LowersHitThreshold()
-        {
-            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
-            DataBinding<UnitData> defender = MakeUnit(FarPos);
-            AttachArtillery(attacker);
-
-            DetermineHitRollResults result = await RunStage(attacker, defender);
-
-            Assert.That(result.HitRollNeeded, Is.EqualTo(3),
-                "base 4, lowered by 1 because Artillery gives +1 to hit beyond 9\".");
-        }
-
-        [Test]
-        public async Task ArtilleryAttacker_WithinNine_NoChange()
-        {
-            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
-            DataBinding<UnitData> defender = MakeUnit(NearPos);
-            AttachArtillery(attacker);
-
-            DetermineHitRollResults result = await RunStage(attacker, defender);
-
-            Assert.That(result.HitRollNeeded, Is.EqualTo(4),
-                "Artillery's distance condition fails within 9\", so no modifier is applied.");
-        }
-
-        // Artillery's defensive facet: as a TARGET, enemies shooting it from beyond 9" take -2 to
-        // hit (Subject seat), which RAISES the threshold. Mirrors Stealth's defender-seat distance
-        // modifier on the same OnHitRollModifier evaluation — proves Artillery's second HookEntry fires.
-        [Test]
-        public async Task ArtilleryDefender_BeyondNine_RaisesAttackerHitThreshold()
-        {
-            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
-            DataBinding<UnitData> defender = MakeUnit(FarPos);
-            AttachArtillery(defender);
-
-            DetermineHitRollResults result = await RunStage(attacker, defender);
-
-            Assert.That(result.HitRollNeeded, Is.EqualTo(6),
-                "base 4, raised by 2 because Artillery gives enemies -2 to hit it from beyond 9\".");
-        }
-
-        [Test]
-        public async Task ArtilleryDefender_WithinNine_NoChange()
-        {
-            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
-            DataBinding<UnitData> defender = MakeUnit(NearPos);
-            AttachArtillery(defender);
-
-            DetermineHitRollResults result = await RunStage(attacker, defender);
-
-            Assert.That(result.HitRollNeeded, Is.EqualTo(4),
-                "Artillery's distance condition fails within 9\", so the -2 defensive modifier is not applied.");
-        }
-
-        // Both facets at once: an Artillery attacker (+1 → -1 threshold) shooting an Artillery defender
-        // (-2 → +2 threshold) from beyond 9". The Actor and Subject entries both fire and stack: 4 - 1 + 2 = 5.
-        [Test]
-        public async Task ArtilleryBothSeats_BeyondNine_StackActorAndSubject()
-        {
-            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
-            DataBinding<UnitData> defender = MakeUnit(FarPos);
-            AttachArtillery(attacker);
-            AttachArtillery(defender);
-
-            DetermineHitRollResults result = await RunStage(attacker, defender);
-
-            Assert.That(result.HitRollNeeded, Is.EqualTo(5),
-                "Artillery attacker +1 (−1 threshold) and Artillery defender −2 (+2 threshold) stack: 4 − 1 + 2 = 5.");
-        }
+        // Artillery's two seats (3.6: Hold + over 12" / unmoved + most models + over 12") moved to
+        // ArtilleryRuleIntegrationTests with #425.
 
         // #425 - replaces IndirectAttacker_AfterMoving_RaisesHitThreshold. Core Rules v3.6.0 dropped Indirect's
         // "-1 to hit when shooting after moving": the rule now only grants its line-of-sight and Sight-Blocker-cover
@@ -453,9 +382,6 @@ namespace FDG.Tests
 
         private static void AttachStealth(DataBinding<UnitData> unit) =>
             unit.GetValue().AttachRuleDefinition(new ResolvedRule("Stealth", CoreRuleCatalog.Stealth));
-
-        private static void AttachArtillery(DataBinding<UnitData> unit) =>
-            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Artillery", CoreRuleCatalog.Artillery));
 
         private static void AttachIndirect(DataBinding<UnitData> unit) =>
             unit.GetValue().AttachRuleDefinition(new ResolvedRule("Indirect", CoreRuleCatalog.Indirect));

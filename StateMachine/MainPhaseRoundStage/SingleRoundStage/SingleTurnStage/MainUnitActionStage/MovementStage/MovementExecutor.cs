@@ -12,7 +12,7 @@ namespace FDG.Stages
     /// post-deploy repositions).
     /// <para>
     /// The normal movement stages delegate their bodies here so there is exactly one place
-    /// that applies dangerous-terrain effects (<see cref="ApplyDangerousTerrainEffects"/>) and
+    /// that rolls the dangerous-terrain test (<see cref="RollDangerousTerrain"/>) and
     /// one place that commits positions (<see cref="CommitPositions"/>). The two stay separate
     /// methods because the normal flow runs them as distinct stages — merging them would
     /// double-apply terrain effects.
@@ -20,15 +20,16 @@ namespace FDG.Stages
     /// </summary>
     public static class MovementExecutor
     {
-        /// <summary>The batched dangerous-terrain test result: the single roll (one d6 per testing model),
-        /// how many models tested, total wounds rolled (fractional under the probabilistic roller), the
-        /// per-model wounds still PENDING, and who is testing. Returned so the (async) caller can present
-        /// one dice beat for the whole batch and then land the wounds - see
-        /// <see cref="ResolveDangerousTerrain"/>.</summary>
+        /// <summary>The batched dangerous-terrain test result: the single roll (#420: one d6 per wound it
+        /// would take to fully destroy the unit), how many dice that was, total wounds rolled (fractional
+        /// under the probabilistic roller), the per-model wounds still PENDING, and who is testing. Returned
+        /// so the (async) caller can present one dice beat for the whole batch and then land the wounds -
+        /// see <see cref="ResolveDangerousTerrain"/>.</summary>
         public readonly struct DangerousTerrainResult
         {
             public readonly IDiceResults? Roll;
-            public readonly int ModelCount;
+            /// <summary>The dice rolled: the unit's wounds to destroy at the moment of the test.</summary>
+            public readonly int DiceCount;
             public readonly float Wounds;
             /// <summary>The wounds this test owes, NOT yet applied. Landed by <see cref="ResolveDangerousTerrain"/>.</summary>
             public readonly IReadOnlyList<PendingModelWound> PendingWounds;
@@ -39,21 +40,25 @@ namespace FDG.Stages
             /// </summary>
             public readonly IUnit? Unit;
 
-            public DangerousTerrainResult(IDiceResults? roll, int modelCount, float wounds,
+            public DangerousTerrainResult(IDiceResults? roll, int diceCount, float wounds,
                 IReadOnlyList<PendingModelWound> pendingWounds, IUnit? unit)
             {
-                Roll = roll; ModelCount = modelCount; Wounds = wounds;
+                Roll = roll; DiceCount = diceCount; Wounds = wounds;
                 PendingWounds = pendingWounds; Unit = unit;
             }
-            public bool AnyTested => ModelCount > 0 && Roll != null && Unit != null;
+            public bool AnyTested => DiceCount > 0 && Roll != null && Unit != null;
             public static DangerousTerrainResult None =>
                 new DangerousTerrainResult(null, 0, 0f, Array.Empty<PendingModelWound>(), null);
         }
 
         /// <summary>
-        /// Every model whose path crosses dangerous terrain takes a test; they all roll together in ONE
-        /// batch (a wound on a 1). Batching is what lets the probabilistic roller work properly here -- a
-        /// single N-die roll yields the expected number of 1s, which N separate decisive rolls could not.
+        /// 3.6 (#420): "Units with models moving across Dangerous terrain ... must roll as many dice as the
+        /// number of wounds it would take to fully destroy them, and for each roll of 1 the unit takes one
+        /// wound." So ANY model whose path crosses dangerous terrain (or any moving model, under a "counts
+        /// as Dangerous" grant) puts the whole UNIT to the test, and the unit rolls ONE batch of
+        /// <see cref="IUnitExtensions.GetWoundsToDestroy"/> dice - not a die per crossing model. Batching is
+        /// what lets the probabilistic roller work properly here -- a single N-die roll yields the expected
+        /// number of 1s, which N separate decisive rolls could not.
         /// <para>
         /// Rolls only: the wounds come back PENDING and are landed later by
         /// <see cref="ResolveDangerousTerrain"/>, after the move has been animated, so a casualty falls
@@ -79,21 +84,24 @@ namespace FDG.Stages
             // its path actually crosses — so the no-dangerous-on-table early-out doesn't apply.
             if (dangerous.Count == 0 && !countsAsInDangerousTerrain) return DangerousTerrainResult.None;
 
-            List<IModel> testers = new List<IModel>();
+            // One crossing model is enough to put the unit to the test; the rest of the unit rolls with it.
+            bool anyModelCrosses = false;
             foreach (ModelMoveEntry move in paths)
             {
                 if (move.Positions.Count == 0) continue;
                 if (!countsAsInDangerousTerrain
                     && !MovementUtilities.DoesPathCrossDangerousTerrain(move, dangerous)) continue;
-                testers.Add(move.Model.GetValue());
+                anyModelCrosses = true;
+                break;
             }
+            if (!anyModelCrosses) return DangerousTerrainResult.None;
 
-            return RollBatch(gameContext, testers, unit);
+            return RollBatch(gameContext, unit);
         }
 
         /// <summary>
-        /// A dangerous-terrain test forced on <paramref name="unit"/> without any move: every LIVING model
-        /// tests, wherever it stands. The immediate arm of #197 P8's Dangerous Terrain Debuff
+        /// A dangerous-terrain test forced on <paramref name="unit"/> without any move: the unit rolls one
+        /// die per wound it would take to destroy it (#420), wherever it stands. The immediate arm of #197 P8's Dangerous Terrain Debuff
         /// ("pick one enemy unit within 18\", which must immediately take a Dangerous Terrain test") —
         /// distinct from the deferred "counts as being in Dangerous Terrain once" arm, which rides the
         /// unit's next move through <see cref="RollDangerousTerrain"/> instead.
@@ -110,47 +118,27 @@ namespace FDG.Stages
         {
             if (ignoresDangerousTerrain) return DangerousTerrainResult.None;
 
-            List<IModel> testers = unit.Models.Where(model => model.GetIsAlive()).ToList();
-            return RollBatch(gameContext, testers, unit);
+            return RollBatch(gameContext, unit);
         }
 
         /// <summary>
-        /// The batched roll shared by the move-driven and forced tests: ONE roll of N d6 for N testing
-        /// models, a wound per 1. Batching is what lets the probabilistic roller work here — a single
-        /// N-die roll yields the expected number of 1s, which N separate decisive rolls could not.
+        /// The batched roll shared by the move-driven and forced tests: ONE roll of N d6 for the N wounds it
+        /// would take to destroy the unit, each 1 a wound to the unit (#420). The rolling, the
+        /// probabilistic spread and the wound assignment are <see cref="DangerousTerrainBatch"/>'s, shared
+        /// with the transport spillout test; this just carries the result in the movement flow's shape.
         /// </summary>
-        private static DangerousTerrainResult RollBatch(IGameContext gameContext, IReadOnlyList<IModel> testers,
-            IUnit unit)
+        private static DangerousTerrainResult RollBatch(IGameContext gameContext, IUnit unit)
         {
-            if (testers.Count == 0) return DangerousTerrainResult.None;
+            Rules.Dispatch.DangerousTerrainBatch.Outcome test = Rules.Dispatch.DangerousTerrainBatch.Roll(unit, gameContext.DiceRoller,
+                gameContext.Settings.RandomnessType);
+            if (test.DiceCount <= 0) return DangerousTerrainResult.None;
 
-            IDiceResults roll = gameContext.DiceRoller.Roll(6, testers.Count);
-            float ones = roll.At(1); // 1s are wounds (fractional under the probabilistic roller)
+            List<PendingModelWound> pending = test.PendingWounds
+                .Select(w => new PendingModelWound(w.Model, w.Wounds)).ToList();
 
-            List<PendingModelWound> pending = new List<PendingModelWound>();
-            float woundsRolled;
-            if (gameContext.Settings.RandomnessType == ERandomnessType.Probabilistic)
-            {
-                // Spread the expected wounds evenly -- each model carried its own 1/6 chance of a 1.
-                float perModel = ones / testers.Count;
-                if (perModel > 0f)
-                {
-                    foreach (IModel tester in testers)
-                        pending.Add(new PendingModelWound(tester, perModel));
-                }
-                woundsRolled = ones;
-            }
-            else
-            {
-                // Realistic: a whole number of 1s came up; one wound apiece to that many models.
-                int wounds = (int)MathF.Round(ones);
-                for (int i = 0; i < wounds && i < testers.Count; i++)
-                    pending.Add(new PendingModelWound(testers[i], 1f));
-                woundsRolled = wounds;
-            }
-
-            gameContext.Log($"{unit.Name}: {testers.Count} model(s) tested dangerous terrain - {woundsRolled:0.##} wound(s) dealt.");
-            return new DangerousTerrainResult(roll, testers.Count, woundsRolled, pending, unit);
+            gameContext.Log($"{unit.Name}: dangerous terrain test - {test.DiceCount} " +
+                $"{(test.DiceCount == 1 ? "die" : "dice")} (wounds to destroy), {test.Wounds:0.##} wound(s) dealt.");
+            return new DangerousTerrainResult(test.Roll, test.DiceCount, test.Wounds, pending, unit);
         }
 
         /// <summary>
@@ -194,7 +182,7 @@ namespace FDG.Stages
 
         /// <summary>
         /// Lands a rolled dangerous-terrain batch: the whole roll as a single <see cref="DiceRolledBeat"/>
-        /// (one d6 per testing model: 2+ safe/green, a 1 a wound), then the wounds themselves, each
+        /// (one d6 per wound the unit would need to be destroyed: 2+ safe/green, a 1 a wound), then the wounds themselves, each
         /// model's death or flinch animating as its wound lands (<see cref="CasualtyPresentation"/>).
         /// Shared by the normal-move stage and the out-of-band (triggered) move so a Vanguard / forced
         /// move shows the same sequence the player sees on a normal move.
@@ -214,7 +202,8 @@ namespace FDG.Stages
                 ? "All safe"
                 : $"{result.Wounds:0.##} wound{(result.Wounds == 1f ? "" : "s")}";
             await gameContext.Presenter.Present(DiceRolledBeat.From(result.Roll!, successThreshold: 2,
-                gameContext.Settings.RandomnessType, "Dangerous Terrain", summary));
+                gameContext.Settings.RandomnessType, "Dangerous Terrain", summary,
+                context: DescribeDice(unit, result.DiceCount)));
 
             bool wasAlive = unit.GetIsAlive();
 
@@ -231,6 +220,12 @@ namespace FDG.Stages
                 await UnitDestructionNotifier.NotifyUnitDestroyed(gameContext, unit, killer: null);
             }
         }
+
+        /// <summary>The "who and how many" line under a dangerous-terrain dice row (#420): the pool is the
+        /// unit's wounds to destroy, and a player who sees nine dice for a three-model squad should be able
+        /// to read why. Shared with the spillout presentation.</summary>
+        public static string DescribeDice(IUnit unit, int diceCount) =>
+            $"{unit.Name}: {diceCount} {(diceCount == 1 ? "die" : "dice")} (wounds to destroy)";
 
         /// <summary>
         /// Move <paramref name="unit"/> along <paramref name="paths"/>, validated against a single

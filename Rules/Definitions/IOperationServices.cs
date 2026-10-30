@@ -102,7 +102,8 @@ public interface IOperationServices
 
     /// <summary>
     /// #197 P8: <paramref name="unit"/> takes a dangerous-terrain test on the spot, without moving —
-    /// one batched d6 per living model, a wound on a 1, landed through the same dice beat, casualty
+    /// one batched d6 per wound it would take to destroy it (3.6, #420), a wound to the unit on each 1,
+    /// landed through the same dice beat, casualty
     /// animation and destruction seam a real terrain crossing uses. A target that ignores all terrain
     /// (Flying) takes no test at all, matching what it would suffer walking through the real thing.
     /// Resolution of <see cref="RuleOperation.InvokeDangerousTerrainTest"/>.

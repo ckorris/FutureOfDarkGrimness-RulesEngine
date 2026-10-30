@@ -1044,8 +1044,8 @@ public abstract record RuleOperation
     }
 
     /// <summary>
-    /// <see cref="Unit"/> takes a dangerous-terrain test right now, standing still: one d6 per living
-    /// model, a wound on a 1. Resolution of <see cref="Effect.DangerousTerrainTest"/> (#197 P8, the
+    /// <see cref="Unit"/> takes a dangerous-terrain test right now, standing still: one d6 per wound it
+    /// would take to destroy it (3.6, #420), a wound to the unit on each 1. Resolution of <see cref="Effect.DangerousTerrainTest"/> (#197 P8, the
     /// immediate arm of Dangerous Terrain Debuff).
     /// <para>
     /// An <see cref="ExecutableOperation"/> rather than a stage-folded op because it deals wounds and

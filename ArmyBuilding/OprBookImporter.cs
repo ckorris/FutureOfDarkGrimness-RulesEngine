@@ -762,7 +762,7 @@ namespace FDG.ArmyBuilding
         private static SpecialRuleDefinition SynthesizeCountAsTerrainRule(string spellName, ECountAsTerrain kind)
         {
             string consequence = kind == ECountAsTerrain.Dangerous
-                ? "each moving model rolls a d6, taking a wound on a 1"
+                ? "the unit rolls a die per wound it would take to destroy it, taking a wound on each 1"
                 : $"its move is capped at {FDG.GameWideConstants.DIFFICULT_TERRAIN_MOVE_CAP_INCHES:0}\"";
             return new SpecialRuleDefinition($"{spellName} Effect",
                 new[]

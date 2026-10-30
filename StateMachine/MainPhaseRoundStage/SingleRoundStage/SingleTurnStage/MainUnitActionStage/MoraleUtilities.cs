@@ -189,14 +189,16 @@ namespace FDG.Stages
         /// result of 1-X the unit takes one wound, which can't be ignored." One batched roll, so the
         /// probabilistic roller yields the expected number of low faces rather than N decisive dice.
         /// <para>
-        /// The pool is FLOORED from the unit's remaining wounds, the P17d Reanimation precedent: a
-        /// fractional tail under the probabilistic roller cannot buy a whole die, and dice counts stay
-        /// integral without int-locking a roll-derived value. The wounds themselves stay fractional.
+        /// The pool is <see cref="IUnitExtensions.GetWoundsToDestroy"/> (#420) - the same count the 3.6
+        /// Dangerous terrain test rolls, floored from the unit's remaining wounds (the P17d Reanimation
+        /// precedent: a fractional tail under the probabilistic roller cannot buy a whole die, and dice
+        /// counts stay integral without int-locking a roll-derived value). The wounds themselves stay
+        /// fractional.
         /// </para>
         /// </summary>
         private static async Task RollSelfWoundPool(IGameContext gameContext, IUnit unit, int maxRoll)
         {
-            int pool = (int)unit.RemainingWounds;
+            int pool = unit.GetWoundsToDestroy();
             if (pool <= 0) return;
 
             IDiceResults roll = gameContext.DiceRoller.Roll(6, pool);

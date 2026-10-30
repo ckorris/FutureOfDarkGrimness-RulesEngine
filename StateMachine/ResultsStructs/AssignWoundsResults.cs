@@ -69,15 +69,29 @@ namespace FDG
         {
         }
 
-        public AssignWoundsResults(DataBinding<UnitData> defendingUnit, IReadOnlyList<WoundPacket> packets)
+        public AssignWoundsResults(UnitData defendingUnit, float totalWoundsToAssign)
+            : this(defendingUnit, PacketsFor(totalWoundsToAssign))
         {
-            _heroModelId = defendingUnit.GetValue().HeroAttachment?.HeroModelId;
+        }
+
+        public AssignWoundsResults(DataBinding<UnitData> defendingUnit, IReadOnlyList<WoundPacket> packets)
+            : this(defendingUnit.GetValue(), packets)
+        {
+        }
+
+        /// <summary>
+        /// The same assignment built straight from the unit, for callers that hold an <see cref="IUnit"/>
+        /// rather than a store binding (the Rules-layer dangerous-terrain batch, #420).
+        /// </summary>
+        public AssignWoundsResults(UnitData defendingUnit, IReadOnlyList<WoundPacket> packets)
+        {
+            _heroModelId = defendingUnit.HeroAttachment?.HeroModelId;
 
             // #006: order the hero last so AutoFill (and any in-order fill) spares it until the rank and
             // file are full — the rule's "heroes are assigned wounds last, even if already wounded".
             // #023's PreAssignToAlreadyWoundedModels then walks this same order, and the TryAddWounds hero
             // guard defers the hero even if it is already wounded — so the two orderings compose correctly.
-            List<DataBinding<ModelData>> alive = defendingUnit.ModelBindings()
+            List<DataBinding<ModelData>> alive = defendingUnit.ModelBindings
                 .Where(model => model.GetIsAlive()).ToList();
 
             PendingWounds = new List<PendingWounds>();
@@ -111,6 +125,26 @@ namespace FDG
             PendingWounds = new List<PendingWounds> { new PendingWounds(singleModel) };
             _packets = Meaningful(packets);
             _commits = new List<PacketCommit>();
+        }
+
+        /// <summary>
+        /// #420: where <paramref name="wounds"/> wounds owed by <paramref name="unit"/> land when nobody
+        /// chooses - a pool the unit takes as a whole ("the unit takes one wound" per 1 on a Dangerous
+        /// terrain die), not an attack the owner allocates. It is the normal assignment run to completion
+        /// with <see cref="AutoFill"/>, so every ordering rule holds without a copy of them here: an
+        /// already-wounded model is finished first (#023), a model mid-fill before another is started
+        /// (#024), rank and file in unit order, a joined hero last even if already wounded (#006). Wounds
+        /// beyond what the unit can absorb are overkill and dropped. The entries come back in assignment
+        /// order and only those that received wounds; nothing is applied - landing and presenting them is
+        /// the caller's (<c>CasualtyPresentation</c>).
+        /// </summary>
+        public static List<PendingWounds> AutoAssign(UnitData unit, float wounds)
+        {
+            if (wounds <= WoundEpsilon) return new List<PendingWounds>();
+
+            var assignment = new AssignWoundsResults(unit, wounds);
+            assignment.AutoFill();
+            return assignment.PendingWounds.Where(entry => entry.Wounds > 0f).ToList();
         }
 
         private static List<WoundPacket> PacketsFor(float totalWoundsToAssign) =>

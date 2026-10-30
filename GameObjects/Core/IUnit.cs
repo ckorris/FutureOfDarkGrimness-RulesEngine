@@ -80,6 +80,30 @@ namespace FDG
         }
 
         /// <summary>
+        /// #420: "the number of wounds it would take to fully destroy" the unit - the sum, over its LIVING
+        /// models, of each model's remaining wounds (Tough-aware: a Tough(6) hero with 2 wounds taken
+        /// counts 4, three Tough(3) models count 9, a plain model counts 1). The pool size of every 3.6
+        /// "roll as many dice as the wounds it would take to destroy it" test: the Dangerous terrain test
+        /// (movement, the forced Debuff, a destroyed transport's spillout) and No Retreat.
+        /// <para>
+        /// A joined hero's model is part of <see cref="IUnit.Models"/>, so its wounds count. Dead models
+        /// contribute nothing, even one with overkill recorded against it. The total is FLOORED (with a
+        /// float-noise epsilon): under the probabilistic roller a fractional tail cannot buy a whole die -
+        /// the P17d Reanimation precedent - while the wounds those dice yield stay fractional.
+        /// </para>
+        /// </summary>
+        public static int GetWoundsToDestroy(this IUnit unit)
+        {
+            float total = 0f;
+            foreach (IModel model in unit.Models)
+            {
+                if (!model.GetIsAlive()) continue;
+                total += Math.Max(0f, model.TotalWounds - model.WoundsDealt);
+            }
+            return (int)MathF.Floor(total + AssignWoundsResults.WoundEpsilon);
+        }
+
+        /// <summary>
         /// Whether the unit is at half strength or less, the threshold the morale rules use to
         /// decide Rout vs. Shaken (and the wound-driven morale trigger). The measure is
         /// shape-dependent, matching the GDF rulebook:

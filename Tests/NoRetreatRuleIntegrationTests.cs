@@ -96,6 +96,26 @@ namespace FDG.Tests
                 "five dice, all in the 1-3 band, so five wounds - the whole unit");
         }
 
+        [Test]
+        public async Task TheConversion_PoolIsTheSharedWoundsToDestroyCount_ForAWoundedToughUnit()
+        {
+            // #420: No Retreat and the 3.6 Dangerous terrain test both roll "as many dice as the number of
+            // wounds it would take to fully destroy" the unit, and share one count. Three Tough(3) models
+            // with 5 wounds taken are 4 wounds from destruction, so 4 dice - every one a wounding face here.
+            var ctx = Context(face: 3);
+            DataBinding<UnitData> unit = MakeUnit(modelCount: 3, withRule: 3, tough: 3);
+            unit.GetValue().Models[0].DealWounds(3f);
+            unit.GetValue().Models[1].DealWounds(2f);
+            Assert.That(unit.GetValue().GetWoundsToDestroy(), Is.EqualTo(4), "precondition");
+            Shake(unit);
+
+            await MoraleUtilities.TakeMoraleTest(ctx, unit.GetValue(), Quality,
+                failureCausesShakenOrRout: true);
+
+            Assert.That(unit.GetValue().RemainingWounds, Is.EqualTo(0f),
+                "four dice, four wounds - exactly what is left of the unit");
+        }
+
         [TestCase(3, 3f, TestName = "SelfWoundPool_AThreeWounds")]
         [TestCase(4, 0f, TestName = "SelfWoundPool_AFourDoesNot")]
         public async Task TheSelfWoundBand_IsOneToThree(int face, float expectedWounds)
@@ -253,12 +273,13 @@ namespace FDG.Tests
         // A unit of one-wound models, the first `withRule` of which carry No Retreat on the MODEL. Per-model
         // attachment is what lets these tests state a majority at all - a unit-level rule would always be
         // carried by every model.
-        private DataBinding<UnitData> MakeUnit(int modelCount, int withRule)
+        private DataBinding<UnitData> MakeUnit(int modelCount, int withRule, int tough = 1)
         {
             var modelBindings = new List<DataBinding<ModelData>>();
             for (int i = 0; i < modelCount; i++)
             {
                 var model = new ModelData(0.5f, new List<Weapon>(), new Position(i, 0), _store);
+                if (tough > 1) model.SetMaxWounds(tough);
                 if (i < withRule) model.AttachRuleDefinition(new ResolvedRule(RuleName, NoRetreat));
                 modelBindings.Add(_store.GetDataBinding<ModelData>(_store.Create(model)));
             }

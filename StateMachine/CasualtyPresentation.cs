@@ -77,22 +77,25 @@ namespace FDG.Stages
         }
 
         /// <summary>
-        /// Deal <paramref name="wounds"/> wounds owed by the UNIT as a whole: fill living models
-        /// front-to-back, each absorbing up to its own remaining wounds, present every casualty through
-        /// <see cref="ApplyAndPresent"/>, and fire the destruction seam if the unit dies of it. Surplus
-        /// beyond the unit's total capacity is dropped rather than wrapping.
+        /// Deal <paramref name="wounds"/> wounds owed by the UNIT as a whole: assigned the normal way, run
+        /// to completion with no player choice (<see cref="AssignWoundsResults.AutoAssign"/> - an
+        /// already-wounded model first, rank and file in unit order, a joined hero last), present every
+        /// casualty through <see cref="ApplyAndPresent"/>, and fire the destruction seam if the unit dies
+        /// of it. Surplus beyond the unit's total capacity is dropped rather than wrapping.
         ///
         /// <para>
-        /// This is the shape a rule takes when the unit owes a POOL of wounds, as opposed to the
-        /// dangerous-terrain shape where every model rolls its own die and wounds land where they fell.
-        /// Callers so far: No Retreat's failed-morale conversion (#197 P7) and Hazardous's overheat
-        /// (#197). The <paramref name="wounds"/> total stays FRACTIONAL — it comes off a histogram, and a
+        /// This is the shape a rule takes when the unit owes a POOL of wounds. Callers so far: No
+        /// Retreat's failed-morale conversion (#197 P7) and Hazardous's overheat (#197). (The 3.6
+        /// dangerous-terrain test, #420, owes the unit a pool too and assigns it the same way, but rolls
+        /// its dice early and lands them late, so it plans through
+        /// <see cref="Rules.Dispatch.DangerousTerrainBatch"/> and lands with <see cref="ApplyAndPresent"/>.)
+        /// The <paramref name="wounds"/> total stays FRACTIONAL - it comes off a histogram, and a
         /// roll-derived wound total is never int-locked (only dice-POOL sizes are floored).
         /// </para>
         ///
         /// <para>
         /// By construction this bypasses saves and the wound-ignore pipeline: self-inflicted damage is
-        /// not an attack, so there is no save to roll and no Regeneration read — the same treatment
+        /// not an attack, so there is no save to roll and no Regeneration read - the same treatment
         /// dangerous terrain already gets. Owner-ruled 2026-07-29 for Hazardous, whose corpus text does
         /// not say "can't be ignored", on consistency with every other self-harm path in the engine.
         /// </para>
@@ -102,7 +105,7 @@ namespace FDG.Stages
             if (wounds <= 0f) return;
 
             bool wasAlive = unit.GetIsAlive();
-            await ApplyAndPresent(gameContext, SpreadWounds(unit, wounds), unit.ID, unit.Name);
+            await ApplyAndPresent(gameContext, PlanUnitWounds(unit, wounds), unit.ID, unit.Name);
 
             // Self-inflicted, but a destruction like any other: OwnerDestroyed marks on other units have
             // to clear and a wrecked Transport has to spill its cargo. Killer-less, so no attacker is
@@ -114,27 +117,18 @@ namespace FDG.Stages
         }
 
         /// <summary>
-        /// Fills living models front-to-back, each absorbing up to its own remaining wounds - the way
-        /// damage removes models, not the per-model spread a dangerous-terrain test uses (there every
-        /// model rolls its own die; here one pool is owed by the unit).
+        /// Where <paramref name="wounds"/> owed by the unit land, as pending wounds (nothing applied).
+        /// The engine's normal assignment order, with no player choice - see
+        /// <see cref="AssignWoundsResults.AutoAssign"/>.
         /// </summary>
-        private static List<PendingModelWound> SpreadWounds(IUnit unit, float wounds)
+        private static List<PendingModelWound> PlanUnitWounds(IUnit unit, float wounds)
         {
-            var pending = new List<PendingModelWound>();
-            float remaining = wounds;
-            foreach (IModel model in unit.Models)
-            {
-                if (remaining <= 0f) break;
-                if (!model.GetIsAlive()) continue;
+            // Every live IUnit is a UnitData; the model-binding list the assignment fills lives there.
+            if (unit is not UnitData data)
+                throw new InvalidOperationException($"Unit wounds need a live UnitData, got {unit.GetType().Name}.");
 
-                float capacity = model.TotalWounds - model.WoundsDealt;
-                float take = Math.Min(capacity, remaining);
-                if (take <= 0f) continue;
-
-                pending.Add(new PendingModelWound(model, take));
-                remaining -= take;
-            }
-            return pending;
+            return AssignWoundsResults.AutoAssign(data, wounds)
+                .Select(entry => new PendingModelWound(entry.Model.GetValue(), entry.Wounds)).ToList();
         }
 
         /// <summary>

@@ -224,9 +224,10 @@ public static class TransportUtilities
     public readonly record struct SpilloutWound(IModel Model, float Wounds);
 
     /// <summary>
-    /// The batched spillout dangerous-terrain test: the single roll (one d6 per living occupant model),
-    /// how many models tested, total wounds rolled (fractional under the probabilistic roller), and the
-    /// per-model wounds still PENDING. The same shape as <c>MovementExecutor.DangerousTerrainResult</c>.
+    /// The batched spillout dangerous-terrain test: the single roll (#420: one d6 per wound it would take
+    /// to fully destroy the occupant), how many dice that was, total wounds rolled (fractional under the
+    /// probabilistic roller), and the per-model wounds still PENDING. The same shape as
+    /// <c>MovementExecutor.DangerousTerrainResult</c>; both are rolled by <see cref="DangerousTerrainBatch"/>.
     /// <para>
     /// The wounds are deliberately left unapplied: the stage lands each one as it presents that model's
     /// casualty beat, so the front-end never sees a model dead in state with no death beat registered.
@@ -237,16 +238,17 @@ public static class TransportUtilities
     public readonly struct SpilloutRollResult
     {
         public readonly IDiceResults? Roll;
-        public readonly int ModelCount;
+        /// <summary>The dice rolled: the occupant's wounds to destroy when it spilled out.</summary>
+        public readonly int DiceCount;
         public readonly float Wounds;
         /// <summary>The wounds this test owes, NOT yet applied.</summary>
         public readonly IReadOnlyList<SpilloutWound> PendingWounds;
-        public SpilloutRollResult(IDiceResults? roll, int modelCount, float wounds,
+        public SpilloutRollResult(IDiceResults? roll, int diceCount, float wounds,
             IReadOnlyList<SpilloutWound> pendingWounds)
         {
-            Roll = roll; ModelCount = modelCount; Wounds = wounds; PendingWounds = pendingWounds;
+            Roll = roll; DiceCount = diceCount; Wounds = wounds; PendingWounds = pendingWounds;
         }
-        public bool AnyTested => ModelCount > 0 && Roll != null;
+        public bool AnyTested => DiceCount > 0 && Roll != null;
         public static SpilloutRollResult None =>
             new SpilloutRollResult(null, 0, 0f, Array.Empty<SpilloutWound>());
     }
@@ -254,9 +256,10 @@ public static class TransportUtilities
     /// <summary>
     /// The deterministic consequences a transport's destruction inflicts on one occupant once it has been
     /// placed: it is no longer embarked (the <see cref="TokenType.EmbarkedIn"/> link is cut), it becomes
-    /// Shaken, and every living model takes a dangerous-terrain test (a roll of 1 deals one wound). The
-    /// tests all roll together in ONE batch via <paramref name="diceRoller"/> — a single row of dice
-    /// instead of a die per model — mirroring <c>MovementExecutor.ApplyDangerousTerrainEffects</c>;
+    /// Shaken, and it takes "a Dangerous terrain test" (#420: one die per wound it would take to fully
+    /// destroy it, each 1 a wound to the occupant). The dice all roll together in ONE batch via
+    /// <paramref name="diceRoller"/> — a single row of dice — through the same
+    /// <see cref="DangerousTerrainBatch"/> the movement test uses;
     /// batching is also what lets the probabilistic roller yield the expected number of 1s, which N
     /// separate decisive rolls could not. The placement itself — the owner choosing where, within 6" of
     /// the wreck — is the stage's interactive part and is NOT done here; this is the slice of spillout
@@ -282,37 +285,14 @@ public static class TransportUtilities
         shakenClear.AddRange(occupant.Models.Select(model => model.Tokens));
         new TokenClearService().ClearForHook(EHookID.Morale_OnShakenApplied, shakenClear);
 
-        List<IModel> testers = occupant.Models.Where(model => model.GetIsAlive()).ToList();
-        if (testers.Count == 0) return SpilloutRollResult.None;
+        // The Transport rule defines the occupant's test as "a Dangerous terrain test", so it is the shared
+        // 3.6 one (#420): one batched d6 per wound it would take to destroy the occupant, each 1 a wound to
+        // the occupant. A unit with nothing left alive rolls nothing.
+        DangerousTerrainBatch.Outcome test = DangerousTerrainBatch.Roll(occupant, diceRoller, randomness);
+        if (test.DiceCount <= 0) return SpilloutRollResult.None;
 
-        // One batched roll: N d6 at once. Realistic -> N concrete dice; probabilistic -> the N-die
-        // distribution (expected 1s).
-        IDiceResults roll = diceRoller.Roll(6, testers.Count);
-        float ones = roll.At(1); // 1s are wounds (fractional under the probabilistic roller)
-
-        List<SpilloutWound> pending = new List<SpilloutWound>();
-        float woundsRolled;
-        if (randomness == ERandomnessType.Probabilistic)
-        {
-            // Spread the expected wounds evenly — each model carried its own 1/6 chance of a 1.
-            float perModel = ones / testers.Count;
-            if (perModel > 0f)
-            {
-                foreach (IModel model in testers)
-                    pending.Add(new SpilloutWound(model, perModel));
-            }
-            woundsRolled = ones;
-        }
-        else
-        {
-            // Realistic: a whole number of 1s came up; one wound apiece to that many models.
-            int wounds = (int)MathF.Round(ones);
-            for (int i = 0; i < wounds && i < testers.Count; i++)
-                pending.Add(new SpilloutWound(testers[i], 1f));
-            woundsRolled = wounds;
-        }
-
-        return new SpilloutRollResult(roll, testers.Count, woundsRolled, pending);
+        return new SpilloutRollResult(test.Roll, test.DiceCount, test.Wounds,
+            test.PendingWounds.Select(w => new SpilloutWound(w.Model, w.Wounds)).ToList());
     }
 
     // --- Effective position (opt-in seam) --------------------------------------------------------

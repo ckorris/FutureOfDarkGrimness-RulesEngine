@@ -110,11 +110,10 @@ namespace FDG.Tests
         }
 
         [Test]
-        public async Task TheImmediateArm_TestsEveryLivingModel_AndNoDeadOnes()
+        public async Task TheImmediateArm_RollsOneDiePerRemainingWound_AndNoDeadOnes()
         {
-            // "each of its models" is per-model, not per-unit: a five-model unit takes five dice, not one.
-            // Dead models are already off the table and must not draw a die - which would both inflate the
-            // batch and hand wounds to corpses.
+            // 3.6 (#420): the unit rolls one die per wound it would take to destroy it, so a dead model
+            // adds none - a die for a corpse would both inflate the batch and hand wounds to nobody.
             // FixedFaceDiceRoller, not FixedDiceRoller: the latter reports one die however many were
             // rolled, which would hide exactly the batch-size error this test is for.
             var ctx = new TriggeredMoveTestContext(_store, new CannedRequester(),
@@ -123,12 +122,12 @@ namespace FDG.Tests
             ModelData corpse = (ModelData)victim.GetValue().Models[2];
             corpse.DealWounds(corpse.TotalWounds);
 
-            // ModelCount is the batch size, and it is the only place the corpse is observable: a wound
+            // DiceCount is the batch size, and it is the only place the corpse is observable: a wound
             // handed to an already-dead model clamps at its total, so the wound tallies alone would stay
             // green with the dead filter removed.
             MovementExecutor.DangerousTerrainResult roll =
                 MovementExecutor.RollForcedDangerousTerrain(ctx, victim.GetValue());
-            Assert.That(roll.ModelCount, Is.EqualTo(2), "two living models, two dice - the corpse rolls none");
+            Assert.That(roll.DiceCount, Is.EqualTo(2), "two living 1-wound models, two dice - the corpse rolls none");
 
             await ForceTest(ctx, victim);
 

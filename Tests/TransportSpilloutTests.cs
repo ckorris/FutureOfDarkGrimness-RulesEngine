@@ -274,7 +274,9 @@ namespace FDG.Tests
             DataBinding<UnitData> occupant = MakeUnit(_player, "Grunts", 2, new Position(0f, 0f));
             TransportUtilities.Embark(occupant.GetValue(), transport.GetValue());
 
-            await RunDangerousCrossing(transport, new FixedFaceDiceRoller(1));
+            // 3.6 (#420): the Tough(3) transport rolls three dice (one per wound it would take to destroy
+            // it); one of them comes up 1. An all-1s roller would be three wounds and a wreck.
+            await RunDangerousCrossing(transport, new FixedOnesDiceRoller(1));
 
             Assert.That(transport.GetValue().GetIsAlive(), Is.True, "a Tough(3) transport survives one wound.");
             Assert.That(TransportUtilities.IsEmbarked(occupant.GetValue()), Is.True,

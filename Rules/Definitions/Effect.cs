@@ -1610,8 +1610,8 @@ public abstract record Effect
     }
 
     /// <summary>
-    /// The target takes a dangerous-terrain test immediately, standing still — one d6 per living model,
-    /// a wound on a 1 — rather than the next time it moves. The immediate arm of #197 P8's Dangerous
+    /// The target takes a dangerous-terrain test immediately, standing still — one d6 per wound it would
+    /// take to destroy it (3.6, #420), a wound to the unit on each 1 — rather than the next time it moves. The immediate arm of #197 P8's Dangerous
     /// Terrain Debuff, which two books (Lust Disciples, War Disciples) word as "must immediately take a
     /// Dangerous Terrain test" where the other four say "counts as being in Dangerous Terrain once".
     /// <para>

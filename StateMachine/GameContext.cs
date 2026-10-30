@@ -70,6 +70,19 @@ namespace FDG
         /// so a normal game never makes this call. Defaulted so no other context implements it.
         /// </summary>
         public Simulation.IActivationBoundaryHook? ActivationBoundaryHook => null;
+
+        /// <summary>
+        /// #450: the game's persistent identity (<see cref="GameProgressData.GameId"/>), set by
+        /// <c>FDGServer</c> - minted for a new game, read back on resume. Defaulted (empty) for contexts
+        /// that are not a real game.
+        /// </summary>
+        public Guid GameId => Guid.Empty;
+
+        /// <summary>
+        /// #450: where stages report round / activation boundaries for the replay. A no-op unless the
+        /// launch path handed <c>FDGServer</c> a recorder; defaulted so no other context implements it.
+        /// </summary>
+        public Replay.IReplayMarkerSink ReplayMarkers => Replay.NullReplayMarkerSink.Instance;
     }
 
     public class GameContext : IGameContext
@@ -101,6 +114,12 @@ namespace FDG
         /// <inheritdoc />
         public Simulation.IActivationBoundaryHook? ActivationBoundaryHook { get; }
 
+        /// <inheritdoc />
+        public Guid GameId { get; }
+
+        /// <inheritdoc />
+        public Replay.IReplayMarkerSink ReplayMarkers { get; }
+
         public event Action<GameResult>? OnGameCompleted;
 
         public GameContext(ITextOutput textOutput, IDiceRoller diceRoller,
@@ -111,9 +130,13 @@ namespace FDG
                 GameSettings settings,
                 GameProgressData? resumeProgress = null,
                 IRuleResolver? ruleResolver = null,
-                Simulation.IActivationBoundaryHook? activationBoundaryHook = null)
+                Simulation.IActivationBoundaryHook? activationBoundaryHook = null,
+                Guid gameId = default,
+                Replay.IReplayMarkerSink? replayMarkers = null)
         {
             ActivationBoundaryHook = activationBoundaryHook;
+            GameId = gameId;
+            ReplayMarkers = replayMarkers ?? Replay.NullReplayMarkerSink.Instance;
             TextOutput = textOutput;
             DiceRoller = diceRoller;
             Rng = GameRandom.Create(settings.DiceSeed, GameRandom.SALT_GAME_CONTEXT);

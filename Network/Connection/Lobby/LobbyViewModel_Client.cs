@@ -204,6 +204,10 @@ namespace FDG.Network.Connection.Lobby
             _messageBusClient.RegisterForMessageEvent<LaunchGameMessage>(OnLaunchGameMessageReceived);
             _messageBusClient.RegisterForMessageEvent<LobbyGameSettingsUpdate>(OnGameSettingsUpdateReceived);
             _messageBusClient.RegisterForMessageEvent<GameEndedMessage>(OnGameEndedMessageReceived);
+            // #450: the host broadcasts replay markers from launch on (the first ones before the launch message
+            // itself). Registered so the type is known and not logged as version skew; #451's client recorder
+            // is what will actually consume them.
+            _messageBusClient.RegisterForMessageEvent<ReplayMarkerMessage>(OnReplayMarkerReceived);
             _messageBusClient.RegisterForMessageEvent<LobbyJoinRejectedMessage>(OnJoinRejectedReceived);
 
             //Send greeting — includes this build's protocol version + type-map fingerprint so the host can
@@ -280,6 +284,7 @@ namespace FDG.Network.Connection.Lobby
             _messageBusClient.DeregisterForMessageEvent<LaunchGameMessage>(OnLaunchGameMessageReceived);
             _messageBusClient.DeregisterForMessageEvent<LobbyGameSettingsUpdate>(OnGameSettingsUpdateReceived);
             _messageBusClient.DeregisterForMessageEvent<GameEndedMessage>(OnGameEndedMessageReceived);
+            _messageBusClient.DeregisterForMessageEvent<ReplayMarkerMessage>(OnReplayMarkerReceived);
             _messageBusClient.DeregisterForMessageEvent<LobbyJoinRejectedMessage>(OnJoinRejectedReceived);
             _messageBusClient.Dispose(); //Detaches the bus from the network client's receive event.
 
@@ -423,6 +428,9 @@ namespace FDG.Network.Connection.Lobby
             _launchedGameId = Guid.TryParse(launchGameMessage.GameId, out Guid gameId) ? gameId.ToString("D") : null;
             OnLaunched?.Invoke(fdgGame);
         }
+
+        // #450: no client-side recording yet (#451).
+        private void OnReplayMarkerReceived(ReplayMarkerMessage _) { }
 
         private void OnGameEndedMessageReceived(GameEndedMessage gameEndedMessage)
         {

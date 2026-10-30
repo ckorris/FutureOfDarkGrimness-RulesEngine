@@ -81,6 +81,11 @@ namespace FDG.Stages
                 }
             }
 
+            // #450 replay: the activation boundary, after the simulation stop check (a stopped line activates
+            // nothing) and before this activation's first decision (a reactivation offer, then the unit pick).
+            // The unit is not known yet; MainUnitActionStage repeats the marker once it is.
+            GameContext.ReplayMarkers.ActivationStart(context.RoundCount, nextPlayerID.Value);
+
             if (_lastAnnouncedPlayer != nextPlayerID.Value)
             {
                 _lastAnnouncedPlayer = nextPlayerID.Value;

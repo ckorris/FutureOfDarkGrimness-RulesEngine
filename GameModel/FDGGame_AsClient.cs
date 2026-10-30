@@ -39,6 +39,9 @@ namespace FDG.GameModel
 
         public IReadOnlyList<PlayerID> LocalPlayerIDs => new[] { _thisPlayerID };
 
+        /// <summary>#450: clients do not record yet - #451 adds the client recorder.</summary>
+        public Replay.IReplaySource? Replay => null;
+
 
         private IReadWriteableGameDataStore _gameDataStore;
 

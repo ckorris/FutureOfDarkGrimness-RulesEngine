@@ -5,6 +5,7 @@ using FDG.Network.Connection;
 using FDG.Network.Synchronization;
 using FDG.Players;
 using FDG.Presentation;
+using FDG.Replay;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Foundation;
@@ -66,12 +67,34 @@ namespace FDG.GameModel
         // constructor's `simulation` parameter).
         private FDG.Simulation.SimulationHostOptions? _simulation;
 
+        // #450: the game's replay recorder, when the launch path asked for one (null for simulations,
+        // FdgLab and tests), and the marker sink the stages report boundaries through.
+        private ReplayRecorder? _replay;
+        private ReplayMarkerRelay? _replayMarkers;
+
+        // #450: the game's persistent identity (GameProgressData.GameId) - minted for a new game, read back
+        // (or minted, for a pre-#450 save or a compiled scenario) on resume.
+        private Guid _gameId;
+
+        /// <summary>#450: this game's persistent identity (see <see cref="GameProgressData.GameId"/>).</summary>
+        public Guid GameId => _gameId;
+
         private static bool TEST_SINGLE_TURN = false; //Turn on to skip most of the game and just do one run of a model's activation.
 
+        /// <param name="replay">#450: records the game for a replay. Real-game launch paths pass one;
+        /// simulations, FdgLab and tests pass nothing and nothing is recorded.</param>
         public FDGServer(IReadWriteableGameDataStore gameDataStore, IMessageBusHost messageBusHost,
-            GameSettings gameSettings, PlayerSlot[] playerSlots, IPresentationClock? presentationClock = null)
+            GameSettings gameSettings, PlayerSlot[] playerSlots, IPresentationClock? presentationClock = null,
+            ReplayRecorder? replay = null)
         {
             Debug.WriteLine($"Started {nameof(FDGServer)} (new game).");
+
+            _replay = replay;
+            _gameId = Guid.NewGuid();
+            // #450 D5: every game runs under a concrete seed, so its replay can always say which one. Done
+            // before anything reads the settings, so the seed the dice use is the one the progress record
+            // (and so every save) carries.
+            gameSettings = WithConcreteSeed(gameSettings);
 
             _gameDataStore = gameDataStore;
             _messageBusHost = messageBusHost;
@@ -112,9 +135,11 @@ namespace FDG.GameModel
         /// </param>
         public FDGServer(IReadWriteableGameDataStore loadedGameDataStore, IMessageBusHost messageBusHost,
             PlayerSlot[] playerSlots, IPresentationClock? presentationClock = null,
-            GameSettings? lobbySettings = null, FDG.Simulation.SimulationHostOptions? simulation = null)
+            GameSettings? lobbySettings = null, FDG.Simulation.SimulationHostOptions? simulation = null,
+            ReplayRecorder? replay = null)
         {
             _simulation = simulation;
+            _replay = replay;
             Debug.WriteLine($"Started {nameof(FDGServer)} (resume).");
 
             _gameDataStore = loadedGameDataStore;
@@ -158,7 +183,15 @@ namespace FDG.GameModel
             GameSettings settings = lobbySettings.HasValue
                 ? progress.Settings.WithResumeOverridesFrom(lobbySettings.Value)
                 : progress.Settings;
+            // #450 D5: a save from before every game was seeded resumes under a concrete seed too; written
+            // back with the rest, so the next save carries it.
+            settings = WithConcreteSeed(settings);
             progress.Settings = settings;
+            // #450: keep the game's identity across the resume; a pre-#450 save or a freshly compiled
+            // scenario has none yet, so this resume is where it is minted. Never for a simulation: it is a
+            // throwaway copy of a game, not a new one, and its runs must stay byte-identical (#191).
+            _gameId = progress.GameId != Guid.Empty || simulation != null ? progress.GameId : Guid.NewGuid();
+            progress.GameId = _gameId;
             GameProgressUtilities.WriteProgress(loadedGameDataStore, progress);
 
             var __gSrvLaunch = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
@@ -170,7 +203,10 @@ namespace FDG.GameModel
         {
             LogAndChatMessageRelayer chatMessageRelayer = new LogAndChatMessageRelayer(_playerSlotManager);
 
-            ITextOutput textOutput = new PlayerLogSender(chatMessageRelayer);
+            // The players' log. #450: when recording, the stages write through a decorator that also records
+            // each line; the recorder's own one failure line goes to the undecorated sink (no recursion).
+            ITextOutput playerOutput = new PlayerLogSender(chatMessageRelayer);
+            ITextOutput textOutput = _replay != null ? new ReplayTextOutput(playerOutput, _replay) : playerOutput;
 
             TableState tableState = new TableState(_gameDataStore);
 
@@ -178,7 +214,10 @@ namespace FDG.GameModel
             // tests stay deterministic); the GUI host injects a real-time clock so the battle
             // unfolds at a presentable tempo. State computation is never paced — only emission.
             IPresentationClock presentationClock_ = _presentationClock ?? new InstantPresentationClock();
-            PresentationRelayer presentationRelayer = new PresentationRelayer(_playerSlotManager, presentationClock_);
+            PresentationRelayer presentationRelayer = new PresentationRelayer(_playerSlotManager, presentationClock_)
+            {
+                Observer = _replay,
+            };
 
             // #191 B1 5c: a simulation answers decisions straight from the target slot's registry
             // (DirectPlayerRequester) instead of serializing them onto the bus. RequestMessageSender
@@ -192,16 +231,24 @@ namespace FDG.GameModel
             else
             {
                 playerRequester = new RequestMessageSender(_messageBusHost, _gameDataStore,
-                    _playerSlotManager, textOutput);
+                    _playerSlotManager, textOutput)
+                {
+                    Observer = _replay,
+                };
             }
 
             // #280: relay remote clients' live decision previews (ghosts / planned paths) to every
             // player. Runs on both the new-game and resume paths, GUI and headless hosts alike.
             _previewRelayer = new PreviewRelayer(_messageBusHost, _playerSlotManager, textOutput);
 
+            if (_replay != null)
+            {
+                _replayMarkers = new ReplayMarkerRelay(_replay, _messageBusHost, _gameDataStore as GameDataStore, playerOutput);
+            }
+
             _gameContext = new GameContext(textOutput, GetDiceRoller(gameSettings), playerRequester,
                 tableState, _gameDataStore, presentationRelayer, gameSettings, resumeProgress, _ruleResolver,
-                _simulation?.BoundaryHook);
+                _simulation?.BoundaryHook, _gameId, _replayMarkers);
             _gameContext.OnGameCompleted += RaiseGameCompleted;
 
             // #042 creation-time rules (Tough): set each model's max wounds now that the evaluator
@@ -214,6 +261,10 @@ namespace FDG.GameModel
                     UnitCreationRules.Apply(unitBinding.GetValue(), _gameContext.RuleEvaluator);
                 }
             }
+
+            // #450: the recording starts here - after world creation and creation rules, before the state
+            // machine runs - so snapshot 0 holds the finished world and map setup / deployment are deltas on it.
+            StartReplay(gameSettings, playerOutput, resumeProgress);
 
             if (TEST_SINGLE_TURN)
             {
@@ -253,6 +304,86 @@ namespace FDG.GameModel
             RuleResolver ruleResolver = GameBootstrap.BuildRuleResolver(playerSlots);
             _ruleResolver = ruleResolver; // #101: shared in-game for granted-rule projection (auras / buffs)
             return ruleResolver;
+        }
+
+        /// <summary>#450 D5: <paramref name="settings"/> with a seed picked for it when it has none.</summary>
+        internal static GameSettings WithConcreteSeed(GameSettings settings)
+        {
+            settings.DiceSeed ??= Random.Shared.Next();
+            return settings;
+        }
+
+        /// <summary>
+        /// #450: starts the recorder (header, store subscription) and records GameStart + snapshot 0. Any
+        /// failure is reported once and leaves the game running unrecorded - the replay must never cost the
+        /// game.
+        /// </summary>
+        private void StartReplay(GameSettings settings, ITextOutput playerOutput, GameProgressData? resumeProgress)
+        {
+            if (_replay == null)
+            {
+                return;
+            }
+
+            try
+            {
+                _replay.Start(BuildReplayHeader(settings), playerOutput);
+                _replay.AttachStore(_gameDataStore);
+                _replayMarkers?.GameStart(resumeProgress?.RoundCount);
+            }
+            catch (Exception exception)
+            {
+                _replay.Dispose();
+                playerOutput.Log($"[replay] Recording could not start ({exception.GetType().Name}). This game will have no replay.");
+            }
+        }
+
+        private ReplayHeader BuildReplayHeader(GameSettings settings)
+        {
+            List<ArmyData> armies = _gameDataStore.GetAllValues<ArmyData>().ToList();
+            List<ReplaySlot> slots = new List<ReplaySlot>();
+            PlayerID? recordedBy = null;
+
+            foreach (PlayerSlot slot in _playerSlotManager.PlayerSlots)
+            {
+                EReplayController controller = slot.Controller switch
+                {
+                    LocalPlayerController => EReplayController.Human,
+                    NetworkPlayerController => EReplayController.Remote,
+                    _ => EReplayController.Ai,
+                };
+
+                if (controller == EReplayController.Human && recordedBy == null)
+                {
+                    recordedBy = slot.PlayerID;
+                }
+
+                slots.Add(new ReplaySlot
+                {
+                    SlotId = slot.SlotID,
+                    PlayerId = slot.PlayerID,
+                    Name = slot.Name,
+                    // The store's army, not the slot's file: on resume the file is vestigial.
+                    ArmyName = armies.FirstOrDefault(army => army.IsOwnedBy(slot.PlayerID))?.ArmyName
+                        ?? slot.ArmyListFile?.Name ?? "",
+                    Team = slot.TeamNumber,
+                    Controller = controller,
+                });
+            }
+
+            return new ReplayHeader
+            {
+                BuildVersion = ReplayFormat.BuildVersion,
+                EngineVersion = ReplayFormat.EngineVersion,
+                GameId = _gameId,
+                Seed = settings.DiceSeed,
+                RandomnessType = settings.RandomnessType,
+                Settings = settings,
+                Slots = slots,
+                RecordedBy = EReplayRecordedBy.Host,
+                RecordedByPlayerId = recordedBy,
+                StartedUtc = DateTime.UtcNow,
+            };
         }
 
         private IDiceRoller GetDiceRoller(GameSettings gameSettings)
@@ -335,6 +466,15 @@ namespace FDG.GameModel
         // OnGameCompleted could arrive after the process has moved on.
         private void RaiseGameCompleted(GameResult result)
         {
+            // #450: GameEnded is the recording's last event - recorded (and broadcast, ahead of the lobby's
+            // GameEndedMessage) BEFORE the subscribers below run, since they write recovery saves and tear the
+            // game down. Then the recording is closed: anything after this is teardown, not the game.
+            if (_replayMarkers != null)
+            {
+                _replayMarkers.GameEnded(result);
+                _replay?.Dispose();
+            }
+
             OnGameCompleted?.Invoke(result);
             OnGameEnded?.Invoke(result.Message);
         }

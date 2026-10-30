@@ -35,6 +35,13 @@ namespace FDG
         {
             foreach (DataReference existing in store.GetAllDataReferences<GameProgressData>())
             {
+                // #450: the game ID is set once and never cleared by a rewrite - a writer that doesn't know
+                // it (a test fake's context, an older capture path) inherits the record's.
+                if (progress.GameId == Guid.Empty)
+                {
+                    progress.GameId = store.GetValue<GameProgressData>(existing).GameId;
+                }
+
                 store.SetValue(existing, progress);
                 return;
             }
@@ -92,7 +99,10 @@ namespace FDG
                 currentTeamIndex: round.CurrentActivatingTeamIndex,
                 currentPlayerIndexPerTeam: playerIndexByTeam,
                 unactivatedUnits: unactivated,
-                settings: settings);
+                settings: settings,
+                // #450: carried from the game context so the very first write (round 1's first activation
+                // boundary, which CREATES the record) already names the game.
+                gameId: round.GameContext?.GameId ?? Guid.Empty);
         }
 
         /// <summary>Rebuilds the main-phase context (round number + activation order) from a snapshot.</summary>

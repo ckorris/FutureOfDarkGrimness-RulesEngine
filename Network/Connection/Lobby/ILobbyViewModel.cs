@@ -234,5 +234,9 @@ namespace FDG.Network.Connection.Lobby
         /// <summary>#412: which AI drives a roster slot, for the host's usage stats. Null for a human slot,
         /// an unknown ID, or on a client (the synced roster carries the player type but not the profile).</summary>
         EAiProfile? GetAiProfile(PlayerID playerId) => null;
+
+        /// <summary>#450: the launched game's replay - the host's recorder from launch on; null before launch,
+        /// and on a client until #451 (client recording).</summary>
+        Replay.IReplaySource? Replay => null;
     }
 }

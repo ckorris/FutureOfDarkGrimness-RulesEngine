@@ -322,6 +322,71 @@ namespace FDG.Tests
             Assert.That(GameProgressUtilities.TryGetProgress(store)!.RoundCount, Is.EqualTo(2));
         }
 
+        // #450: GameId is the game's persistent identity - minted once, carried by every rolling snapshot,
+        // kept by every rewrite and across save/load, so a replay names the same game before and after a resume.
+
+        [Test]
+        public void Capture_CarriesTheContextsGameId()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var teamA = new TeamData(0, new List<PlayerID> { new PlayerID(Guid.NewGuid()) });
+            store.Create(teamA);
+            Guid gameId = Guid.NewGuid();
+            var ctx = new CaptureTestCtx(store) { GameId = gameId };
+            var live = new SingleRoundContext(ctx, new List<ITeam> { teamA }, roundCount: 1);
+
+            GameProgressData snapshot = GameProgressUtilities.Capture(live, ctx.Settings, EResumeStage.MainPhase);
+
+            Assert.That(snapshot.GameId, Is.EqualTo(gameId),
+                "the first rolling snapshot CREATES the record, so it must already name the game");
+        }
+
+        [Test]
+        public void WriteProgress_KeepsTheGameId_WhenARewriteDoesNotKnowIt()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            Guid gameId = Guid.NewGuid();
+            GameProgressData first = MakeBareProgress(roundCount: 1);
+            first.GameId = gameId;
+            GameProgressUtilities.WriteProgress(store, first);
+
+            GameProgressUtilities.WriteProgress(store, MakeBareProgress(roundCount: 2)); // GameId empty
+
+            GameProgressData progress = GameProgressUtilities.TryGetProgress(store)!;
+            Assert.That(progress.RoundCount, Is.EqualTo(2));
+            Assert.That(progress.GameId, Is.EqualTo(gameId), "a rewrite never clears the game's identity");
+        }
+
+        [Test]
+        public void GameId_SurvivesSaveAndLoad()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            GameProgressData progress = MakeBareProgress(roundCount: 2);
+            progress.GameId = Guid.NewGuid();
+            GameProgressUtilities.WriteProgress(store, progress);
+
+            GameDataStore loaded = GameSaveSerializer.Load(GameSaveSerializer.Save(store));
+
+            Assert.That(GameProgressUtilities.TryGetProgress(loaded)!.GameId, Is.EqualTo(progress.GameId));
+        }
+
+        [Test]
+        public void APreGameIdProgressRecord_LoadsWithAnEmptyGameId()
+        {
+            // A pre-#450 save has no GameId field at all; it must still load (the server mints one on resume).
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            GameProgressUtilities.WriteProgress(store, MakeBareProgress(roundCount: 3));
+            DataReference reference = store.GetAllDataReferences<GameProgressData>().Single();
+            Newtonsoft.Json.Linq.JObject json = Newtonsoft.Json.Linq.JObject.Parse(store.GetValueAsJson<GameProgressData>(reference));
+            Assert.That(json.Remove(nameof(GameProgressData.GameId)), Is.True, "the field is written today");
+
+            store.SetValueWithJson(reference, json.ToString());
+
+            GameProgressData progress = GameProgressUtilities.TryGetProgress(store)!;
+            Assert.That(progress.RoundCount, Is.EqualTo(3));
+            Assert.That(progress.GameId, Is.EqualTo(Guid.Empty));
+        }
+
         // ──────────────────────────────────────────────────────────────────────
         // Helpers
         // ──────────────────────────────────────────────────────────────────────
@@ -368,6 +433,7 @@ namespace FDG.Tests
             public IPresenter Presenter { get; } = new LocalPresenter(null, new InstantPresentationClock());
             public GameSettings Settings { get; } = GameSettings.GetDefault();
             public List<ITeam>? FirstDeploymentRollOrder => null;
+            public Guid GameId { get; set; }
             IGameContext IGameContextAccessor.GameContext => this;
 
             public CaptureTestCtx(GameDataStore store)

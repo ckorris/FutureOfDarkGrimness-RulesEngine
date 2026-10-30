@@ -28,6 +28,14 @@ namespace FDG.StageResolution
         private readonly ConcurrentDictionary<PlayerID, byte> _disconnectedPlayers
             = new ConcurrentDictionary<PlayerID, byte>();
 
+        /// <summary>
+        /// #450: the replay recorder's view of every decision - null unless the launch path asked for a
+        /// replay. Told about each request before it is sent (so a synchronous AI reply can never be recorded
+        /// ahead of its request), and about each reply / error / disconnect failure right after the task is
+        /// claimed and before the awaiting stage resumes. This class holds no lock around those calls.
+        /// </summary>
+        public Replay.IRequestObserver? Observer { get; set; }
+
         public RequestMessageSender(IMessageBusHost messageBusHost, IReadableGameDataStore gameDataStore,
             PlayerSlotManager playerSlotManager, ITextOutput textOutput)
         {
@@ -103,6 +111,9 @@ namespace FDG.StageResolution
 
             _pendingTaskAndResolvers.TryAdd(taskID, actions);
 
+            Observer?.OnRequested(taskID, targetPlayerID, requestFullTypeName, replyFullTypeName,
+                request.DisplayName, requestJson);
+
             // Send the awaiting notification BEFORE the request message so OutstandingTaskLister
             // entries are populated before any synchronous resolver (e.g. AI) can produce a reply
             // and trigger the resolve notification — otherwise the resolve fires against an empty
@@ -155,6 +166,8 @@ namespace FDG.StageResolution
                 throw new NullReferenceException($"Missing instance of {nameof(SuccessAndFailActions)} for task ID {replyMessage.TaskID}.");
             }
 
+            Observer?.OnReplied(replyMessage.TaskID, replyMessage.ReplyJson);
+
             //Notify all clients that the task is finished, so they can stop displaying it on the UI.
             StageTaskNotifyResolvedMessage finishedMessage = new StageTaskNotifyResolvedMessage(replyMessage.TaskID);
             _messageBusHost.SendCommandToAllAsync(finishedMessage);
@@ -178,6 +191,8 @@ namespace FDG.StageResolution
                 return;
 #endif
             }
+
+            Observer?.OnFailed(errorMessage.TaskID, errorMessage.ErrorMessage);
 
             actions.OnFailed.Invoke(errorMessage.ErrorMessage);
         }
@@ -220,6 +235,9 @@ namespace FDG.StageResolution
                 {
                     continue; //A racing reply already claimed this task.
                 }
+
+                // #450: close the request in the replay too, so every recorded request ends in a reply or an error.
+                Observer?.OnFailed(pending.Key, reason);
 
                 //Clear it from every client's outstanding-task UI, same as a normal resolve.
                 _messageBusHost.SendCommandToAllAsync(new StageTaskNotifyResolvedMessage(pending.Key));

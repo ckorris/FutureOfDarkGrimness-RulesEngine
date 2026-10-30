@@ -22,6 +22,11 @@ namespace FDG.Stages
             // ever-deepening continuation stack. Yielding at the round boundary caps stack growth.
             await Task.Yield();
 
+            // #450 replay: the round's true start - RoundCount was already advanced at the previous round's
+            // end, and the round banner, round-start token grants and reserve arrivals (decisions included)
+            // all follow in StartOfRoundExtraActionStage, so they belong to this round. Snapshots the store.
+            GameContext.ReplayMarkers.RoundStart(context.RoundCount);
+
             //TODO: Not sure we actually need to do anything here, if we call OnEndOfRound elsewhere.
 
             await ToStartExtraActions.Activate(context);

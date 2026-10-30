@@ -111,7 +111,8 @@ namespace FDG.SaveLoad
                     progress.CurrentPlayerIndexPerTeam == null ? null! : new Dictionary<int, int>(progress.CurrentPlayerIndexPerTeam),
                     RebindList(target, progress.UnactivatedUnits)!,
                     progress.Settings,
-                    Rebind(target, progress.ActivatingUnit))),
+                    Rebind(target, progress.ActivatingUnit),
+                    progress.GameId)),
         };
 
         private static Action<GameDataStore, GameDataStore> Copy<T>(Func<T, GameDataStore, T> cloneValue) =>

@@ -63,6 +63,16 @@ namespace FDG
         /// <summary>The game's configured settings, needed to faithfully resume the same game.</summary>
         public GameSettings Settings;
 
+        /// <summary>
+        /// #450: the game's persistent identity - minted once when the game is created
+        /// (<c>FDGServer</c>), carried by every rolling snapshot and save, and kept across resumes, so a
+        /// replay recorded before a save and one recorded after the resume (host and clients alike) name the
+        /// same game. <see cref="Guid.Empty"/> in a pre-#450 save or a freshly compiled scenario: the server
+        /// mints one when it resumes such a store. Distinct from the lobby's per-launch analytics ID (#412).
+        /// Appended LAST (field order is the save's JSON order).
+        /// </summary>
+        public Guid GameId;
+
         [JsonConstructor]
         public GameProgressData(
             EResumeStage stage,
@@ -73,7 +83,8 @@ namespace FDG
             Dictionary<int, int> currentPlayerIndexPerTeam,
             List<DataBinding<UnitData>> unactivatedUnits,
             GameSettings settings,
-            DataBinding<UnitData>? activatingUnit = null)
+            DataBinding<UnitData>? activatingUnit = null,
+            Guid gameId = default)
         {
             Stage = stage;
             RoundCount = roundCount;
@@ -84,6 +95,7 @@ namespace FDG
             UnactivatedUnits = unactivatedUnits;
             Settings = settings;
             ActivatingUnit = activatingUnit;
+            GameId = gameId;
         }
     }
 

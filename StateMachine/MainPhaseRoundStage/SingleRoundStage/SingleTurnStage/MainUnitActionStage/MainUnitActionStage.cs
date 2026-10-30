@@ -25,6 +25,11 @@ namespace FDG.Stages
         {
             GameContext.Log("Main Unit Action stage entered.");
 
+            // #450 replay: the unit is committed - name it on the open activation's marker (re-entered after a
+            // #248 back-out, so a re-pick names the new unit).
+            if (context.ActivatedUnit != null)
+                GameContext.ReplayMarkers.ActivationUnitChosen(context.ActivatedUnit.Reference);
+
             // Record the activating unit on the progress record so the read model can spotlight it.
             // Guarded like the rolling snapshot so minimal-store unit tests (no GameProgressData) are unaffected.
             if (context.ActivatedUnit != null && GameContext.GameDataStore.IsTypeAssigned<GameProgressData>())

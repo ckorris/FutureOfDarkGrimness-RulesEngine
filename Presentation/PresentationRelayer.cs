@@ -24,8 +24,14 @@ namespace FDG.Presentation
             _clock = clock;
         }
 
+        /// <summary>#450: the replay recorder, told about every beat before it is relayed. Null unless the
+        /// launch path asked for a replay.</summary>
+        public Replay.IBeatObserver? Observer { get; set; }
+
         public Task Present(PresentationBeat beat, CancellationToken ct = default)
         {
+            Observer?.OnBeat(beat);
+
             // Deliver to each DISTINCT sink once. Two local players on one machine share a single
             // on-screen sink (both LocalPlayerControllers resolve to the same PresentationPlayer), so
             // fanning per-slot would render — and sound — every beat twice. Remote players each have

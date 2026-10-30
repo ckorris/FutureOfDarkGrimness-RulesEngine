@@ -177,6 +177,11 @@ namespace FDG.Network.Connection.Lobby
         // message goes out carrying it. Written once on the launch path; read by the front end.
         private volatile string? _launchedGameId;
 
+        // #450: the launched game's recorder, built by both launch paths and handed to FDGServer.
+        private volatile Replay.ReplayRecorder? _replay;
+
+        public Replay.IReplaySource? Replay => _replay;
+
         public string? LaunchedGameId => _launchedGameId;
 
         public EAiProfile? GetAiProfile(PlayerID playerId) =>
@@ -658,6 +663,9 @@ namespace FDG.Network.Connection.Lobby
             _host.OnNewClientConnected -= OnNewClientConnected;
             _host.OnClientDisconnected -= OnClientDisconnected;
 
+            // #450: the game is being torn down - stop recording. What was recorded stays exportable.
+            _replay?.Dispose();
+
             //The lobby owns its listener 1:1 in every current flow, so disposing the lobby releases the
             //port and drops every connected client (their side surfaces it as a lost host - QF8).
             _host.Stop();
@@ -768,8 +776,11 @@ namespace FDG.Network.Connection.Lobby
             // presentation beats play at a presentable tempo (without it the beats run instantly).
             // #265: the save owns the settings on resume, except the few a resume lobby may re-pick
             // (the table background) - see GameSettings.WithResumeOverridesFrom.
+            Replay.ReplayRecorder replay = new Replay.ReplayRecorder();
+            _replay = replay;
+            gameModel?.AttachReplay(replay);
             FDGServer server = new FDGServer(_gameDataStore, _messageBus, playerSlots,
-                new RealtimePresentationClock(), _gameSettings);
+                new RealtimePresentationClock(), _gameSettings, replay: replay);
             server.OnGameEnded += HandleServerGameEnded;
             server.OnGameCompleted += HandleServerGameCompleted;
 
@@ -864,6 +875,11 @@ namespace FDG.Network.Connection.Lobby
 
             FDGGame_AsLocal? gameModel = null; //We may not have a local player.
 
+            // #450 D5: pick the game's seed now if the lobby left it random, so the AI players below derive
+            // their streams from the same seed the dice use (FDGServer would pick one too, but only after the
+            // bots exist). A launch-local copy: the lobby's own setting stays "random" for the next game.
+            GameSettings launchSettings = FDGServer.WithConcreteSeed(_gameSettings);
+
             //Make a player controller for each player.
             PlayerSlot[] playerSlots = new PlayerSlot[_playerInfosFull.Count];
 
@@ -908,8 +924,8 @@ namespace FDG.Network.Connection.Lobby
                         FDGGame_AsLocal aiGame = new FDGGame_AsLocal(_gameDataStore, _messageBus);
                         ComputerPlayerController aiController = FDG.Ai.AiProfileFactory.CreateController(
                             lobbyPlayerInfo.AiProfile, lobbyPlayerInfo.PlayerName, playerSlot.PlayerID, aiGame,
-                            _gameSettings.DiceSeed, playerSlot.SlotID,
-                            _gameSettings.SeeThroughFriendlyUnits);
+                            launchSettings.DiceSeed, playerSlot.SlotID,
+                            launchSettings.SeeThroughFriendlyUnits);
                         playerSlot.AssignPlayerController(aiController);
                         break;
                     default:
@@ -920,8 +936,11 @@ namespace FDG.Network.Connection.Lobby
             // The GUI host self-paces presentation in real time so the battle unfolds at a
             // presentable tempo; clients receive beats already spaced by this clock. (Headless play
             // goes through CliApp, which leaves FDGServer's default instant clock.)
-            FDGServer server = new FDGServer(_gameDataStore, _messageBus, _gameSettings, playerSlots,
-                new RealtimePresentationClock());
+            Replay.ReplayRecorder replay = new Replay.ReplayRecorder();
+            _replay = replay;
+            gameModel?.AttachReplay(replay);
+            FDGServer server = new FDGServer(_gameDataStore, _messageBus, launchSettings, playerSlots,
+                new RealtimePresentationClock(), replay);
             server.OnGameEnded += HandleServerGameEnded;
             server.OnGameCompleted += HandleServerGameCompleted;
 

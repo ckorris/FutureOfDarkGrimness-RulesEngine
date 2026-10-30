@@ -32,6 +32,15 @@ namespace FDG.GameModel
 
         public IReadOnlyList<PlayerID> LocalPlayerIDs => _localPlayerIDs;
 
+        /// <inheritdoc />
+        public Replay.IReplaySource? Replay { get; private set; }
+
+        /// <summary>
+        /// #450: hands this game the replay its server records. The launch path builds this game before the
+        /// server, so the recorder it passes to <c>FDGServer</c> is attached here by the same caller.
+        /// </summary>
+        public void AttachReplay(Replay.IReplaySource? replay) => Replay = replay;
+
         public event Action OnStageResolverAssigned;
 
         private IReadableGameDataStore _gameDataStore;

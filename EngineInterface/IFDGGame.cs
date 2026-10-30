@@ -43,6 +43,13 @@ namespace FDG.EngineInterface
         /// </summary>
         IReadOnlyList<PlayerID> LocalPlayerIDs { get; }
 
+        /// <summary>
+        /// #450: this game's replay - the host's recorder on a host / local game whose launch path asked for
+        /// one, null otherwise (and on a client until #451 adds client-side recording). The app reads and
+        /// exports it; it never reaches into the recorder.
+        /// </summary>
+        Replay.IReplaySource? Replay { get; }
+
         void AssignInterfaces(ILogMessageUI? logMessageUI, IPlayerMessageUI? playerMessageUI,
             IStageResolverRegistry stageResolverRegistry,
             IPresentationSink? presentationSink,

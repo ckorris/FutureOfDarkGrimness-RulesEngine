@@ -103,6 +103,8 @@ namespace FDG.Rules.Definitions;
 // #431: OPR 3.6 Pierce's "ignores all positive Defense modifiers" and Scourge's counted (not dealt) wounds.
 [JsonDerivedType(typeof(IgnorePositiveDefenseModifiers), "ignorePositiveDefenseModifiers")]
 [JsonDerivedType(typeof(CountsAsWoundsTaken), "countsAsWoundsTaken")]
+// #427: OPR 3.6 Unstoppable's "ignores all negative modifiers to this weapon which are not from this model's special rules".
+[JsonDerivedType(typeof(IgnoreNegativeWeaponModifiers), "ignoreNegativeWeaponModifiers")]
 
 public abstract record Effect
 {
@@ -1504,6 +1506,25 @@ public abstract record Effect
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.IgnorePositiveDefenseModifiers());
+        }
+    }
+
+    /// <summary>
+    /// #427 Unstoppable: "ignores all negative modifiers to this weapon which are not from this model's special
+    /// rules". Authored Actor-seat at <see cref="EHookID.Shooting_OnHitRollModifier"/> (the to-hit penalties) AND
+    /// at <see cref="EHookID.Shooting_OnHitRollComplete"/> (the AP reductions), so the evaluator sees the marker
+    /// in the same pass as the modifiers it removes. What is ignored: a to-hit penalty
+    /// (<see cref="RuleOperation.ApplyRollModifier"/> of <see cref="ERollKind.Hit"/> below zero), an AP reduction
+    /// (<see cref="RuleOperation.ReduceArmorPenetration"/> - Fortified and its kin), and a granted negative
+    /// "-X to hit" token another unit placed. What is NOT: any modifier produced by a rule on the attacking unit
+    /// itself (its own Imprecise, Unwieldy, Indirect, ...), shooting-range reductions (a reach limit, not a
+    /// modifier to the attack - #427 D2), and the Defense side. See <see cref="RuleOperation.IgnoreNegativeWeaponModifiers"/>.
+    /// </summary>
+    public sealed record IgnoreNegativeWeaponModifiers : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.IgnoreNegativeWeaponModifiers());
         }
     }
 

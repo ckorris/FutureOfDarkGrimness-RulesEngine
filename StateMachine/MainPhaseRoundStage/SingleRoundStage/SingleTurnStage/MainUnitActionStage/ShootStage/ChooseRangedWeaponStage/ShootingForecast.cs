@@ -116,7 +116,9 @@ namespace FDG.Stages
             RollModifierSink hitModifiers = new RollModifierSink();
             hitModifiers.ApplyFrom(hitOps);
 
-            int grantedHit = GrantedRollModifiers.PeekNet(attacker, ERollKind.Hit);
+            // #427 Unstoppable: the same ignore the stage applies to a granted negative hit token.
+            int grantedHit = GrantedRollModifiers.PeekNet(attacker, ERollKind.Hit,
+                ignoreOtherUnitsNegative: hitOps.OfType<RuleOperation.IgnoreNegativeWeaponModifiers>().Any());
             int persistentHitMarkers = defender.Tokens.GetTokenCount(TokenType.PersistentHitBonus);
 
             int hitNeeded = baseQuality - hitModifiers.Net(ERollKind.Hit) - grantedHit

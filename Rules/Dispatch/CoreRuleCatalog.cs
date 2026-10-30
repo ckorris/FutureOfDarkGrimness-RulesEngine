@@ -735,9 +735,14 @@ public static class CoreRuleCatalog
         Description: "Ignores each wound on a roll of 5+.");
 
     /// <summary>
-    /// Attacker: ignores the target's Regeneration (the suppression facet). The rulebook's second
-    /// facet — "ignores all negative modifiers to this weapon" — needs a modifier-immunity effect
-    /// and lands when that's modelled.
+    /// Attacker (Core Rules v3.6.0): "Ignores Regeneration, and ignores all negative modifiers to this weapon
+    /// which are not from this model's special rules." Two facets. The Regeneration one is the suppression
+    /// entry at <see cref="EHookID.Shooting_OnSaveRollComplete"/>. The modifier one (#427) is
+    /// <see cref="Effect.IgnoreNegativeWeaponModifiers"/> at the two hooks where a weapon's attack can be
+    /// penalised - <see cref="EHookID.Shooting_OnHitRollModifier"/> (to-hit penalties) and
+    /// <see cref="EHookID.Shooting_OnHitRollComplete"/> (AP reductions) - which the evaluator turns into the
+    /// removal of every such modifier that is not from the bearer's own rules (see
+    /// <see cref="RuleOperation.IgnoreNegativeWeaponModifiers"/> for exactly what is and is not ignored).
     /// </summary>
     public static SpecialRuleDefinition Unstoppable { get; } = new SpecialRuleDefinition("Unstoppable",
         new[]
@@ -746,11 +751,20 @@ public static class CoreRuleCatalog
                 new Condition.Always(),
                 new Effect.IgnoreRule("Regeneration"),
                 ELifetime.ThisAttack),
+            new HookEntry(EHookID.Shooting_OnHitRollModifier,
+                new Condition.Always(),
+                new Effect.IgnoreNegativeWeaponModifiers(),
+                ELifetime.ThisAttack),
+            new HookEntry(EHookID.Shooting_OnHitRollComplete,
+                new Condition.Always(),
+                new Effect.IgnoreNegativeWeaponModifiers(),
+                ELifetime.ThisAttack),
         },
         Array.Empty<ActivatedAbility>(),
         ERuleScope.Weapon,
         Valence: EValence.Positive,
-        Description: "This weapon's attacks ignore the target's Regeneration.");
+        Description: "Ignores Regeneration, and ignores all negative modifiers to this weapon which are not from " +
+            "this model's special rules.");
 
     /// <summary>
     /// Attacker: each hit that rolled an unmodified 6 promotes to AP(4) — modelled as -4 to the
@@ -845,11 +859,20 @@ public static class CoreRuleCatalog
                     new Condition.Not(new Condition.IsMelee()),
                     new Effect.IgnoreRule("Regeneration"),
                     ELifetime.ThisAttack),
+                new HookEntry(EHookID.Shooting_OnHitRollModifier,
+                    new Condition.Not(new Condition.IsMelee()),
+                    new Effect.IgnoreNegativeWeaponModifiers(),
+                    ELifetime.ThisAttack),
+                new HookEntry(EHookID.Shooting_OnHitRollComplete,
+                    new Condition.Not(new Condition.IsMelee()),
+                    new Effect.IgnoreNegativeWeaponModifiers(),
+                    ELifetime.ThisAttack),
             },
             Array.Empty<ActivatedAbility>(),
             ERuleScope.Weapon,
             Valence: EValence.Positive,
-            Description: "When shooting, this weapon's attacks ignore the target's Regeneration.");
+            Description: "When shooting, ignores Regeneration, and ignores all negative modifiers to this weapon " +
+                "which are not from this model's special rules.");
 
     /// <summary> Shred on shooting attacks only: +1 wound per unmodified save of 1 when shooting. </summary>
     public static SpecialRuleDefinition ShredWhenShooting { get; } =
@@ -890,7 +913,7 @@ public static class CoreRuleCatalog
     // shooting twins. These are the base rules behind the "... in Melee Aura" grants. Rending has no
     // when-shooting twin, so it mirrors the base Rending (AP-on-6 + Regen-ignore) with an added melee gate.
 
-    /// <summary> Unstoppable in melee only: ignores Regeneration when in melee. </summary>
+    /// <summary> Unstoppable in melee only: ignores Regeneration and (#427) non-own negative weapon modifiers when in melee. </summary>
     public static SpecialRuleDefinition UnstoppableInMelee { get; } =
         new SpecialRuleDefinition("Unstoppable in melee",
             new[]
@@ -899,11 +922,20 @@ public static class CoreRuleCatalog
                     new Condition.IsMelee(),
                     new Effect.IgnoreRule("Regeneration"),
                     ELifetime.ThisAttack),
+                new HookEntry(EHookID.Shooting_OnHitRollModifier,
+                    new Condition.IsMelee(),
+                    new Effect.IgnoreNegativeWeaponModifiers(),
+                    ELifetime.ThisAttack),
+                new HookEntry(EHookID.Shooting_OnHitRollComplete,
+                    new Condition.IsMelee(),
+                    new Effect.IgnoreNegativeWeaponModifiers(),
+                    ELifetime.ThisAttack),
             },
             Array.Empty<ActivatedAbility>(),
             ERuleScope.Weapon,
             Valence: EValence.Positive,
-            Description: "In melee, this unit's attacks ignore the target's Regeneration.");
+            Description: "In melee, ignores Regeneration, and ignores all negative modifiers to this weapon " +
+                "which are not from this model's special rules.");
 
     /// <summary> Shred in melee only: +1 wound per unmodified save of 1 when in melee. </summary>
     public static SpecialRuleDefinition ShredInMelee { get; } =

@@ -844,6 +844,24 @@ public abstract record RuleOperation
     }
 
     /// <summary>
+    /// #427: the attack ignores every NEGATIVE modifier to this weapon that does not come from the attacking
+    /// model's own special rules (Core Rules v3.6.0 Unstoppable: "ignores all negative modifiers to this weapon
+    /// which are not from this model's special rules"). Resolution of <see cref="Effect.IgnoreNegativeWeaponModifiers"/>.
+    /// <para>
+    /// A marker the <see cref="Rules.Dispatch.RuleEvaluator"/> itself consumes in its first pass, beside
+    /// <see cref="SuppressRule"/>: it alone knows which rule (and which unit, and whether a cross-unit grant)
+    /// produced each operation, so it drops the ignorable ones - a to-hit penalty (<see cref="ApplyRollModifier"/>
+    /// of <see cref="ERollKind.Hit"/> below zero) or an AP reduction (<see cref="ReduceArmorPenetration"/>) -
+    /// before any caller folds them. The marker is kept in the returned queue so a caller that folds a modifier
+    /// the evaluator never sees (a granted "-1 to hit" token) can tell the attack ignores it.
+    /// </para>
+    /// </summary>
+    public sealed record IgnoreNegativeWeaponModifiers : RuleOperation
+    {
+        public override string Describe() => "ignored negative modifiers to its weapon";
+    }
+
+    /// <summary>
     /// Insert the bearer's strikes ahead of the charging unit's. Resolution of
     /// <see cref="Effect.StrikeFirst"/> (Counter).
     /// </summary>

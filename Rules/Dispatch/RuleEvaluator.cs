@@ -248,15 +248,18 @@ public sealed class RuleEvaluator
         {
             // Nothing to filter: every collected op survives, logged in order, grants spent last -
             // exactly the general path below, minus the suppression set and the copy.
+            // #427: unless an Unstoppable marker is present, in which case the ignorable negative modifiers
+            // leave first (and narrate themselves) - a no-op scan otherwise.
+            List<TaggedOperation> kept = ApplyNegativeModifierImmunity(tagged, log, trace);
             if (log)
             {
-                foreach (TaggedOperation t in tagged) Log(t);
+                foreach (TaggedOperation t in kept) Log(t);
             }
             if (grantsToConsume != null)
             {
                 SpendGrants(grantsToConsume);
             }
-            return tagged;
+            return kept;
         }
 
         var suppressedRuleNames = tagged
@@ -292,8 +295,15 @@ public sealed class RuleEvaluator
                 continue;
             }
 
-            if (log) Log(t);
             result.Add(t);
+        }
+
+        // #427: Unstoppable's negative-modifier immunity runs after the rule-vs-rule suppression above (an
+        // op already cancelled by name needs no second reason) and before the ops are narrated.
+        result = ApplyNegativeModifierImmunity(result, log, trace);
+        if (log)
+        {
+            foreach (TaggedOperation t in result) Log(t);
         }
 
         // #101 consume-on-occurrence: spend each one-shot grant whose hook+seat fired this event, removing
@@ -309,6 +319,87 @@ public sealed class RuleEvaluator
     }
             finally { global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.RuleDispatch, __probe); }
         }
+
+    /// <summary>
+    /// #427 Unstoppable (Core Rules v3.6.0: "ignores all negative modifiers to this weapon which are not from
+    /// this model's special rules"). When the surviving queue carries a
+    /// <see cref="RuleOperation.IgnoreNegativeWeaponModifiers"/> marker, every negative weapon modifier in it -
+    /// a to-hit penalty or an AP reduction - is dropped UNLESS it came from the marker bearer's own rules:
+    /// same unit (its unit rules, its weapon's rules, its models' rules) and not a grant another unit placed.
+    /// So the defender's Stealth / Evasive / Fortified and an enemy "-1 to hit" spell are ignored, while the
+    /// attacker's own Imprecise, Unwieldy or Indirect penalty still bites. The marker itself stays in the
+    /// queue (a caller folding a granted hit token the evaluator never sees reads it). Returns the input list
+    /// untouched - no allocation - when there is no marker, which is every dispatch but an Unstoppable weapon's.
+    /// Live evaluations narrate each ignored modifier; read-only queries stay silent.
+    /// </summary>
+    private List<TaggedOperation> ApplyNegativeModifierImmunity(List<TaggedOperation> tagged, bool log, bool trace)
+    {
+        List<TaggedOperation>? markers = null;
+        for (int i = 0; i < tagged.Count; i++)
+        {
+            if (tagged[i].Op is RuleOperation.IgnoreNegativeWeaponModifiers)
+            {
+                (markers ??= new List<TaggedOperation>()).Add(tagged[i]);
+            }
+        }
+
+        if (markers == null) return tagged;
+
+        var kept = new List<TaggedOperation>(tagged.Count);
+        foreach (TaggedOperation t in tagged)
+        {
+            if (!IsNegativeWeaponModifier(t.Op))
+            {
+                kept.Add(t);
+                continue;
+            }
+
+            TaggedOperation? ignoredBy = null;
+            foreach (TaggedOperation marker in markers)
+            {
+                bool isOwn = t.Bearer.ID == marker.Bearer.ID && !t.PlacedByOtherUnit;
+                if (!isOwn)
+                {
+                    ignoredBy = marker;
+                    break;
+                }
+            }
+
+            if (ignoredBy == null)
+            {
+                kept.Add(t);
+                continue;
+            }
+
+            TaggedOperation by = ignoredBy.Value;
+            if (log)
+            {
+                string who = by.Weapon == null
+                    ? $"{by.Bearer.Name}'s {by.Origin.RequestedName}"
+                    : $"{by.Bearer.Name}'s {by.Weapon.Name}'s {by.Origin.RequestedName}";
+                _log?.Log($"{who} ignored {t.Bearer.Name}'s {t.Origin.RequestedName} ({t.Op.Describe()}).");
+            }
+            else if (trace)
+            {
+                TraceLine($"{by.Bearer.Name}'s {by.Origin.RequestedName} would ignore " +
+                    $"{t.Bearer.Name}'s {t.Origin.RequestedName} ({t.Op.GetType().Name})");
+            }
+        }
+
+        return kept;
+    }
+
+    /// <summary>
+    /// The operations Unstoppable's immunity can drop: a to-hit penalty or an AP reduction. Hit rolls and AP are
+    /// the two numbers the engine models a weapon's attack resolving with that a rule can lower; shooting range
+    /// is a reach limit and Defense modifiers are the target's, neither a modifier "to this weapon" (#427 D2).
+    /// </summary>
+    private static bool IsNegativeWeaponModifier(RuleOperation op) => op switch
+    {
+        RuleOperation.ApplyRollModifier { Roll: ERollKind.Hit, Delta: < 0 } => true,
+        RuleOperation.ReduceArmorPenetration { Amount: > 0 } => true,
+        _ => false,
+    };
 
     /// <summary>
     /// Explicitly spends the one-shot (FirstTrigger) granted rules that key on <paramref name="context"/>'s
@@ -502,7 +593,8 @@ public sealed class RuleEvaluator
         a.Definition == b.Definition && a.Arguments.SequenceEqual(b.Arguments);
 
     private void CollectFromRules(IReadOnlyList<ResolvedRule> rules, IUnit unit, IWeapon? carryingWeapon,
-        ERuleSeat seat, IHookContext context, List<TaggedOperation> sink, DedupState seen, bool trace)
+        ERuleSeat seat, IHookContext context, List<TaggedOperation> sink, DedupState seen, bool trace,
+        bool placedByOtherUnit = false)
     {
         // One scratch list per walk, cleared per firing entry: a fresh List per entry was measurable
         // (see the DedupState pool below for the profile that found it).
@@ -567,7 +659,7 @@ public sealed class RuleEvaluator
 
                 foreach (RuleOperation op in produced)
                 {
-                    sink.Add(new TaggedOperation(op, rule, unit, carryingWeapon));
+                    sink.Add(new TaggedOperation(op, rule, unit, carryingWeapon, placedByOtherUnit));
                 }
             }
         }
@@ -591,6 +683,10 @@ public sealed class RuleEvaluator
         }
 
         List<ResolvedRule>? granted = null;
+        // #427: grants another unit placed (an enemy spell's debuff) are walked apart from the bearer's own, so
+        // their ops can be told from "this model's special rules". Own grants walk first, so a rule that is
+        // both own and placed (rare) keeps the own attribution through the dedup.
+        List<ResolvedRule>? grantedByOthers = null;
         foreach (Token token in unit.Tokens.GetAllTokens(TokenType.RuleGrant))
         {
             if (token.Payload is not TokenPayload.RuleGrant grant)
@@ -617,7 +713,15 @@ public sealed class RuleEvaluator
                 continue;
             }
 
-            (granted ??= new List<ResolvedRule>()).Add(resolved);
+            // Token.OwnerUnitID: null = placed by the bearer's own rules; set = placed by another unit.
+            if (token.OwnerUnitID != null)
+            {
+                (grantedByOthers ??= new List<ResolvedRule>()).Add(resolved);
+            }
+            else
+            {
+                (granted ??= new List<ResolvedRule>()).Add(resolved);
+            }
 
             // #101 — record this one-shot ("next time") grant for consumption iff THIS hook+seat is one its
             // rule actually listens on (the occurrence). It's then spent in CollectSurviving regardless of
@@ -633,6 +737,12 @@ public sealed class RuleEvaluator
         if (granted != null)
         {
             CollectFromRules(granted, unit, carryingWeapon: null, seat, context, sink, seen, trace);
+        }
+
+        if (grantedByOthers != null)
+        {
+            CollectFromRules(grantedByOthers, unit, carryingWeapon: null, seat, context, sink, seen, trace,
+                placedByOtherUnit: true);
         }
     }
 
@@ -679,6 +789,14 @@ public sealed class RuleEvaluator
             return;
         }
 
+        // #427 - the Unstoppable marker is read by the evaluator itself, not applied. What it did is narrated
+        // where it happens (ApplyNegativeModifierImmunity, one line per modifier actually ignored); logging the
+        // bare marker would print "Unstoppable ignored negative modifiers" on every attack that had none.
+        if (t.Op is RuleOperation.IgnoreNegativeWeaponModifiers)
+        {
+            return;
+        }
+
         string carrier = t.Weapon == null
             ? $"{t.Bearer.Name}'s {t.Origin.RequestedName}"
             : $"{t.Bearer.Name}'s {t.Weapon.Name}'s {t.Origin.RequestedName}";
@@ -706,9 +824,12 @@ public sealed class RuleEvaluator
     /// sidecar metadata — not a field on <see cref="RuleOperation"/> — so the suppression
     /// first-pass can match ops by their origin rule's canonical name and the game-log can name
     /// the bearer and rule. The public API still returns bare operations.
+    /// <para>#427: <see cref="PlacedByOtherUnit"/> marks an op whose rule reached the bearer as a granted
+    /// token another unit placed (an enemy spell's debuff), as opposed to a rule the bearer carries itself -
+    /// the "is this from the model's own special rules" test Unstoppable's immunity needs.</para>
     /// </summary>
     private readonly record struct TaggedOperation(RuleOperation Op, ResolvedRule Origin, IUnit Bearer,
-        IWeapon? Weapon = null);
+        IWeapon? Weapon = null, bool PlacedByOtherUnit = false);
 
     /// <summary>
     /// Per-event dedup deciding whether a rule attachment fires (#027). Two layers:

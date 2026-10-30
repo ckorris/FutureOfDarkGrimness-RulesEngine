@@ -121,7 +121,11 @@ namespace FDG.Stages
             int grantedNet = 0;
             if (!fatiguedInMelee)
             {
-                grantedNet = GrantedRollModifiers.ConsumeNet(metaData.AttackingUnit.GetValue(), ERollKind.Hit);
+                // #427 Unstoppable: the weapon ignores negative hit grants another unit placed (an enemy
+                // "-1 to hit" spell); the marker comes through the same evaluation that folded the rules above.
+                bool ignoresNegative = operations.OfType<RuleOperation.IgnoreNegativeWeaponModifiers>().Any();
+                grantedNet = GrantedRollModifiers.ConsumeNet(metaData.AttackingUnit.GetValue(), ERollKind.Hit,
+                    ignoreOtherUnitsNegative: ignoresNegative);
                 results.HitRollNeeded -= grantedNet;
             }
 

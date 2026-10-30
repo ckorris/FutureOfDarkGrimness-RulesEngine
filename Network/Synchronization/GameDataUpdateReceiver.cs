@@ -7,6 +7,11 @@ using FDG.SaveLoad;
 
 namespace FDG.Network.Synchronization
 {
+    /// <summary>
+    /// A networked client's side of the store sync: applies the host's incremental deltas through
+    /// <see cref="StoreDeltaApplier"/> (shared with replay playback, #454) and rebuilds the whole store
+    /// from the join-time catch-up through <see cref="StoreReplay"/>.
+    /// </summary>
     internal class GameDataUpdateReceiver
     {
         private IReadWriteableGameDataStore _gameDataStore;
@@ -35,17 +40,17 @@ namespace FDG.Network.Synchronization
 
         private void OnReceivedDataAddedMessage(AddSingleDataMessage addMessage)
         {
-            _gameDataStore.CreateFromReferenceAndJson(addMessage.DataReference, addMessage.InitialValueAsJson);
+            StoreDeltaApplier.ApplyAdd(_gameDataStore, addMessage.DataReference, addMessage.InitialValueAsJson);
         }
 
         private void OnReceivedDataUpdatedMessage(UpdateSingleDataMessage updateMessage)
         {
-            _gameDataStore.SetValueWithJson(updateMessage.DataReference, updateMessage.ValueAsJson);
+            StoreDeltaApplier.ApplyUpdate(_gameDataStore, updateMessage.DataReference, updateMessage.ValueAsJson);
         }
 
         private void OnReceivedDataRemovedMessage(RemoveSingleDataMessage removeMessage)
         {
-            _gameDataStore.Destroy(removeMessage.DataReference);
+            StoreDeltaApplier.ApplyRemove(_gameDataStore, removeMessage.DataReference);
         }
 
         private void OnReceivedAllDataMessage(AddAllDataMessage allDataMessage)

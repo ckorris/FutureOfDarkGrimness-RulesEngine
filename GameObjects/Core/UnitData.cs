@@ -335,6 +335,15 @@ namespace FDG
             }
         }
 
+        // #454: restore the rules at the deserialization boundary, as Weapon does (#325). A networked client
+        // and replay playback receive every UnitData update as a whole new deserialized instance
+        // (StoreDeltaApplier.ApplyUpdate), which used to arrive with only the blob - so the unit's rules
+        // vanished from its stat block and tooltips after its first token change. StoreReplay's sweep is
+        // now a harmless no-op for units.
+        [System.Runtime.Serialization.OnDeserialized]
+        private void OnDeserialized(System.Runtime.Serialization.StreamingContext context)
+            => RehydrateRules();
+
         /// <summary>
         /// Merges a Hero into this unit (#006): adds the hero's model binding(s) to this unit's model
         /// list (wiring wound aggregation), and records the <see cref="HeroAttachment"/>. After this the

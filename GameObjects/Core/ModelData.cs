@@ -51,6 +51,14 @@ namespace FDG
             }
         }
 
+        // #454: restore the rules at the deserialization boundary, as Weapon does (#325). A networked client
+        // and replay playback receive every ModelData update as a whole new deserialized instance
+        // (StoreDeltaApplier.ApplyUpdate), which used to arrive with only the blob - so the model's rules
+        // vanished after its first update. StoreReplay's sweep is now a harmless no-op for models.
+        [System.Runtime.Serialization.OnDeserialized]
+        private void OnDeserialized(System.Runtime.Serialization.StreamingContext context)
+            => RehydrateRules();
+
         // Serialized: max wounds is set imperatively after creation (e.g. Tough via UnitCreationRules),
         // so it can't be recomputed on load — it must round-trip, or a loaded/networked Tough model
         // would revert to 1.

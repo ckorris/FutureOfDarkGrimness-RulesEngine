@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using FDG.Rules.Foundation;
 
 namespace FDG.Rules.Dispatch;
 
@@ -9,7 +10,7 @@ namespace FDG.Rules.Dispatch;
 /// from the rank and file, each read by exactly one resolution stage:
 /// <list type="bullet">
 ///   <item><see cref="GetMoraleQuality"/> — <c>DetermineMoraleSaveNeededStage</c> / wound-driven morale
-///         (slice C): the unit tests morale at the hero's Quality while the hero lives.</item>
+///         (slice C): the unit tests morale at the hero's Quality while the hero lives and isn't Shaken (#421).</item>
 ///   <item><see cref="GetSaveDefense"/> — <c>DetermineSaveRollsNeededStage</c> (slice D): the hero uses
 ///         the unit's Defense until it is the sole survivor, then its own.</item>
 ///   <item><see cref="GetAttackQuality"/> — <c>DetermineHitRollNeededStage</c> (slice E): a weapon batch
@@ -21,12 +22,19 @@ namespace FDG.Rules.Dispatch;
 public static class HeroStatRules
 {
     /// <summary>
-    /// The Quality a unit tests morale at. With a living joined hero this is the hero's Quality (the rule's
-    /// "may take morale tests on behalf of the unit"); otherwise the unit's own.
+    /// The Quality a unit tests morale at on its own account: a living joined hero's Quality while the hero
+    /// isn't Shaken, otherwise the unit's own. OPR 3.6 Hero: "The Hero's unit ... may use the Hero's Quality
+    /// for Morale Tests as long as the Hero isn't Shaken."
+    /// <para>
+    /// #421: Shaken is a UNIT token (<see cref="TokenType.Shaken"/> lives on <see cref="IUnit.Tokens"/>, never
+    /// on a model), so "the hero isn't Shaken" is "the hero's unit isn't Shaken". A Shaken unit always fails
+    /// its Morale Tests before any Quality is read (<c>MoraleUtilities.TakeMoraleTest</c>), so this gate never
+    /// changes a joined hero's own unit's pass or fail; it keeps the seam truthful for every reader.
+    /// </para>
     /// </summary>
     public static int GetMoraleQuality(UnitData unit)
     {
-        if (unit.HeroAttachment != null)
+        if (unit.HeroAttachment != null && !unit.Tokens.HasToken(TokenType.Shaken))
         {
             IModel? hero = unit.GetHeroModel();
             if (hero != null && hero.GetIsAlive())

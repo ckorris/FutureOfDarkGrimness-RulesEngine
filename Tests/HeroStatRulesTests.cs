@@ -3,7 +3,10 @@ using System.Linq;
 using FDG.Data;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
+using FDG.Rules.Foundation;
+using FDG.Rules.Tokens;
 using FDG.SaveLoad;
+using FDG.Stages;
 using NUnit.Framework;
 
 namespace FDG.Tests
@@ -46,6 +49,43 @@ namespace FDG.Tests
 
             Assert.That(HeroStatRules.GetMoraleQuality(plain), Is.EqualTo(4),
                 "a unit with no hero is unaffected.");
+        }
+
+        // #421 - OPR 3.6 Hero: "The Hero's unit ... may use the Hero's Quality for Morale Tests as long as the
+        // Hero isn't Shaken." Shaken is a unit token, so a joined hero is Shaken exactly when its unit is.
+        [Test]
+        public void GetMoraleQuality_UsesUnitQuality_WhileTheJoinedHeroIsShaken()
+        {
+            (UnitData host, _, _) = MakeMergedUnit(gruntCount: 3); // host Quality 4, hero Quality 2
+            host.Tokens.AddToken(TokenDefinitionCatalog.Create(TokenType.Shaken));
+
+            Assert.That(HeroStatRules.GetMoraleQuality(host), Is.EqualTo(4),
+                "a Shaken hero lends nothing - the unit's own Quality stands.");
+        }
+
+        [Test]
+        public void GetMoraleQuality_UsesHerosQuality_AgainOnceTheShakenTokenClears()
+        {
+            (UnitData host, _, _) = MakeMergedUnit(gruntCount: 3);
+            host.Tokens.AddToken(TokenDefinitionCatalog.Create(TokenType.Shaken));
+            host.Tokens.RemoveTokens(TokenType.Shaken); // recovered by an idle activation
+
+            Assert.That(HeroStatRules.GetMoraleQuality(host), Is.EqualTo(2),
+                "an un-Shaken hero lends its Quality again.");
+        }
+
+        [Test]
+        public void ShakenIsAUnitToken_SoTheJoinedHeroIsShakenExactlyWhenItsUnitIs()
+        {
+            (UnitData host, ModelData hero, _) = MakeMergedUnit(gruntCount: 3);
+            DataBinding<UnitData> binding = _store.GetDataBinding<UnitData>(_store.Create(host));
+
+            MoraleUtilities.ApplyShaken(binding); // the failed-morale path's own token write
+
+            Assert.That(host.Tokens.HasToken(TokenType.Shaken), Is.True, "the token lands on the unit");
+            Assert.That(hero.Tokens.HasToken(TokenType.Shaken), Is.False, "never on the hero's model");
+            Assert.That(HeroStatRules.GetMoraleQuality(host), Is.EqualTo(4),
+                "so 'the Hero isn't Shaken' reads the unit's token");
         }
 
         [Test]

@@ -640,6 +640,86 @@ namespace FDG.Tests
                 needed: 6)), Is.EqualTo(2f).Within(0.0001f), "needing 6s: 1 hit plus the base's extra; the 5s all missed");
         }
 
+        // --- E: the wrappers - Enhanced X Aura ("this model and its unit get Enhanced X") and Enhanced X Buff ------------
+
+        [Test]
+        public void EnhancedLustboundAura_GrantsEnhancedLustbound_WhichFiresBesideLustbound()
+        {
+            var harness = new TestRuleHarness();
+            harness.Register(RangeConditional36Definitions.Move());
+            harness.Register(Enhanced36Definitions.Move());
+            harness.Register(Enhanced36Definitions.Aura("Lustbound"));
+            IUnit daemons = harness.BuildUnit("P1", 3, "Lustbound", "Enhanced Lustbound Aura");
+
+            UnitCreationRules.Apply(daemons, harness.Evaluator);
+
+            Assert.That(daemons.Tokens.GetAllTokens(TokenType.RuleGrant)
+                .Select(t => ((TokenPayload.RuleGrant)t.Payload!).RuleName), Is.EqualTo(new[] { "Enhanced Lustbound" }),
+                "the aura lands as a RuleGrant token");
+
+            var sink = new MovementModifierSink();
+            sink.ApplyFrom(harness.Evaluate(daemons, ERuleSeat.Actor,
+                new MoveActionDeclaredContext(daemons, EActionType.Rush, BaseDistanceInches: 12f)));
+            Assert.That(sink.Net(EActionType.Rush), Is.EqualTo(4f), "Lustbound's +2 and the granted Enhanced delta's +2");
+        }
+
+        [Test]
+        public void EnhancedLustboundAura_WithoutLustbound_GrantsAnInertRule()
+        {
+            var harness = new TestRuleHarness();
+            harness.Register(Enhanced36Definitions.Move());
+            harness.Register(Enhanced36Definitions.Aura("Lustbound"));
+            IUnit pretenders = harness.BuildUnit("P1", 3, "Enhanced Lustbound Aura");
+            UnitCreationRules.Apply(pretenders, harness.Evaluator);
+
+            var sink = new MovementModifierSink();
+            sink.ApplyFrom(harness.Evaluate(pretenders, ERuleSeat.Actor,
+                new MoveActionDeclaredContext(pretenders, EActionType.Rush, BaseDistanceInches: 12f)));
+            Assert.That(sink.Net(EActionType.Rush), Is.EqualTo(0f));
+        }
+
+        [Test]
+        public void EnhancedPrimalBuff_GrantsEnhancedPrimalOnce_ToAFriendWithin12_WhoSpendsItOnTheNextHitRoll()
+        {
+            var harness = new TestRuleHarness();
+            harness.Register(Bases.Bloodborn);                                   // Primal's shape, under its own name
+            harness.Register(Enhanced36Definitions.HitsOnFive("Bloodborn"));
+            harness.Register(Enhanced36Definitions.Buff("Bloodborn"));
+            IUnit shaman = harness.BuildUnit("P1", 1, "Enhanced Bloodborn Buff");
+            IUnit raptors = harness.BuildUnit("P1", 3, "Bloodborn");
+            IUnit enemy = harness.BuildUnit("P2", 1);
+
+            AbilityOffer offer = harness.OfferAbilities(new BeforeAttackActionContext(shaman)).Single();
+            Assert.That(offer.Ability.TargetSelector.RangeInches, Is.EqualTo(12f));
+            Assert.That(offer.Ability.TargetSelector.TargetAffinity, Is.EqualTo(ETargetAffinity.Friend));
+            OperationApplier.ApplyTokenOperations(harness.Accept(offer, raptors));
+            Assert.That(raptors.Tokens.GetAllTokens(TokenType.RuleGrant)
+                .Select(t => ((TokenPayload.RuleGrant)t.Payload!).RuleName), Is.EqualTo(new[] { "Enhanced Bloodborn" }));
+
+            float Extra() 
+            {
+                var sink = new HitInjectionSink();
+                sink.ApplyFrom(harness.EvaluateAll(
+                    new HitRollCompleteContext(raptors, enemy, TestDice.Faces(5), 10f, HitRollNeeded: 4),
+                    RuleParticipant.Actor(raptors), RuleParticipant.Subject(enemy)));
+                return sink.TotalExtraHits;
+            }
+
+            Assert.That(Extra(), Is.EqualTo(1f), "the granted Enhanced pays the successful 5 - once");
+            Assert.That(raptors.Tokens.HasToken(TokenType.RuleGrant), Is.False, "'once (next time the effect would apply)'");
+            Assert.That(Extra(), Is.EqualTo(0f), "spent");
+        }
+
+        [Test]
+        public void NoEnhancedShape_ReadsAnArgument_SoEveryGrantResolvesPastTheArityGate()
+        {
+            // RuleEvaluator.CollectGrantedRules skips a granted rule that reads Arg(n) (grants carry none).
+            foreach (SpecialRuleDefinition rule in EnhancedRuleIntegrationTests.AllShapes())
+            {
+                Assert.That(RuleArgumentArity.MaxReferencedArgIndex(rule), Is.EqualTo(-1), rule.Name);
+            }
+        }
+
         // --- helpers --------------------------------------------------------------------------------------------------
 
         private static float HitsOfKind(RollToHitResults results, EHitSourceKind kind) =>

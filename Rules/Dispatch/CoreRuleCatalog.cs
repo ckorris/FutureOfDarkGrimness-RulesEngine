@@ -2020,7 +2020,7 @@ public static class CoreRuleCatalog
     public static SpecialRuleDefinition StormOfWar { get; } = MakeStorm("Storm of War", System.Array.Empty<string>(), 1, "AP(1)");
 
     /// <summary>
-    /// Strider (#102): the unit ignores the difficult-terrain movement cap — it may cross Difficult terrain
+    /// Strider (#102; Core Rules v3.6.0 "May ignore the effects of Difficult terrain"): the unit ignores the difficult-terrain movement cap — it may cross Difficult terrain
     /// without being limited to <see cref="Utilities.GameWideConstants.DIFFICULT_TERRAIN_MOVE_CAP_INCHES"/>.
     /// A passive at <see cref="EHookID.Movement_OnMoveThroughTerrain"/> emitting
     /// <see cref="Effect.IgnoreTerrainEffects"/>, read by <see cref="MovementRuleQueries.IgnoresDifficultTerrain"/>
@@ -2039,7 +2039,7 @@ public static class CoreRuleCatalog
         },
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Positive,
-        Description: "Ignores the movement penalty for Difficult terrain.");
+        Description: "May ignore the effects of Difficult terrain.");
 
     /// <summary>
     /// Flying (#029; Core Rules v3.6.0 "May move through units and terrain, and ignores the effects of Difficult
@@ -2353,7 +2353,7 @@ public static class CoreRuleCatalog
     // Action-restriction (ChooseActionStage drops the disallowed menu options) -------------------------
 
     /// <summary>
-    /// Immobile (#100): the unit can't move — it may only Hold (and shoot). A passive rule at
+    /// Immobile (#100; Core Rules v3.6.0 "May only use Hold actions"): the unit can't move — it may only Hold (and shoot). A passive rule at
     /// <see cref="EHookID.Activation_OnActionChoice"/> that queues
     /// <see cref="RuleOperation.RestrictActions"/> with the allowed set [Hold]; ChooseActionStage reads it
     /// and grays out Move and Charge. The general action-restriction primitive (also Artillery's deferred
@@ -2369,5 +2369,5 @@ public static class CoreRuleCatalog
         },
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Negative,
-        Description: "This unit can't move - it may only Hold (and shoot).");
+        Description: "May only use Hold actions.");
 }

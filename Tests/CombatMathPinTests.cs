@@ -378,6 +378,29 @@ namespace FDG.Tests
                 isMelee: true, isCharging: false); // gate closed: no extra hits
         }
 
+        // #433: Enhanced Bloodborn's extra hit on a SUCCESSFUL natural 5 reads the hit threshold the AI threads onto its
+        // mirrored hit context - at 4+ the 5s pay out, under Fatigue (6s only, and they don't count) nothing does.
+        [Test]
+        public async Task EnhancedBloodborn_SuccessfulFives_MatchesEngine()
+        {
+            var blade = Blade();
+            var attacker = MakeUnit(3, blade, atX: 0f);
+            AttachUnitRule(attacker, "Bloodborn", new SpecialRuleDefinition("Bloodborn",
+                new[]
+                {
+                    new HookEntry(EHookID.Shooting_OnHitRollComplete, new Condition.UnmodifiedRollEquals(6),
+                        new Effect.AddExtraHit(6, 1), ELifetime.ThisAttack),
+                },
+                System.Array.Empty<ActivatedAbility>()));
+            AttachUnitRule(attacker, "Enhanced Bloodborn", Enhanced36Definitions.HitsOnFive());
+            var defender = MakeUnit(3, null, atX: 1f);
+
+            await AssertVolleyPinned(attacker, defender, blade, weaponCount: 3, isMelee: true, isCharging: true);
+
+            attacker.GetValue().Tokens.AddToken(new Token(TokenType.Fatigued, 1, new TokenClearTrigger.RoundEnd()));
+            await AssertVolleyPinned(attacker, defender, blade, weaponCount: 3, isMelee: true, isCharging: true);
+        }
+
         [Test]
         public async Task Thrust_ChargeHitAndApBonus_MatchesEngine()
         {

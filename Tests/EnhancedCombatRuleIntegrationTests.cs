@@ -77,6 +77,15 @@ namespace FDG.Tests
                 },
                 System.Array.Empty<ActivatedAbility>());
 
+            /// <summary>Bloodborn / Clan Warrior / Primal / Predator / Royal Warrior: one extra hit per natural 6 (#434 D7).</summary>
+            public static SpecialRuleDefinition Bloodborn => new("Bloodborn",
+                new[]
+                {
+                    new HookEntry(EHookID.Shooting_OnHitRollComplete, new Condition.UnmodifiedRollEquals(6),
+                        new Effect.AddExtraHit(6, 1), ELifetime.ThisAttack),
+                },
+                System.Array.Empty<ActivatedAbility>());
+
             /// <summary>Wolfborn / Nimble / Rapid Blink / Wave-Step: the D3" activation move (#434 D8).</summary>
             public static SpecialRuleDefinition Wolfborn => new("Wolfborn",
                 new[]
@@ -540,7 +549,101 @@ namespace FDG.Tests
                 Is.EqualTo(4));
         }
 
+        // --- D: Enhanced Bloodborn (and Clan Warrior / Primal / Predator / Royal Warrior): extra hits on successful 5-6 ----
+        // The 5 face is the delta, gated on the 5 having HIT (Condition.UnmodifiedRollHits reads the hit threshold the
+        // stage split the successes with); the base's one-extra-hit approximation of "+1 attack" (#434 D7) is inherited.
+        // FixedFaceDiceRoller, not FixedDiceRoller: the latter's TotalRolls is always 1, so it cannot show a miss.
+
+        [Test]
+        public async Task EnhancedBloodborn_WithBloodborn_ASuccessfulFive_ScoresOneExtraHit()
+        {
+            _ctx = new WoundTestContext(_store, new CapturingWoundRequester(), new FixedFaceDiceRoller(5));
+            DataBinding<UnitData> berserkers = MakeUnit("Berserkers", 0f, 1, Bases.Bloodborn, Enhanced36Definitions.HitsOnFive());
+
+            RollToHitResults hits = await Hits(new Weapon("Gun", 24f, 1, 0), berserkers, MakeUnit("Target", 10f, 1), 10f);
+
+            Assert.That(TotalHits(hits), Is.EqualTo(2f), "a 5 against 4+: the hit plus the Enhanced extra");
+            Assert.That(HitsOfKind(hits, EHitSourceKind.ExtraHits), Is.EqualTo(1f));
+        }
+
+        [Test]
+        public async Task EnhancedBloodborn_WithBloodborn_ASix_ScoresOneExtraHit_NotTwo()
+        {
+            _ctx = new WoundTestContext(_store, new CapturingWoundRequester(), new FixedFaceDiceRoller(6));
+            DataBinding<UnitData> berserkers = MakeUnit("Berserkers", 0f, 1, Bases.Bloodborn, Enhanced36Definitions.HitsOnFive());
+
+            Assert.That(TotalHits(await Hits(new Weapon("Gun", 24f, 1, 0), berserkers, MakeUnit("Target", 10f, 1), 10f)),
+                Is.EqualTo(2f), "the 6 is the base's face alone - the delta is only the 5");
+        }
+
+        [Test]
+        public async Task EnhancedBloodborn_AFiveThatMissed_ScoresNothing()
+        {
+            // A unit needing 6s (a -2 to hit): the 5 is "unmodified 5" but not a "successful hit result".
+            _ctx = new WoundTestContext(_store, new CapturingWoundRequester(), new FixedFaceDiceRoller(5));
+            DataBinding<UnitData> berserkers = MakeUnit("Berserkers", 0f, 1, Bases.Bloodborn, Enhanced36Definitions.HitsOnFive());
+
+            Assert.That(TotalHits(await Hits(new Weapon("Gun", 24f, 1, 0), berserkers, MakeUnit("Target", 10f, 1), 10f,
+                needed: 6)), Is.EqualTo(0f));
+        }
+
+        [TestCase(5, 0f)]
+        [TestCase(6, 1f)]
+        public async Task EnhancedBloodborn_FatiguedMelee_GetsNothingFromFivesOrSixes(int face, float expectedHits)
+        {
+            // Fatigue: 6s only, and those 6s "don't count as rolls of 6 for special rules" (#418) - so no extra hit from
+            // either face. Through the real DetermineHitRollStage, which sets the 6+ threshold.
+            _ctx = new WoundTestContext(_store, new CapturingWoundRequester(), new FixedFaceDiceRoller(face));
+            DataBinding<UnitData> berserkers = MakeUnit("Berserkers", 0f, 1, Bases.Bloodborn, Enhanced36Definitions.HitsOnFive());
+            FatigueUtilities.ApplyFatigued(berserkers.GetValue());
+            DataBinding<UnitData> target = MakeUnit("Target", 10f, 1);
+            Place(target, 0.5f);
+
+            var metadata = new CombatMetadata(_ctx, berserkers, target, new Weapon("Axe", 0f, 1, 0), weaponCount: 1,
+                attackerMoved: false, isMelee: true, isCharging: true);
+            var determine = new DetermineHitRollStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>());
+            determine.NextStage.Bind("done");
+            await determine.Enter(metadata);
+            var roll = new RollToHitStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>());
+            roll.NextStage.Bind("done");
+            await roll.Enter(metadata);
+
+            Assert.That(metadata.QueryForResult(out DetermineHitRollResults threshold), Is.True);
+            Assert.That(threshold.HitRollNeeded, Is.EqualTo(6), "fatigued: 6s only");
+            Assert.That(metadata.QueryForResult(out RollToHitResults hits), Is.True);
+            Assert.That(TotalHits(hits), Is.EqualTo(expectedHits), face == 5 ? "the 5 missed" : "the 6 hits, once");
+            Assert.That(HitsOfKind(hits, EHitSourceKind.ExtraHits), Is.Zero, "no extra hit from a 5 or a 6");
+        }
+
+        [Test]
+        public async Task EnhancedBloodborn_WithoutBloodborn_IsInert()
+        {
+            _ctx = new WoundTestContext(_store, new CapturingWoundRequester(), new FixedFaceDiceRoller(5));
+            DataBinding<UnitData> pretenders = MakeUnit("Pretenders", 0f, 1, Enhanced36Definitions.HitsOnFive());
+
+            Assert.That(TotalHits(await Hits(new Weapon("Gun", 24f, 1, 0), pretenders, MakeUnit("Target", 10f, 1), 10f)),
+                Is.EqualTo(1f));
+        }
+
+        [Test]
+        public async Task EnhancedBloodborn_HistogramMode_PricesTheFivesAtOneInSix()
+        {
+            // 6 dice at 4+: 3 hits; the base adds 1 (the 6s), the Enhanced arm adds 1 more (the 5s, all successful at 4+).
+            DataBinding<UnitData> plain = MakeUnit("Berserkers", 0f, 1, Bases.Bloodborn);
+            DataBinding<UnitData> enhanced = MakeUnit("Berserkers", 0f, 1, Bases.Bloodborn, Enhanced36Definitions.HitsOnFive());
+
+            Assert.That(TotalHits(await Hits(new Weapon("Gun", 24f, 6, 0), plain, MakeUnit("Target", 10f, 1), 10f, attacks: 6)),
+                Is.EqualTo(4f).Within(0.0001f));
+            Assert.That(TotalHits(await Hits(new Weapon("Gun", 24f, 6, 0), enhanced, MakeUnit("Target", 10f, 1), 10f, attacks: 6)),
+                Is.EqualTo(5f).Within(0.0001f));
+            Assert.That(TotalHits(await Hits(new Weapon("Gun", 24f, 6, 0), enhanced, MakeUnit("Target", 10f, 1), 10f, attacks: 6,
+                needed: 6)), Is.EqualTo(2f).Within(0.0001f), "needing 6s: 1 hit plus the base's extra; the 5s all missed");
+        }
+
         // --- helpers --------------------------------------------------------------------------------------------------
+
+        private static float HitsOfKind(RollToHitResults results, EHitSourceKind kind) =>
+            results.SuccessfulHitList.Where(hit => hit.Source.Kind == kind).Sum(hit => hit.HitCount);
 
         private static int MoraleNet(TestRuleHarness harness, IUnit unit, PreMoraleTestContext context)
         {
@@ -569,7 +672,8 @@ namespace FDG.Tests
         }
 
         private async Task<RollToHitResults> Hits(Weapon weapon, DataBinding<UnitData> attacker, DataBinding<UnitData> defender,
-            float distance, bool melee = false, bool charging = false, float origin = 0f, bool isSpell = false)
+            float distance, bool melee = false, bool charging = false, float origin = 0f, bool isSpell = false,
+            int needed = 4, int attacks = 1)
         {
             Place(defender, distance);
 
@@ -577,7 +681,7 @@ namespace FDG.Tests
             stage.NextStage.Bind("done");
             var metadata = new CombatMetadata(_ctx, attacker, defender, weapon, weaponCount: 1, attackerMoved: false,
                 isMelee: melee, isCharging: charging, isSpell: isSpell, chargeOriginDistanceInches: origin);
-            metadata.AddResult(new DetermineHitRollResults(4, 1));
+            metadata.AddResult(new DetermineHitRollResults(needed, attacks));
             await stage.Enter(metadata);
 
             Assert.That(metadata.QueryForResult(out RollToHitResults result), Is.True);

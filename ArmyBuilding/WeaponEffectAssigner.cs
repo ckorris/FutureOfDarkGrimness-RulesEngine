@@ -257,6 +257,12 @@ namespace FDG.ArmyBuilding
             ["Beastmen"]                     = (Sets.ArrowLoose, Sets.BeastMaw),
             ["Change Disciples"]             = (Sets.ArcaneBolt, Sets.BladeStandard),
             ["Chivalrous Kingdoms"]          = (Sets.ArrowLoose, Sets.BladeStandard),
+            // #435: OPR 3.6 renamed the four "Rift Daemons of X" books "Daemons of X" (the Faction string a 3.6 import
+            // carries); same sets as the 3.5 rows below, which stay for the bundled 3.5 books until #438 re-bakes.
+            ["Daemons of Change"]            = (Sets.ArcaneBolt, Sets.DaemonArcaneMelee),
+            ["Daemons of Lust"]              = (Sets.ArcaneBolt, Sets.DaemonArcaneMelee),
+            ["Daemons of Plague"]            = (Sets.BioOrganic, Sets.ToxicMelee),
+            ["Daemons of War"]               = (Sets.ArcaneBolt, Sets.DaemonArcaneMelee),
             ["Dark Elves"]                   = (Sets.CrossbowBolt, Sets.BladeStandard),
             ["Deep-Sea Elves"]               = (Sets.ThrownSpear, Sets.SpearPierce),
             ["Dragon Empire"]                = (Sets.ArrowLoose, Sets.BladeStandard),

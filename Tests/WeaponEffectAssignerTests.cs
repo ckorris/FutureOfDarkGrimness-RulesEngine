@@ -63,6 +63,19 @@ public class WeaponEffectAssignerTests
             Is.EqualTo(((string?)null, (string?)null)), "an AoF faction is unknown to the GDF table");
     }
 
+    // #435: the 3.6 book names of the four AoF daemon books ("Rift Daemons of X" in 3.5) keep their 3.5 sets.
+    [TestCase("Change")]
+    [TestCase("Lust")]
+    [TestCase("Plague")]
+    [TestCase("War")]
+    public void FactionDefaults_The36DaemonsBookNames_KeepTheRiftDaemonsSets(string god)
+    {
+        Assert.That(WeaponEffectAssigner.FactionDefaults($"Daemons of {god}", GameSystems.AgeOfFantasy),
+            Is.EqualTo(WeaponEffectAssigner.FactionDefaults($"Rift Daemons of {god}", GameSystems.AgeOfFantasy)));
+        Assert.That(WeaponEffectAssigner.FactionDefaults($"Daemons of {god}", GameSystems.AgeOfFantasy).Ranged,
+            Is.Not.Null);
+    }
+
     [TestCase("Repeater Crossbow", true, "crossbow-bolt")] // crossbow outranks "bow"
     [TestCase("Light Bolt Thrower", true, "ballista-bolt")] // NOT storm-tracer's "bolt"
     [TestCase("Longbow", true, "arrow-loose")]

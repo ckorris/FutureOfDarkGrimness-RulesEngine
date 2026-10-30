@@ -313,7 +313,7 @@ namespace FDG.Tests
 
         // #391: a Shaken unit gets no post-combat move at all - Shaken means idle, no Active Special
         // Rules (the rulebook names re-positioning rules like Harassing explicitly). Gated at the
-        // family's chokepoint so the Boosts and supplement variants are covered too; the round's
+        // family's chokepoint so the Enhanced and supplement variants are covered too; the round's
         // budget is kept (the unit did not move).
         [Test]
         public async Task PostCombatMove_ShakenUnit_NotOffered()
@@ -386,45 +386,6 @@ namespace FDG.Tests
                 "both moved, charger first (active player resolves simultaneous effects first)");
             Assert.That(charger.GetValue().Tokens.HasToken(TokenType.PostCombatMoveUsed), Is.True);
             Assert.That(defender.GetValue().Tokens.HasToken(TokenType.PostCombatMoveUsed), Is.True);
-        }
-
-        // Boost: with the base rule present, the post-combat move upgrades from 3" to 6". The gate
-        // coalesces the base 3" op and the boost 6" op into a SINGLE 6" move — a 4" submission is legal
-        // (would exceed a 3" budget) and the unit moves exactly once.
-        [Test]
-        public async Task HarassingBoost_UpgradesMoveTo6_WhenUnitHasHarassing()
-        {
-            var requester = new CannedMovePathRequester(dx: 4f, dz: 0f);
-            var ctx = new TriggeredMoveTestContext(_store, requester);
-            DataBinding<UnitData> unit = MakeUnit(new Position(0f, 0f));
-            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Harassing", CoreRuleCatalog.Harassing));
-            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Harassing Boost", CoreRuleCatalog.HarassingBoost));
-            IUnit u = unit.GetValue();
-
-            IReadOnlyList<RuleOperation> ops = ctx.RuleEvaluator.EvaluateAll(
-                new PostShootActionContext(u), RuleParticipant.Actor(u));
-            await PostCombatMoveGate.OfferIfAvailable(ctx, u, ops);
-
-            Assert.That(requester.Captured!.MaxDistanceInches, Is.EqualTo(6f).Within(0.001f),
-                "Harassing Boost coalesces with Harassing into a single 6\" move");
-            AssertModelAt(unit, 0, 4f, 0f); // moved ONCE (not 3"+6")
-        }
-
-        // Boost is inert without the base rule: UnitHasRule(Harassing) fails, so no 6" move — and with no
-        // Harassing there's no 3" move either, so nothing is produced.
-        [Test]
-        public void HarassingBoost_NoMove_WithoutHarassing()
-        {
-            var ctx = new TriggeredMoveTestContext(_store, new NullPlayerRequester());
-            DataBinding<UnitData> unit = MakeUnit(new Position(0f, 0f));
-            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Harassing Boost", CoreRuleCatalog.HarassingBoost));
-            IUnit u = unit.GetValue();
-
-            IReadOnlyList<RuleOperation> ops = ctx.RuleEvaluator.EvaluateAll(
-                new PostShootActionContext(u), RuleParticipant.Actor(u));
-
-            Assert.That(ops, Is.Empty,
-                "Harassing Boost's UnitHasRule(Harassing) gate fails when the unit lacks Harassing");
         }
 
         // Aura: "this model and its unit get X" grants the named family rule unit-wide at creation, and

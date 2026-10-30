@@ -100,7 +100,7 @@ namespace FDG.Tests
             var ctx = new WoundTestContext(_store, new NullPlayerRequester());
             DataBinding<UnitData> unit = MakeUnit(rule: null);
             var bombs = new Weapon("Bombs", rangeInches: 0f, attacks: 1, armorPenetration: 0);
-            bombs.AttachRuleDefinition(new ResolvedRule("Strafing", CoreRuleCatalog.Strafing));
+            bombs.AttachRuleDefinition(new ResolvedRule("Crossing Strike", WeaponRules36Definitions.CrossingStrike));
             unit.GetValue().ModelBindings[0].GetValue().Weapons.Add(bombs);
 
             Assert.That(MovementRuleQueries.CanMoveThroughEnemies(unit.GetValue(), ctx.RuleEvaluator), Is.False);

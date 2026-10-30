@@ -16,7 +16,7 @@ using NUnit.Framework;
 
 namespace FDG.Tests
 {
-    // Vertical-slice integration test for #197 P10 Storm of X: "once per game, before attacking, roll 3 dice;
+    // Vertical-slice integration test for #197 P10 Storm of X (a 3.5 rule; hand-built since #436, see the helpers): "once per game, before attacking, roll 3 dice;
     // for each 2+ pick an enemy within 12in that takes 3 hits with [rule]." Offered in Choose Action and
     // resolved by StormStage. Proves: the pool is rolled DECISIVELY (integer successes even in probabilistic
     // mode - the #100 invariant, since you cannot pick a fractional target), each success independently picks
@@ -45,7 +45,7 @@ namespace FDG.Tests
             var ctx = new TestGameContext(_store, new AllOnFaceDiceRoller(2),
                 ruleResolver: CoreRuleCatalog.CreateResolver(), playerRequester: requester);
 
-            DataBinding<UnitData> attacker = MakeStormUnit("Cultists", CoreRuleCatalog.StormOfChange, new Position(0, 0));
+            DataBinding<UnitData> attacker = MakeStormUnit("Cultists", StormOfChange, new Position(0, 0));
             MakeEnemy("E1", new Position(5, 0));
             MakeEnemy("E2", new Position(5, 5));
             MakeEnemy("E3", new Position(5, -5));
@@ -68,7 +68,7 @@ namespace FDG.Tests
             var ctx = new TestGameContext(_store, new AllOnFaceDiceRoller(1),
                 ruleResolver: CoreRuleCatalog.CreateResolver(), playerRequester: requester);
 
-            DataBinding<UnitData> attacker = MakeStormUnit("Cultists", CoreRuleCatalog.StormOfChange, new Position(0, 0));
+            DataBinding<UnitData> attacker = MakeStormUnit("Cultists", StormOfChange, new Position(0, 0));
             MakeEnemy("E1", new Position(5, 0));
 
             await DriveStorm(ctx, attacker);
@@ -86,7 +86,7 @@ namespace FDG.Tests
             var ctx = new TestGameContext(_store, new ProbabilisticDiceRoller(),
                 ruleResolver: CoreRuleCatalog.CreateResolver(), playerRequester: requester);
 
-            DataBinding<UnitData> attacker = MakeStormUnit("Cultists", CoreRuleCatalog.StormOfWar, new Position(0, 0));
+            DataBinding<UnitData> attacker = MakeStormUnit("Cultists", StormOfWar, new Position(0, 0));
             MakeEnemy("E1", new Position(5, 0), models: 20); // survives whatever lands
 
             await DriveStorm(ctx, attacker);
@@ -103,7 +103,7 @@ namespace FDG.Tests
         {
             var requester = new RecordingActionRequester("Storm of Change");
             var ctx = new TriggeredMoveTestContext(_store, requester);
-            DataBinding<UnitData> attacker = MakeStormUnit("Cultists", CoreRuleCatalog.StormOfChange, new Position(0, 0));
+            DataBinding<UnitData> attacker = MakeStormUnit("Cultists", StormOfChange, new Position(0, 0));
             var unitCtx = NewActivation(ctx, attacker);
 
             bool routed = false;
@@ -122,7 +122,7 @@ namespace FDG.Tests
         public void GatherOffers_OncePerGameUsed_StormNotOfferedAgain()
         {
             var ctx = new TriggeredMoveTestContext(_store, new NullPlayerRequester());
-            DataBinding<UnitData> attacker = MakeStormUnit("Cultists", CoreRuleCatalog.StormOfChange, new Position(0, 0));
+            DataBinding<UnitData> attacker = MakeStormUnit("Cultists", StormOfChange, new Position(0, 0));
             attacker.GetValue().Tokens.AddToken(new Token(UsedMarker("Storm of Change"), 1, new TokenClearTrigger.ManualOnly()));
 
             var offers = ctx.RuleEvaluator.GatherOffers(new ActionChoiceContext(attacker.GetValue()));
@@ -132,6 +132,25 @@ namespace FDG.Tests
         }
 
         // --- helpers ---
+
+        // #436: 3.6 dropped the Storm of X RULES (the 3.6 Daemons books carry "Storm of X" as weapons instead), so the
+        // catalog no longer defines them. The stormOfHits effect kind and StormStage stay - JSON-authorable and still
+        // working - and these hand-built copies of the deleted 3.5 definitions keep the mechanism pinned.
+        private static SpecialRuleDefinition MakeStorm(string name, string[] withRules, int armorPenetration) =>
+            new SpecialRuleDefinition(name,
+                Array.Empty<HookEntry>(),
+                new[]
+                {
+                    new ActivatedAbility(EHookID.Activation_OnActionChoice, new Cost.OncePerGame(),
+                        new TargetSelector(0f, 1, 1, ETargetAffinity.Self, false),
+                        new Effect.StormOfHits(PoolDice: 3, SuccessThreshold: 2, HitsPerSuccess: 3,
+                            WithRules: withRules, ArmorPenetration: armorPenetration, RangeInches: 12f),
+                        new Condition.Always()),
+                },
+                Valence: EValence.Positive);
+
+        private static readonly SpecialRuleDefinition StormOfChange = MakeStorm("Storm of Change", new[] { "Shred" }, 0);
+        private static readonly SpecialRuleDefinition StormOfWar = MakeStorm("Storm of War", Array.Empty<string>(), 1);
 
         private static TokenType UsedMarker(string ruleName) => new("AbilityUsed:" + ruleName);
 

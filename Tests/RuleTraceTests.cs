@@ -124,21 +124,21 @@ namespace FDG.Tests
         [Test]
         public void GatherOffers_TracesOfferedAndUnaffordable()
         {
-            _harness.Register(CoreRuleCatalog.Strafing);
-            IUnit mover = _harness.BuildUnit("A", 3, "Strafing");
+            _harness.Register(WeaponRules36Definitions.CrossingStrike);
+            IUnit mover = _harness.BuildUnit("A", 3, "Crossing Strike");
 
-            // Strafing's ability is once-per-activation: first gather is offered, and after the used
+            // Crossing Strike's ability is once-per-activation: first gather is offered, and after the used
             // marker is applied the second gather traces the cost refusal.
             var context = new MoveThroughEnemyContext(mover);
             IReadOnlyList<AbilityOffer> offers = _evaluator.GatherOffers(context);
             Assert.That(offers, Has.Count.EqualTo(1));
-            Assert.That(_output.DebugLines, Has.Some.Match(".*Strafing ability at Movement_OnMoveThroughEnemy: offered.*"));
+            Assert.That(_output.DebugLines, Has.Some.Match(".*Crossing Strike ability at Movement_OnMoveThroughEnemy: offered.*"));
 
             OperationApplier.ApplyTokenOperations(_evaluator.ResolveAbility(offers[0], new[] { mover }));
             _output.DebugLines.Clear();
 
             _evaluator.GatherOffers(context);
-            Assert.That(_output.DebugLines, Has.Some.Match(".*Strafing.*not offered \\(cannot pay.*"));
+            Assert.That(_output.DebugLines, Has.Some.Match(".*Crossing Strike.*not offered \\(cannot pay.*"));
         }
     }
 }

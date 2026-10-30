@@ -372,7 +372,7 @@ namespace FDG.Tests
                 "the lone Tough model survives a sub-lethal hit.");
         }
 
-        // #183 finding-2 — Resistance's two thresholds through the REAL stage: the base 6+ on weapon
+        // #183 finding-2 — 3.5 Resistance's two thresholds (3.6 Spell Resistance since #436) through the REAL stage: the base 6+ on weapon
         // wounds, and the spell facet's 2+ ("if the wounds were from a spell, they are ignored on a 2+
         // instead") when the metadata is flagged IsSpell. ProbabilisticDiceRoller makes the per-wound
         // ignore roll deterministic and fractional: 2 wounds keep 2*(5/6) on a 6+ but only 2*(1/6) on a 2+.
@@ -462,7 +462,7 @@ namespace FDG.Tests
 
         private static void AttachResistance(DataBinding<UnitData> unit)
         {
-            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Resistance", CoreRuleCatalog.Resistance));
+            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Spell Resistance", GdfSweep36Definitions.SpellResistance()));
         }
 
         private DataBinding<UnitData> MakeUnit(int modelCount, int woundsPerModel = 1)

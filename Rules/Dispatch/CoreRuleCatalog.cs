@@ -24,32 +24,30 @@ public static class CoreRuleCatalog
     {
         Stealth, Artillery, Indirect, Reliable, Fast, VeryFast, Slow, Surge, Relentless, Furious,
         Deadly, Regeneration, Unstoppable, Tough, Rending, Bane, Shred, Vanguard, Scout, Ambush, Thrust,
-        Blast, Takedown, Limited, Impact, Counter, Brace, Parry, MartialProwess, Strafing, Fear, Fearless, Hero, UniqueHero, Transport,
+        Blast, Takedown, Limited, Impact, Counter, Brace, Parry, MartialProwess, Fear, Fearless, Hero, UniqueHero, Transport,
         FuriousBuff, Mend, Immobile, Cumbersome, Caster, SpellAmplifier,
         Evasive, MeleeEvasion, Precise, GoodShot,
         Agile, Quick, RapidAdvance, RapidRush, RapidCharge,
-        Lacerate, Crack,
+        Lacerate,
         UnstoppableWhenShooting, ShredWhenShooting, BaneWhenShooting,
         Harassing, HitAndRunShooter, HitAndRunFighter, HitAndRun, Guerrilla,
-        HarassingBoost, GuerrillaBoost,
-        HitAndRunShooterAura, HitAndRunFighterAura, HarassingBoostAura, GuerrillaBoostAura,
+        HitAndRunShooterAura, HitAndRunFighterAura,
         RegenerationAura, FuriousAura, StealthAura, ScoutAura, RelentlessAura, AmbushAura,
         EvasiveAura, FastAura, FearlessAura, MeleeEvasionAura,
         RapidAdvanceAura, RapidChargeAura, RapidRushAura,
         BaneWhenShootingAura, ShredWhenShootingAura, UnstoppableWhenShootingAura,
         Courage, UnstoppableInMelee, ShredInMelee, BaneInMelee, RendingInMelee,
-        CourageAura, BaneInMeleeAura, RendingInMeleeAura, ShredInMeleeAura, UnstoppableInMeleeAura,
+        BaneInMeleeAura, RendingInMeleeAura, ShredInMeleeAura, UnstoppableInMeleeAura,
         HitBonusInMelee, HitBonusWhenShooting, ApBonusInMelee, ApBonusWhenShooting,
         BaneWhenAttacking, ShredWhenAttacking, Slayer, RangeBonusWhenShooting,
-        Resistance, Protected, PiercingAssault, PiercingHunter, Shielded, Fortified,
-        ResistanceAura, ProtectedAura, PiercingAssaultAura, PiercingHunterAura, ShieldedAura, FortifiedAura,
+        Protected, Shielded, Fortified,
+        ProtectedAura, ShieldedAura, FortifiedAura,
         Strider, Flying, Aircraft, Teleport, TeleportAura, DelayedAction,
-        IncreasedShootingRange, RangedShrouding, DarkbornOffensive, DarkbornDefensive, MeleeShrouding,
+        IncreasedShootingRange, RangedShrouding, MeleeShrouding,
         IncreasedShootingRangeAura, RangedShroudingAura, MeleeShroudingAura,
         Unpredictable, UnpredictableFighter, UnpredictableShooter,
         UnpredictableFighterAura, UnpredictableShooterAura,
         Ravage, CrossingAttack,
-        StormOfChange, StormOfLust, StormOfPlague, StormOfWar,
         Fanatic, ReDeployment,
         Retaliate, Deathstrike, SelfDestruct,
     };
@@ -665,7 +663,7 @@ public static class CoreRuleCatalog
     /// (Subject seat) at <see cref="EHookID.Melee_OnHitsTaken"/>, which ParryHitsStage fires between the hit roll and
     /// the saves of every melee swing and of the charge's Impact hits: <see cref="Effect.ParryHits"/> names the living
     /// models carrying the rule, the stage rolls min(X x carriers, hits) dice with the defender's own roller and removes
-    /// one hit per 6+ from the WORST group first (the Rending / Crack natural-6 group before the base group). Hits in one
+    /// one hit per 6+ from the WORST group first (the Rending natural-6 group before the base group). Hits in one
     /// swing differ only by save threshold, so the defender's pick has one right answer and the engine makes it - no
     /// request, no resolver (#423 D1, owner sign-off); the roll is a dice beat that names the parried groups. One dice
     /// budget per enemy melee attack - X x the living carriers when its first hits land - spent across every weapon
@@ -738,8 +736,8 @@ public static class CoreRuleCatalog
     /// Courage: +1 to this unit's morale test rolls. The modifier-style morale rule the Fearless doc
     /// above anticipates — a passive <see cref="HookEntry"/> at <see cref="EHookID.Morale_OnPreMoraleTest"/>
     /// whose <see cref="Effect.RollModifier"/>(Morale, +1) MoraleUtilities.TakeMoraleTest folds into the
-    /// threshold (a +N lowers the roll needed, so the test is easier). The base rule behind Courage Aura /
-    /// Courage Buff (the corpus names only the aura/buff, which inline "+1 to morale test rolls").
+    /// threshold (a +N lowers the roll needed, so the test is easier). The base rule behind 3.6's Bravery Aura /
+    /// Bravery Buff (#434 D6; the 3.5 Courage Aura / Courage Buff it replaced were deleted by #436).
     /// </summary>
     public static SpecialRuleDefinition Courage { get; } = new SpecialRuleDefinition("Courage",
         new[]
@@ -839,24 +837,6 @@ public static class CoreRuleCatalog
         ERuleScope.Weapon,
         Valence: EValence.Positive,
         Description: "An unmodified 6 to hit gives the attack AP(+4), and the attack ignores Regeneration.");
-
-    /// <summary>
-    /// Crack: each hit that rolled an unmodified 6 gives that hit AP(+2) — modelled as -2 to the
-    /// defender's save on those hits only — by the same per-hit machinery as <see cref="Rending"/>, at
-    /// half the AP and without Rending's Regeneration-ignore.
-    /// </summary>
-    public static SpecialRuleDefinition Crack { get; } = new SpecialRuleDefinition("Crack",
-        new[]
-        {
-            new HookEntry(EHookID.Shooting_OnHitRollComplete,
-                new Condition.UnmodifiedRollEquals(6),
-                new Effect.PerHitSaveModifier(OnRollValue: 6, Delta: -2),
-                ELifetime.ThisAttack),
-        },
-        Array.Empty<ActivatedAbility>(),
-        ERuleScope.Weapon,
-        Valence: EValence.Positive,
-        Description: "An unmodified 6 to hit gives the attack AP(+2).");
 
     /// <summary>
     /// Attacker: the defender must re-roll unmodified Defense 6s (turning saved 6s into possible
@@ -1084,7 +1064,7 @@ public static class CoreRuleCatalog
             Valence: EValence.Positive,
             Description: "+1 to hit rolls when shooting.");
 
-    /// <summary> "AP(+1) in melee": melee-gated save modifier — <see cref="PiercingAssault"/> without the charge gate. </summary>
+    /// <summary> "AP(+1) in melee": melee-gated save modifier, ungated by charging. </summary>
     public static SpecialRuleDefinition ApBonusInMelee { get; } =
         new SpecialRuleDefinition("AP(+1) in melee",
             new[]
@@ -1190,34 +1170,7 @@ public static class CoreRuleCatalog
 
     // Defensive wound-ignore + AP corpus rules (reuse IgnoreWoundOnRoll / save-modifier primitives) ------
 
-    /// <summary>
-    /// Resistance: when this unit takes wounds, each is ignored on a die roll of 6+ — or on a 2+ if the
-    /// wounds came from a spell (corpus: "If the wounds were from a spell, then they are ignored on a 2+
-    /// instead"). Two <see cref="Effect.IgnoreWoundOnRoll"/> entries on the defender (Subject) at
-    /// <see cref="EHookID.Shooting_OnSaveRollComplete"/>: an unconditional 6+ and a
-    /// <see cref="Condition.IsSpell"/>-gated 2+; on spell damage both fire and the
-    /// <see cref="WoundIgnoreSink"/> keeps the best (lowest) threshold, yielding exactly the
-    /// "2+ instead" reading.
-    /// </summary>
-    public static SpecialRuleDefinition Resistance { get; } = new SpecialRuleDefinition("Resistance",
-        new[]
-        {
-            new HookEntry(EHookID.Shooting_OnSaveRollComplete,
-                new Condition.MostModelsHaveThisRule(),
-                new Effect.IgnoreWoundOnRoll(MinRoll: 6),
-                ELifetime.ThisAttack,
-                ERuleSeat.Subject),
-            new HookEntry(EHookID.Shooting_OnSaveRollComplete,
-                new Condition.And(new Condition.IsSpell(), new Condition.MostModelsHaveThisRule()),
-                new Effect.IgnoreWoundOnRoll(MinRoll: 2),
-                ELifetime.ThisAttack,
-                ERuleSeat.Subject),
-        },
-        Array.Empty<ActivatedAbility>(),
-        Valence: EValence.Positive,
-        Description: "Ignores each wound on a roll of 6+ (2+ if the wounds came from a spell).");
-
-    /// <summary> Protected: mechanically identical to <see cref="Resistance"/> — each wound ignored on a 6+. </summary>
+    /// <summary> Protected: each wound ignored on a 6+. </summary>
     public static SpecialRuleDefinition Protected { get; } = new SpecialRuleDefinition("Protected",
         new[]
         {
@@ -1231,40 +1184,6 @@ public static class CoreRuleCatalog
         Valence: EValence.Positive,
         Description: "When a unit where most models have this rule takes wounds, roll one die for each. On a 6+ it is " +
             "ignored.");
-
-    /// <summary>
-    /// Piercing Assault: this model gets AP(+1) when charging — the AP facet of <see cref="Thrust"/> alone
-    /// (no +1 to hit). A save-roll modifier on the attacker (Actor) at
-    /// <see cref="EHookID.Shooting_OnHitRollComplete"/>, gated to a charging melee swing.
-    /// </summary>
-    public static SpecialRuleDefinition PiercingAssault { get; } = new SpecialRuleDefinition("Piercing Assault",
-        new[]
-        {
-            new HookEntry(EHookID.Shooting_OnHitRollComplete,
-                new Condition.And(new Condition.IsMelee(), new Condition.IsCharging()),
-                new Effect.RollModifier(ERollKind.Save, Delta: -1),
-                ELifetime.ThisAttack),
-        },
-        Array.Empty<ActivatedAbility>(),
-        Valence: EValence.Positive,
-        Description: "When charging, this model's melee attacks gain AP(+1).");
-
-    /// <summary>
-    /// Piercing Hunter: this model's weapons get AP(+1) when shooting at enemies over 9" away. The same
-    /// save-roll-modifier AP shape as <see cref="PiercingAssault"/>, gated by distance instead of charge
-    /// (the <c>DistanceGreaterThan(9)</c> condition naturally excludes melee, like Artillery).
-    /// </summary>
-    public static SpecialRuleDefinition PiercingHunter { get; } = new SpecialRuleDefinition("Piercing Hunter",
-        new[]
-        {
-            new HookEntry(EHookID.Shooting_OnHitRollComplete,
-                new Condition.DistanceGreaterThan(9f),
-                new Effect.RollModifier(ERollKind.Save, Delta: -1),
-                ELifetime.ThisAttack),
-        },
-        Array.Empty<ActivatedAbility>(),
-        Valence: EValence.Positive,
-        Description: "When shooting at enemies over 9\" away, this model's weapons gain AP(+1).");
 
     /// <summary>
     /// Shielded: +1 to this unit's defense rolls — a defensive save bonus. A Subject-seat
@@ -1852,51 +1771,6 @@ public static class CoreRuleCatalog
         Valence: EValence.Positive,
         Description: "Once per round, this model may move by up to 3\" after shooting or being in melee.");
 
-    // Boost variants: "if the unit has the base rule, move 6\" instead of 3\"". Authored as a separate
-    // post-combat-move rule emitting a 6" move gated on UnitHasRule(base); PostCombatMoveGate coalesces it
-    // with the base rule's own 3" move into a SINGLE 6" move (the max budget), so "6 instead of 3" falls
-    // out of the gate's max(). NB UnitHasRule is the unit-level gate the architecture provides — the
-    // corpus wording "if most MODELS have X" is a per-model majority (#093) not distinguished here, in
-    // keeping with the catalog treating "units where all models have this rule" rules as unit-level.
-
-    /// <summary>
-    /// Harassing Boost: if the unit has <see cref="Harassing"/>, its post-combat move is 6" instead of 3".
-    /// </summary>
-    public static SpecialRuleDefinition HarassingBoost { get; } = new SpecialRuleDefinition("Harassing Boost",
-        new[]
-        {
-            new HookEntry(EHookID.Shooting_OnPostShoot,
-                new Condition.UnitHasRule("Harassing"),
-                new Effect.TriggeredMove(MaxInches: 6f, IsOptional: true),
-                ELifetime.ThisAttack),
-            new HookEntry(EHookID.Melee_OnPostMelee,
-                new Condition.UnitHasRule("Harassing"),
-                new Effect.TriggeredMove(MaxInches: 6f, IsOptional: true),
-                ELifetime.ThisAttack),
-        },
-        Array.Empty<ActivatedAbility>(),
-        Valence: EValence.Positive,
-        Description: "If the unit has Harassing, its post-combat move is 6\" instead of 3\".");
-
-    /// <summary>
-    /// Guerrilla Boost: if the unit has <see cref="Guerrilla"/>, its post-combat move is 6" instead of 3".
-    /// </summary>
-    public static SpecialRuleDefinition GuerrillaBoost { get; } = new SpecialRuleDefinition("Guerrilla Boost",
-        new[]
-        {
-            new HookEntry(EHookID.Shooting_OnPostShoot,
-                new Condition.UnitHasRule("Guerrilla"),
-                new Effect.TriggeredMove(MaxInches: 6f, IsOptional: true),
-                ELifetime.ThisAttack),
-            new HookEntry(EHookID.Melee_OnPostMelee,
-                new Condition.UnitHasRule("Guerrilla"),
-                new Effect.TriggeredMove(MaxInches: 6f, IsOptional: true),
-                ELifetime.ThisAttack),
-        },
-        Array.Empty<ActivatedAbility>(),
-        Valence: EValence.Positive,
-        Description: "If the unit has Guerrilla, its post-combat move is 6\" instead of 3\".");
-
     // Aura variants: "this model and its unit get X" — Effect.Aura(X) at unit creation via the UnitAura
     // factory; the grant projects unit-wide via the read-back (RuleEvaluator.CollectGrantedRules), so the
     // granted rule fires for the whole unit at whatever hook it carries. The post-combat-move auras:
@@ -1904,15 +1778,11 @@ public static class CoreRuleCatalog
     public static SpecialRuleDefinition HitAndRunShooterAura { get; } = UnitAura("Hit & Run Shooter Aura", "Hit & Run Shooter");
     /// <summary> Hit &amp; Run Fighter Aura: this model and its unit gain <see cref="HitAndRunFighter"/>. </summary>
     public static SpecialRuleDefinition HitAndRunFighterAura { get; } = UnitAura("Hit & Run Fighter Aura", "Hit & Run Fighter");
-    /// <summary> Harassing Boost Aura: this model and its unit gain <see cref="HarassingBoost"/>. </summary>
-    public static SpecialRuleDefinition HarassingBoostAura { get; } = UnitAura("Harassing Boost Aura", "Harassing Boost");
-    /// <summary> Guerrilla Boost Aura: this model and its unit gain <see cref="GuerrillaBoost"/>. </summary>
-    public static SpecialRuleDefinition GuerrillaBoostAura { get; } = UnitAura("Guerrilla Boost Aura", "Guerrilla Boost");
 
     // General aura cluster: "this model and its unit get <rule>" for rules already in the catalog. Pure
     // data — each grants an existing base by its EXACT registered name (the resolver is case-sensitive,
     // hence the lowercase "...when shooting" grants under capitalized aura names). Auras whose base is NOT
-    // yet cataloged (Courage, Melee Shrouding, Resistance, the "in melee" combat-kind mirrors, …) wait on
+    // yet cataloged (Melee Shrouding, the "in melee" combat-kind mirrors, …) wait on
     // their base rule and are deliberately omitted here.
     /// <summary> Regeneration Aura: grants <see cref="Regeneration"/> unit-wide. </summary>
     public static SpecialRuleDefinition RegenerationAura { get; } = UnitAura("Regeneration Aura", "Regeneration");
@@ -1952,8 +1822,6 @@ public static class CoreRuleCatalog
     /// <summary> Unstoppable when Shooting Aura: grants <see cref="UnstoppableWhenShooting"/> ("Unstoppable when shooting") unit-wide. </summary>
     public static SpecialRuleDefinition UnstoppableWhenShootingAura { get; } = UnitAura("Unstoppable when Shooting Aura", "Unstoppable when shooting",
         "This model and its unit get Unstoppable on its weapons when shooting.");
-    /// <summary> Courage Aura: grants <see cref="Courage"/> (+1 to morale tests) unit-wide. </summary>
-    public static SpecialRuleDefinition CourageAura { get; } = UnitAura("Courage Aura", "Courage");
     /// <summary> Bane in Melee Aura: grants <see cref="BaneInMelee"/> unit-wide. </summary>
     public static SpecialRuleDefinition BaneInMeleeAura { get; } = UnitAura("Bane in Melee Aura", "Bane in melee",
         "This model and its unit get Bane on its weapons in melee.");
@@ -1966,14 +1834,8 @@ public static class CoreRuleCatalog
     /// <summary> Unstoppable in Melee Aura: grants <see cref="UnstoppableInMelee"/> unit-wide. </summary>
     public static SpecialRuleDefinition UnstoppableInMeleeAura { get; } = UnitAura("Unstoppable in Melee Aura", "Unstoppable in melee",
         "This model and its unit get Unstoppable on its weapons in melee.");
-    /// <summary> Resistance Aura: grants <see cref="Resistance"/> unit-wide. </summary>
-    public static SpecialRuleDefinition ResistanceAura { get; } = UnitAura("Resistance Aura", "Resistance");
     /// <summary> Protected Aura: grants <see cref="Protected"/> unit-wide. </summary>
     public static SpecialRuleDefinition ProtectedAura { get; } = UnitAura("Protected Aura", "Protected");
-    /// <summary> Piercing Assault Aura: grants <see cref="PiercingAssault"/> unit-wide. </summary>
-    public static SpecialRuleDefinition PiercingAssaultAura { get; } = UnitAura("Piercing Assault Aura", "Piercing Assault");
-    /// <summary> Piercing Hunter Aura: grants <see cref="PiercingHunter"/> unit-wide. </summary>
-    public static SpecialRuleDefinition PiercingHunterAura { get; } = UnitAura("Piercing Hunter Aura", "Piercing Hunter");
     /// <summary> Shielded Aura: grants <see cref="Shielded"/> unit-wide. </summary>
     public static SpecialRuleDefinition ShieldedAura { get; } = UnitAura("Shielded Aura", "Shielded");
     /// <summary> Fortified Aura: grants <see cref="Fortified"/> unit-wide. </summary>
@@ -2073,57 +1935,15 @@ public static class CoreRuleCatalog
             "of the units in the army with this rule at the beginning of the game (rounding up) may use it " +
             "in a single round.");
 
-    // Mid-move attack primitive (StrafingStage offer -> save+wound sub-pipeline) ---
+    // Mid-move attack primitive (move-through-enemy offer -> CrossingAttackStage) ---
 
     /// <summary>
-    /// Strafing (#197): "Once per activation, when this model moves through enemy units, pick one of them
-    /// and attack it with this weapon as if it was shooting. This weapon may only be used in this way."
-    /// An activated ability at <see cref="EHookID.Movement_OnMoveThroughEnemy"/>; accepting it queues an
-    /// <see cref="RuleOperation.InvokeWeaponAttack"/> that StrafingStage resolves by running the real
-    /// shooting chain with the carrying weapon.
-    ///
-    /// <para><b>Weapon-scoped</b>, which is what the whole corpus says: all 12 references sit on bomb
-    /// weapons, and the attack is made *with* that weapon, so the rule cannot be modelled at unit scope
-    /// without inventing a hit count. Its 12 references were dead as a scope mismatch until this slice.
-    /// The "may only be used in this way" clause is enforced by <see cref="StrafingRules"/>, which keeps
-    /// the weapon out of the shooting and melee pools — a live restriction, since every corpus bomb has
-    /// range 0 and would otherwise be swung as a melee weapon.</para>
-    ///
-    /// <para><b>No fly-over permission.</b> The source rule grants none — it says "when this model moves
-    /// through enemy units", presupposing a unit that already can. Every corpus carrier has Aircraft or
-    /// Flying (the one footslogger, Saurian's Gecko Champion, gets Flying from the same Pterodactyl item
-    /// that grants the bomb), and both emit <see cref="Effect.IgnoreEnemyMovementBlock"/> at unit scope.
-    /// A weapon-scoped passive would not be read by <c>MovementRuleQueries.CanMoveThroughEnemies</c>
-    /// anyway. StrafingStage warns once if a bearer turns up without the capability, since the ability
-    /// could then never trigger.</para>
-    ///
-    /// <para>Like Martial Prowess, the attack operation is applied stage-side rather than through the
-    /// <c>IOperationServices</c> seam: the hit/save/wound resolution is a child-stage pipeline, and the
-    /// engine's fire-and-forget stage transitions only sequence correctly when that pipeline runs as a real
-    /// child of the movement stage (the way Impact's hits run as a child of the melee stage) — not when
-    /// driven from a service call that would return before the AssignWounds request is answered.</para>
-    /// </summary>
-    public static SpecialRuleDefinition Strafing { get; } = new SpecialRuleDefinition("Strafing",
-        Array.Empty<HookEntry>(),
-        new[]
-        {
-            new ActivatedAbility(EHookID.Movement_OnMoveThroughEnemy, new Cost.OncePerActivation(),
-                new TargetSelector(1f, 1, 1, ETargetAffinity.Foe, false),
-                new Effect.AttackWithThisWeapon(),
-                new Condition.Always()),
-        },
-        ERuleScope.Weapon,
-        Valence: EValence.Positive,
-        Description: "Once per activation, when moving through enemy units, pick one and attack it with " +
-            "this weapon as if shooting. This weapon may only be used in this way.");
-
-    /// <summary>
-    /// Crossing Attack(X) (#197 P10): the auto-wound sibling of Strafing. When this unit moves through an
+    /// Crossing Attack(X) (#197 P10): the auto-wound sibling of the GDF supplement's Crossing Strike (3.5 Strafing). When this unit moves through an
     /// enemy unit, once per activation it may pick that enemy and roll X dice - each 6+ deals one DIRECT
     /// unsaveable wound (Regeneration/Tough still apply). An activated ability at
     /// <see cref="EHookID.Movement_OnMoveThroughEnemy"/> whose <see cref="Effect.DealAutoWounds"/> queues an
     /// <see cref="RuleOperation.InvokeDealAutoWounds"/> that CrossingAttackStage rolls and feeds into wound
-    /// assignment, skipping the save. The fly-over passive (like Strafing's) lets the move-through that
+    /// assignment, skipping the save. The fly-over passive lets the move-through that
     /// triggers it be legal in the first place.
     /// </summary>
     public static SpecialRuleDefinition CrossingAttack { get; } = new SpecialRuleDefinition("Crossing Attack",
@@ -2145,38 +1965,12 @@ public static class CoreRuleCatalog
         Description: "Once per activation, when moving through an enemy unit, rolls dice that deal automatic unsaveable wounds.");
 
     /// <summary>
-    /// #197 P10 Storm of X: once per game, when activated before attacking, roll 3 dice - for each 2+ the
-    /// player picks an enemy unit within 12in that takes 3 hits with the storm's rule. Offered in Choose
-    /// Action and resolved by StormStage (decisive pool -> integer target picks -> looping hit batches). The
-    /// four variants differ only by the payload rule / AP: Change=Shred, Lust=Surge, Plague=Bane, War=AP(1).
-    /// </summary>
-    private static SpecialRuleDefinition MakeStorm(string name, string[] withRules, int armorPenetration,
-        string payloadDescription) =>
-        new SpecialRuleDefinition(name,
-            Array.Empty<HookEntry>(),
-            new[]
-            {
-                new ActivatedAbility(EHookID.Activation_OnActionChoice, new Cost.OncePerGame(),
-                    new TargetSelector(0f, 1, 1, ETargetAffinity.Self, false),
-                    new Effect.StormOfHits(PoolDice: 3, SuccessThreshold: 2, HitsPerSuccess: 3,
-                        WithRules: withRules, ArmorPenetration: armorPenetration, RangeInches: 12f),
-                    new Condition.Always()),
-            },
-            Valence: EValence.Positive,
-            Description: $"Once per game before attacking, roll 3 dice; each 2+ deals 3 hits with {payloadDescription} to an enemy within 12in.");
-
-    public static SpecialRuleDefinition StormOfChange { get; } = MakeStorm("Storm of Change", new[] { "Shred" }, 0, "Shred");
-    public static SpecialRuleDefinition StormOfLust { get; } = MakeStorm("Storm of Lust", new[] { "Surge" }, 0, "Surge");
-    public static SpecialRuleDefinition StormOfPlague { get; } = MakeStorm("Storm of Plague", new[] { "Bane" }, 0, "Bane");
-    public static SpecialRuleDefinition StormOfWar { get; } = MakeStorm("Storm of War", System.Array.Empty<string>(), 1, "AP(1)");
-
-    /// <summary>
     /// Strider (#102; Core Rules v3.6.0 "May ignore the effects of Difficult terrain"): the unit ignores the difficult-terrain movement cap — it may cross Difficult terrain
     /// without being limited to <see cref="Utilities.GameWideConstants.DIFFICULT_TERRAIN_MOVE_CAP_INCHES"/>.
     /// A passive at <see cref="EHookID.Movement_OnMoveThroughTerrain"/> emitting
     /// <see cref="Effect.IgnoreTerrainEffects"/>, read by <see cref="MovementRuleQueries.IgnoresDifficultTerrain"/>
-    /// and threaded into the movement validators (engine + every move resolver). Mirrors Strafing's fly-over
-    /// passive above. Scope note: this waives only the Difficult cap; Dangerous-terrain tests and the enemy
+    /// and threaded into the movement validators (engine + every move resolver). Mirrors the fly-over
+    /// passive pattern. Scope note: this waives only the Difficult cap; Dangerous-terrain tests and the enemy
     /// move-through block are unaffected (Flying's "ignore all terrain + move through units" facet is #029,
     /// which can reuse the same effect once those consumers also honour it).
     /// </summary>
@@ -2202,7 +1996,7 @@ public static class CoreRuleCatalog
     /// <see cref="ETerrainIgnoreScope.AllTerrain"/> scope at <see cref="EHookID.Movement_OnMoveThroughTerrain"/>
     /// (read by <see cref="MovementRuleQueries.IgnoresAllTerrain"/> and threaded as the difficult + impassible
     /// waivers + the Dangerous-stage skip), and an <see cref="Effect.IgnoreEnemyMovementBlock"/> at
-    /// <see cref="EHookID.Movement_OnMoveThroughEnemy"/> (the same move-through-units permission Strafing uses).
+    /// <see cref="EHookID.Movement_OnMoveThroughEnemy"/> (the same move-through-units permission Crossing Attack uses).
     /// </summary>
     public static SpecialRuleDefinition Flying { get; } = new SpecialRuleDefinition("Flying",
         new[]
@@ -2316,59 +2110,6 @@ public static class CoreRuleCatalog
         Valence: EValence.Positive,
         Description: "When a unit where most models have this rule is targeted by an enemy unit for shooting, that " +
             "enemy unit gets -4\" range to a min. of 6\".");
-
-    /// <summary>
-    /// Darkborn (Offensive) (#102): the bearer gets +3" range when shooting AND moves +3" when charging. Two
-    /// Actor-seat passives — a <see cref="Effect.RangeModifier"/>(+3) at <see cref="EHookID.Shooting_OnRangeCheck"/>,
-    /// and a <see cref="Effect.MovementBonus"/>(Charge, +3) at <see cref="EHookID.Movement_OnMoveActionDeclared"/>
-    /// gated to the Charge action (the same live move-distance seam Fast/Agile/RapidCharge use). The corpus uses
-    /// the bare name "Darkborn" for two different rules across armies; this is the own-buff variant, named
-    /// "Darkborn (Offensive)" to disambiguate from <see cref="DarkbornDefensive"/>.
-    /// </summary>
-    public static SpecialRuleDefinition DarkbornOffensive { get; } = new SpecialRuleDefinition("Darkborn (Offensive)",
-        new[]
-        {
-            new HookEntry(EHookID.Shooting_OnRangeCheck,
-                new Condition.Always(),
-                new Effect.RangeModifier(Delta: +3),
-                ELifetime.ThisActivation),
-            new HookEntry(EHookID.Movement_OnMoveActionDeclared,
-                new Condition.ActionTypeIs(EActionType.Charge),
-                new Effect.MovementBonus(EActionType.Charge, DistanceInches: 3f),
-                ELifetime.ThisActivation),
-        },
-        Array.Empty<ActivatedAbility>(),
-        Valence: EValence.Positive,
-        Description: "When shooting, +3\" range; when charging, +3\" movement.");
-
-    /// <summary>
-    /// Darkborn (Defensive) (#102/#029): enemies get −4" range when shooting this unit (to a min. of 6") AND
-    /// −2" movement when charging it (to a min. of 6"). Two Subject-seat passives mirroring the Shrouding pair —
-    /// a <see cref="Effect.RangeModifier"/>(−4, floor 6) at <see cref="EHookID.Shooting_OnRangeCheck"/> (read by
-    /// <see cref="RangeRuleQueries.EffectiveRange"/>) and a <see cref="Effect.MovementBonus"/>(Charge, −2, floor 6)
-    /// at <see cref="EHookID.Movement_OnChargeDeclared"/> (read by
-    /// <see cref="MovementRuleQueries.EffectiveChargeDistanceAgainst"/> and applied as the worst-case charge-budget
-    /// reduction in DefinePathStage). The corpus's other "Darkborn"; named to disambiguate from
-    /// <see cref="DarkbornOffensive"/>. Scope: "where most models have this rule" (OPR 3.6) is enforced by
-    /// <see cref="Condition.MostModelsHaveThisRule"/> on both facets (#183, #428).
-    /// </summary>
-    public static SpecialRuleDefinition DarkbornDefensive { get; } = new SpecialRuleDefinition("Darkborn (Defensive)",
-        new[]
-        {
-            new HookEntry(EHookID.Shooting_OnRangeCheck,
-                new Condition.MostModelsHaveThisRule(),
-                new Effect.RangeModifier(Delta: -4, MinResultInches: 6),
-                ELifetime.ThisActivation,
-                ERuleSeat.Subject),
-            new HookEntry(EHookID.Movement_OnChargeDeclared,
-                new Condition.MostModelsHaveThisRule(),
-                new Effect.MovementBonus(EActionType.Charge, DistanceInches: -2f, MinResultInches: 6f),
-                ELifetime.ThisActivation,
-                ERuleSeat.Subject),
-        },
-        Array.Empty<ActivatedAbility>(),
-        Valence: EValence.Positive,
-        Description: "Enemies get -4\" range when shooting this unit and -2\" movement when charging it (each to a minimum of 6\").");
 
     /// <summary>
     /// Melee Shrouding (#029, OPR 3.6 since #432): "When a unit where most models have this rule is targeted by an

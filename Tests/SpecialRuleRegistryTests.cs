@@ -33,7 +33,7 @@ namespace FDG.Tests
         {
             HashSet<string> offered = CoreEntries().Select(e => e.Name).ToHashSet();
             // These dispatch in the engine but the old hand-list never offered them.
-            Assert.That(offered, Does.Contain("Strafing"));
+            Assert.That(offered, Does.Contain("Crossing Attack"));
             Assert.That(offered, Does.Contain("Vanguard"));
             Assert.That(offered, Does.Contain("Martial Prowess"));
         }

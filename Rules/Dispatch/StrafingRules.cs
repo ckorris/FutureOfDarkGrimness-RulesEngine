@@ -5,13 +5,14 @@ using FDG.Rules.Definitions;
 namespace FDG.Rules.Dispatch
 {
     /// <summary>
-    /// #197 Strafing — "This weapon may only be used in this way." The clause that keeps a strafe weapon out
+    /// #197 Strafing (3.6 Crossing Strike, #431; the catalog Strafing was deleted by #436) — "This weapon may only be
+    /// used in this way." The clause that keeps a strafe weapon out
     /// of the ordinary attack pools, plus the bearer-capability check StrafingStage warns on. The
     /// <see cref="LimitedRules"/>/<see cref="AircraftRules"/> shape: gates that run in stage code and in the
     /// weapon-pool helpers, where no <see cref="RuleEvaluator"/> is in scope.
     ///
     /// <para>Detected STRUCTURALLY — by the effect, not by the rule's name — so an army's own embedded
-    /// rule, or a renamed alias, is restricted on the same terms as core Strafing. Name-matching would let a
+    /// rule, or a renamed alias, is restricted on the same terms as the supplement's Crossing Strike. Name-matching would let a
     /// re-labelled copy quietly become a free extra melee weapon.</para>
     ///
     /// <para>The restriction is load-bearing rather than cosmetic. Every corpus strafe weapon has range 0,

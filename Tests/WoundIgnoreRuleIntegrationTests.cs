@@ -138,20 +138,20 @@ namespace FDG.Tests
                 "melee: the gate fails, Regeneration is not suppressed and ignores a third (3 → 2).");
         }
 
-        // Resistance is Regeneration's wound-ignore at a higher threshold (6+ vs 5+) — ignores only the
+        // Protected is Regeneration's wound-ignore at a higher threshold (6+ vs 5+) — ignores only the
         // 6s. With 3 failed saves: 1 face × 3/6 = 0.5 ignored, so 2.5 land (vs Regeneration's 2.0). Locks
-        // in the MinRoll: 6. Protected shares this exact definition.
+        // in the MinRoll: 6. (Drove the 3.5 Resistance until #436 deleted it.)
         [Test]
-        public async Task ResistanceDefender_IgnoresWoundsOnSixOnly()
+        public async Task ProtectedDefender_IgnoresWoundsOnSixOnly()
         {
             DataBinding<UnitData> attacker = MakeUnit(modelCount: 1);
             DataBinding<UnitData> defender = MakeUnit(modelCount: 5);
-            AttachRule(defender, "Resistance", CoreRuleCatalog.Resistance);
+            AttachRule(defender, "Protected", CoreRuleCatalog.Protected);
 
             await RunStage(attacker, defender, failedSaves: 3);
 
             Assert.That(_requester.Captured!.TotalWoundsToAssign, Is.EqualTo(2.5f).Within(0.0001f),
-                "Resistance ignores a wound on 6+ only (a sixth), so 3 → 2.5.");
+                "Protected ignores a wound on 6+ only (a sixth), so 3 → 2.5.");
         }
 
         // GDF core principle: the sink's read face clamps a data-authored out-of-range threshold to

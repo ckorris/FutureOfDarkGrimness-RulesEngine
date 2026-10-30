@@ -62,7 +62,7 @@ namespace FDG.Tests
         public void StrafeOnly_StillExcludesFromBothPools_EvenWithAssault()
         {
             Weapon bombs = AssaultDefinitions.HeavyPistol("Bomb Rack");
-            bombs.AttachRuleDefinition(new ResolvedRule("Strafing", CoreRuleCatalog.Strafing));
+            bombs.AttachRuleDefinition(new ResolvedRule("Crossing Strike", WeaponRules36Definitions.CrossingStrike));
             DataBinding<UnitData> unit = MakeUnit(_player, "Bomber", new Position(0f, 0f), bombs);
 
             Assert.That(bombs.IsMelee(), Is.True, "the seam says both...");

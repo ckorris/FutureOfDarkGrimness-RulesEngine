@@ -195,17 +195,6 @@ namespace FDG.Tests
             await AssertVolleyPinned(attacker, defender, weapon, weaponCount: 3);
         }
 
-        [Test]
-        public async Task Crack_PerHitAp_MatchesEngine()
-        {
-            var weapon = Rifle();
-            weapon.AttachRuleDefinition(new ResolvedRule("Crack", CoreRuleCatalog.Crack));
-            var attacker = MakeUnit(3, weapon);
-            var defender = MakeUnit(5, null);
-
-            await AssertVolleyPinned(attacker, defender, weapon, weaponCount: 3);
-        }
-
         // --- Save-side rules ------------------------------------------------------------------------
 
         [Test]

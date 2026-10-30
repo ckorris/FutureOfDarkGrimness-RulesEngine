@@ -111,6 +111,11 @@ namespace FDG.Ai.Tactician
             registry.RegisterResolver(new Resolvers.TacticianCastAssistResolver(tableState, evaluator,
                 options.SeeThroughFriendlyUnits));
 
+            // #442 (#434 Versatile Expert / Warrior): the activation-start "pick one effect" (AP(+1) or +1 to hit) by
+            // what each pick is worth against this activation's best target; solo's first option otherwise.
+            registry.RegisterResolver(new Resolvers.TacticianAbilityEffectResolver(planner, tableState, evaluator,
+                new FDG.Ai.Resolvers.AiChooseAbilityEffectResolver(), options.DecisionLog));
+
             return registry;
         }
 

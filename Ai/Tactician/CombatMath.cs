@@ -94,12 +94,17 @@ namespace FDG.Ai.Tactician
         /// Expected result of the attacker shooting the defender with every ranged weapon batch that
         /// reaches (per <see cref="RangeRuleQueries.EffectiveRange"/>) at the context's distance.
         /// </summary>
+        /// <para>#442: <paramref name="hypotheticalAttackerRule"/> prices the attack AS IF the attacker also had that
+        /// rule (see <see cref="HypotheticalCarrier"/>) - what an activation pick like Versatile Expert's would buy,
+        /// asked before the pick is made. Null (every other caller) changes nothing.</para>
         public static AttackEstimate EstimateShooting(RuleEvaluator evaluator,
-            DataBinding<UnitData> attacker, DataBinding<UnitData> defender, AttackContext context)
+            DataBinding<UnitData> attacker, DataBinding<UnitData> defender, AttackContext context,
+            ResolvedRule? hypotheticalAttackerRule = null)
         {
             var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
             try
             {
+            Weapon? carrier = HypotheticalCarrier(hypotheticalAttackerRule);
             var notes = new List<string>();
             float total = 0f;
             // #191 search perf pass 5: one volley context per estimate, not one per weapon batch.
@@ -128,8 +133,8 @@ namespace FDG.Ai.Tactician
                 }
                 if (sight <= 0f) continue;
 
-                float volley = EstimateVolley(evaluator, attacker, defender, weapon, count,
-                    volleyContext, notes);
+                float volley = EstimateVolleyCore(evaluator, attacker, defender, weapon, count,
+                    volleyContext, notes, carrier);
                 total += sight < 1f ? sight * volley : volley;
             }
 
@@ -209,12 +214,16 @@ namespace FDG.Ai.Tactician
         /// then each side swings every melee weapon batch, the side striking second doing so with the
         /// models the first striker's expected kills removed.
         /// </summary>
+        /// <para>#442: <paramref name="hypotheticalAttackerRule"/> prices the charger's swings as if it also had that
+        /// rule (see <see cref="EstimateShooting"/>); the defender's return strikes and the impact hits never see it.</para>
         public static MeleeEstimate EstimateMelee(RuleEvaluator evaluator,
-            DataBinding<UnitData> attacker, DataBinding<UnitData> defender, float distanceInches = 1f)
+            DataBinding<UnitData> attacker, DataBinding<UnitData> defender, float distanceInches = 1f,
+            ResolvedRule? hypotheticalAttackerRule = null)
         {
             var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
             try
             {
+            Weapon? carrier = HypotheticalCarrier(hypotheticalAttackerRule);
             var notes = new List<string>();
             UnitData atk = attacker.GetValue();
             UnitData def = defender.GetValue();
@@ -272,12 +281,12 @@ namespace FDG.Ai.Tactician
                     WeaponBatches(def, melee: true), meleeContext with { IsCharging = false }, notes);
                 float attackerCasualties = defenderSwings;
                 attackerSwings = SwingAllBatches(evaluator, attacker, defender,
-                    SurvivorWeaponBatches(atk, attackerCasualties), meleeContext, notes);
+                    SurvivorWeaponBatches(atk, attackerCasualties), meleeContext, notes, carrier);
             }
             else
             {
                 attackerSwings = SwingAllBatches(evaluator, attacker, defender,
-                    WeaponBatches(atk, melee: true), meleeContext, notes);
+                    WeaponBatches(atk, melee: true), meleeContext, notes, carrier);
                 defenderSwings = SwingAllBatches(evaluator, defender, attacker,
                     SurvivorWeaponBatches(def, impactWounds + attackerSwings),
                     meleeContext with { IsCharging = false }, notes);
@@ -307,7 +316,14 @@ namespace FDG.Ai.Tactician
         /// </summary>
         public static float EstimateVolley(RuleEvaluator evaluator,
             DataBinding<UnitData> attacker, DataBinding<UnitData> defender,
-            Weapon weapon, int weaponCount, AttackContext context, List<string> notes)
+            Weapon weapon, int weaponCount, AttackContext context, List<string> notes,
+            ResolvedRule? hypotheticalAttackerRule = null)
+            => EstimateVolleyCore(evaluator, attacker, defender, weapon, weaponCount, context, notes,
+                HypotheticalCarrier(hypotheticalAttackerRule));
+
+        private static float EstimateVolleyCore(RuleEvaluator evaluator,
+            DataBinding<UnitData> attacker, DataBinding<UnitData> defender,
+            Weapon weapon, int weaponCount, AttackContext context, List<string> notes, Weapon? carrier)
         {
             UnitData atk = attacker.GetValue();
             UnitData def = defender.GetValue();
@@ -328,11 +344,12 @@ namespace FDG.Ai.Tactician
             var __modsProbe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
             RuleParticipant attackerBatch = ActorWithBatch(atk, weapon);
             RuleParticipant defenderSeat = RuleParticipant.Subject(def, models: defenderModels);
-            IReadOnlyList<RuleOperation> hitModOps = Ops(evaluator.EvaluateAllNamed(
-                new HitRollModifierContext(atk, def, context.DistanceInches, context.AttackerMoved,
-                    context.IsMelee, context.IsCharging),
-                attackerBatch,
-                defenderSeat));
+            var hitModContext = new HitRollModifierContext(atk, def, context.DistanceInches, context.AttackerMoved,
+                context.IsMelee, context.IsCharging);
+            IReadOnlyList<RuleOperation> hitModOps = Ops(carrier == null
+                ? evaluator.EvaluateAllNamed(hitModContext, attackerBatch, defenderSeat)
+                : evaluator.EvaluateAllNamed(hitModContext, attackerBatch, defenderSeat,
+                    RuleParticipant.Actor(atk, carrier)));
 
             global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.VolleyMods, __modsProbe);
 
@@ -368,10 +385,10 @@ namespace FDG.Ai.Tactician
                 AttackerMoved: context.AttackerMoved);
 
             var __completeProbe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
-            IReadOnlyList<RuleOperation> completeOps = Ops(evaluator.EvaluateAllNamed(
-                hitContext,
-                attackerBatch,
-                defenderSeat));
+            IReadOnlyList<RuleOperation> completeOps = Ops(carrier == null
+                ? evaluator.EvaluateAllNamed(hitContext, attackerBatch, defenderSeat)
+                : evaluator.EvaluateAllNamed(hitContext, attackerBatch, defenderSeat,
+                    RuleParticipant.Actor(atk, carrier)));
 
             // With no operations the splitter returns exactly this one-group list.
             List<SuccessfulHitInfo> groups = completeOps.Count == 0
@@ -420,7 +437,7 @@ namespace FDG.Ai.Tactician
             var bonusAttacks = new BonusAttackSink();
             var __saveProbe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
             float wounds = ResolveSaves(evaluator, atk, def, weapon, groups, apReduction,
-                saveNet, coverBonus, context.IsMelee, notes, bonusAttacks, defenderModels);
+                saveNet, coverBonus, context.IsMelee, notes, bonusAttacks, defenderModels, carrier);
             global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.VolleySave, __saveProbe);
 
             // --- ResolveBonusMeleeAttacksStage mirror (#376 Bloodthirsty): the follow-up batch earned
@@ -437,7 +454,8 @@ namespace FDG.Ai.Tactician
                     NoteIf(true, $"{weapon.Name}: Bloodthirsty follow-up priced first-order", notes);
                     wounds += ResolveSaves(evaluator, atk, def, weapon,
                         new List<SuccessfulHitInfo> { SingleGroupInfo(bonusHits) }, apReduction,
-                        saveNet, coverBonus, context.IsMelee, notes, defenderModels: defenderModels);
+                        saveNet, coverBonus, context.IsMelee, notes, defenderModels: defenderModels,
+                        carrier: carrier);
                 }
             }
             return wounds;
@@ -449,7 +467,7 @@ namespace FDG.Ai.Tactician
         private static float ResolveSaves(RuleEvaluator evaluator, UnitData atk, UnitData def,
             Weapon weapon, List<SuccessfulHitInfo> groups, int apReduction, int wholeAttackSaveModifier,
             int coverBonus, bool isMelee, List<string> notes, BonusAttackSink? bonusAttackSink = null,
-            IReadOnlyList<IModel>? defenderModels = null)
+            IReadOnlyList<IModel>? defenderModels = null, Weapon? carrier = null)
         {
             int baseDefense = HeroStatRules.GetSaveDefense(def);
             int ap = Math.Max(0, weapon.ArmorPenetration - apReduction);
@@ -476,10 +494,13 @@ namespace FDG.Ai.Tactician
             // confinement -> Shred injection -> Regeneration ignore. No terrain here (IHasTerrain):
             // valuation is position-hypothetical, so terrain-gated save rules (Grounded Protection)
             // conservatively don't fire - the bonus is only ever omitted, never wrongly granted.
-            IReadOnlyList<RuleOperation> saveCompleteOps = Ops(evaluator.EvaluateAllNamed(
-                new SaveRollCompleteContext(atk, def, new DiceResults(combinedSaveFaces), isMelee),
-                RuleParticipant.Actor(atk, weapon),
-                RuleParticipant.Subject(def, models: defenderModels ?? HeroStatRules.LivingModels(def))));
+            var saveContext = new SaveRollCompleteContext(atk, def, new DiceResults(combinedSaveFaces), isMelee);
+            RuleParticipant saveActor = RuleParticipant.Actor(atk, weapon);
+            RuleParticipant saveSubject = RuleParticipant.Subject(def,
+                models: defenderModels ?? HeroStatRules.LivingModels(def));
+            IReadOnlyList<RuleOperation> saveCompleteOps = Ops(carrier == null
+                ? evaluator.EvaluateAllNamed(saveContext, saveActor, saveSubject)
+                : evaluator.EvaluateAllNamed(saveContext, saveActor, saveSubject, RuleParticipant.Actor(atk, carrier)));
 
             // #376 Bloodthirsty: collect the earned follow-up attacks for the caller's second pass.
             // Null on the second pass itself (and on the impact-hit path) - no chaining, and impact
@@ -632,12 +653,28 @@ namespace FDG.Ai.Tactician
 
         private static float SwingAllBatches(RuleEvaluator evaluator,
             DataBinding<UnitData> attacker, DataBinding<UnitData> defender,
-            List<(Weapon Weapon, int Count)> batches, AttackContext context, List<string> notes)
+            List<(Weapon Weapon, int Count)> batches, AttackContext context, List<string> notes,
+            Weapon? carrier = null)
         {
             float total = 0f;
             foreach ((Weapon weapon, int count) in batches)
-                total += EstimateVolley(evaluator, attacker, defender, weapon, count, context, notes);
+                total += EstimateVolleyCore(evaluator, attacker, defender, weapon, count, context, notes, carrier);
             return total;
+        }
+
+        /// <summary>
+        /// #442: a rule-only stand-in weapon carrying <paramref name="rule"/>, added to an evaluation as an extra Actor
+        /// participant of the SAME attacking unit. The evaluator's per-event dedup is keyed on (bearer, rule), so the
+        /// unit's own rules still fire once and only the hypothetical rule is new - the read-only way to ask "what if
+        /// this unit also had rule X" (a pick it is about to make) without granting anything. Its ops fold through the
+        /// very sinks the real grant's would (pinned against the stages in CombatMathPinTests). Null for null.
+        /// </summary>
+        private static Weapon? HypotheticalCarrier(ResolvedRule? rule)
+        {
+            if (rule == null) return null;
+            var carrier = new Weapon("(hypothetical)", rangeInches: 0f, attacks: 0, armorPenetration: 0);
+            carrier.AttachRuleDefinition(rule);
+            return carrier;
         }
 
         private static float SumFear(RuleEvaluator evaluator, MeleeResolutionContext resolution, UnitData actor)

@@ -603,6 +603,58 @@ namespace FDG.Tests
                 $"return strikes must come from survivors only (full-strength would be {fullStrengthReturn}).");
         }
 
+        // --- #442: a HYPOTHETICAL attacker rule (the activation-pick valuation) ---------------------------------
+        // Versatile Warrior's helpers (the AP(+1) and +1-to-hit picks, range-conditional on "over 9"") priced as if
+        // granted, on a twin that does NOT carry them, must equal the real stages run with the helper attached -
+        // on both sides of the 9" gate.
+
+        [TestCase(10f, true)]
+        [TestCase(8f, true)]
+        [TestCase(10f, false)]
+        [TestCase(8f, false)]
+        public async Task HypotheticalRule_PricesExactlyLikeTheGrantedRule(float gapInches, bool piercing)
+        {
+            SpecialRuleDefinition helper = piercing
+                ? RangeConditional36Definitions.PickPiercing()
+                : RangeConditional36Definitions.PickPrecision();
+            var weapon = Rifle();
+            var withRule = MakeUnit(3, weapon, quality: 4, atX: 0f);
+            AttachUnitRule(withRule, helper.Name, helper);
+            var twin = MakeUnit(3, weapon, quality: 4, atX: 0f);
+            var defender = MakeUnit(5, null, defense: 3, atX: gapInches + 1f);
+            float distance = Distance(twin, defender);
+
+            float engine = await EngineVolleyWounds(withRule, defender, weapon, 3);
+            float estimate = CombatMath.EstimateVolley(_ctx.RuleEvaluator, twin, defender, weapon, 3,
+                new AttackContext(distance), new List<string>(), new ResolvedRule(helper.Name, helper));
+            float plain = CombatMath.EstimateVolley(_ctx.RuleEvaluator, twin, defender, weapon, 3,
+                new AttackContext(distance), new List<string>());
+
+            Assert.That(estimate, Is.EqualTo(engine).Within(Math.Max(0.05f, 0.02f * engine)));
+            if (gapInches > 9f)
+                Assert.That(estimate, Is.GreaterThan(plain + 0.01f), "over 9\" the pick must add value");
+            else
+                Assert.That(estimate, Is.EqualTo(plain).Within(0.0001f), "inside 9\" the pick adds nothing");
+        }
+
+        [Test]
+        public void HypotheticalRule_InMelee_ReachesTheChargersSwingsOnly()
+        {
+            SpecialRuleDefinition helper = RangeConditional36Definitions.PickPrecision();
+            var attacker = MakeUnit(3, Blade(), atX: 0f);
+            var defender = MakeUnit(3, Blade(), atX: 1f);
+            var rule = new ResolvedRule(helper.Name, helper);
+
+            MeleeEstimate plain = CombatMath.EstimateMelee(_ctx.RuleEvaluator, attacker, defender);
+            MeleeEstimate picked = CombatMath.EstimateMelee(_ctx.RuleEvaluator, attacker, defender,
+                hypotheticalAttackerRule: rule);
+
+            // The Precision helper is range-conditional and a charge from base contact is not "over 6"", so it
+            // must not fire here - and the return strikes never see the attacker's hypothetical rule at all.
+            Assert.That(picked.AttackerAttack.ExpectedWounds, Is.EqualTo(plain.AttackerAttack.ExpectedWounds).Within(0.0001f));
+            Assert.That(picked.DefenderReturn.ExpectedWounds, Is.EqualTo(plain.DefenderReturn.ExpectedWounds).Within(0.0001f));
+        }
+
         // --- Harness --------------------------------------------------------------------------------
 
         /// <summary>
@@ -615,22 +667,8 @@ namespace FDG.Tests
             bool defenderInCover = false, bool attackerMoved = false)
         {
             float distance = Distance(attacker, defender);
-            int coverBonus = defenderInCover && !isMelee
-                && !SightRuleQueries.IgnoresCover(attacker.GetValue(), weapon, _ctx.RuleEvaluator, attackerMoved) ? 1 : 0;
-
-            // Engine side.
-            var metadata = new CombatMetadata(_ctx, attacker, defender, weapon, weaponCount,
-                attackerMoved, isMelee, isCharging);
-            metadata.AddResult(new CoverCheckResults(coverBonus));
-            await RunStage(new DetermineHitRollStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>()), metadata);
-            await RunStage(new RollToHitStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>()), metadata);
-            await RunStage(new DetermineSaveRollsNeededStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>()), metadata);
-            await RunStage(new RollToSaveStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>()), metadata);
-            await RunStage(new AssignWoundsStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>()), metadata);
-
-            Assert.That(metadata.QueryForResult(out AssignWoundsResults engineResults), Is.True,
-                "the engine chain must produce an AssignWoundsResults");
-            float engineWounds = engineResults.TotalAssignedWounds; // what landed (#401)
+            float engineWounds = await EngineVolleyWounds(attacker, defender, weapon, weaponCount, isMelee,
+                isCharging, defenderInCover, attackerMoved);
 
             // Estimate side - same evaluator, same units, caller-supplied distance/cover.
             var notes = new List<string>();
@@ -642,6 +680,29 @@ namespace FDG.Tests
             float tolerance = Math.Max(0.05f, 0.02f * engineWounds);
             Assert.That(estimateCapped, Is.EqualTo(engineWounds).Within(tolerance),
                 $"CombatMath diverged from the engine (notes: {string.Join("; ", notes)})");
+        }
+
+        // The REAL stage chain for one volley; returns the wounds that landed (#401). Cover is seeded the way
+        // CoverCheckStage would produce it (majority cover gated by the engine's own IgnoresCover query).
+        private async Task<float> EngineVolleyWounds(DataBinding<UnitData> attacker, DataBinding<UnitData> defender,
+            Weapon weapon, int weaponCount, bool isMelee = false, bool isCharging = false,
+            bool defenderInCover = false, bool attackerMoved = false, float chargeOriginInches = 0f)
+        {
+            int coverBonus = defenderInCover && !isMelee
+                && !SightRuleQueries.IgnoresCover(attacker.GetValue(), weapon, _ctx.RuleEvaluator, attackerMoved) ? 1 : 0;
+
+            var metadata = new CombatMetadata(_ctx, attacker, defender, weapon, weaponCount,
+                attackerMoved, isMelee, isCharging, chargeOriginDistanceInches: chargeOriginInches);
+            metadata.AddResult(new CoverCheckResults(coverBonus));
+            await RunStage(new DetermineHitRollStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>()), metadata);
+            await RunStage(new RollToHitStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>()), metadata);
+            await RunStage(new DetermineSaveRollsNeededStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>()), metadata);
+            await RunStage(new RollToSaveStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>()), metadata);
+            await RunStage(new AssignWoundsStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>()), metadata);
+
+            Assert.That(metadata.QueryForResult(out AssignWoundsResults engineResults), Is.True,
+                "the engine chain must produce an AssignWoundsResults");
+            return engineResults.TotalAssignedWounds;
         }
 
         private static async Task RunStage<TResult, TSelf>(

@@ -96,6 +96,55 @@ namespace FDG.Ai.Tactician
             + GameWideConstants.MELEE_RANGE_INCHES_HORIZONTAL;
 
         /// <summary>
+        /// #442 (#432's charge arms): the charge-origin distance the engine would record if
+        /// <paramref name="charger"/> charged <paramref name="target"/> from where they stand now - closest living
+        /// models base to base, vertical included, measured from the charger's transport while it is embarked
+        /// (<c>UnitActionContext.SnapshotDistancesToEnemies</c>, the snapshot <c>CombatMetadata</c> carries).
+        /// </summary>
+        public static float ChargeOriginDistance(ITableState tableState, IUnit charger, IUnit target)
+        {
+            IUnit measureFrom = charger;
+            if (TransportUtilities.GetTransportId(charger) is UnitID transportId)
+            {
+                foreach (IArmy army in tableState.Armies.Objects)
+                {
+                    if (army is not ArmyData data) continue;
+                    foreach (DataBinding<UnitData> unit in data.UnitBindings)
+                        if (unit.GetValue().ID == transportId) measureFrom = unit.GetValue();
+                }
+            }
+            return UnitCompareUtilities.MinDistanceBetweenUnits(measureFrom, target, out _, out _,
+                includeVertical: true);
+        }
+
+        /// <summary>
+        /// #442: how far the unit's footprint reaches from its centroid - the farthest living model's centre plus its
+        /// base radius. Turns a centroid distance into an approximate base-edge gap where only a hypothetical
+        /// centroid exists (a candidate endpoint). 0 for a unit with no living model.
+        /// </summary>
+        public static float Spread(IUnit unit)
+        {
+            float sumX = 0f, sumZ = 0f;
+            int count = 0;
+            foreach (IModel model in unit.Models)
+            {
+                if (!model.GetIsAlive()) continue;
+                sumX += model.Position.x;
+                sumZ += model.Position.z;
+                count++;
+            }
+            if (count == 0) return 0f;
+            float cx = sumX / count, cz = sumZ / count, spread = 0f;
+            foreach (IModel model in unit.Models)
+            {
+                if (!model.GetIsAlive()) continue;
+                float dx = model.Position.x - cx, dz = model.Position.z - cz;
+                spread = Math.Max(spread, MathF.Sqrt(dx * dx + dz * dz) + model.BaseRadiusInches);
+            }
+            return spread;
+        }
+
+        /// <summary>
         /// The unit's charge move allowance including its movement rules - the same accumulation
         /// MovementActionContext performs (the "when" fired for all three actions onto one sink).
         /// </summary>

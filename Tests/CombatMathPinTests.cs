@@ -655,6 +655,152 @@ namespace FDG.Tests
             Assert.That(picked.DefenderReturn.ExpectedWounds, Is.EqualTo(plain.DefenderReturn.ExpectedWounds).Within(0.0001f));
         }
 
+        // --- #442 (#432's charge arms and save-side arms) ---------------------------------------------------
+        // The charge's launch distance reaches the charger's hit contexts and the save context, and the shooting
+        // distance reaches the save context, exactly as CombatMetadata carries them through the real stages - so
+        // every "shoots/charges (or is shot/charged) from over 9"/6"" arm prices on the right side of the line.
+
+        [TestCase(7f, true)]
+        [TestCase(5f, false)]
+        public async Task Ferocious_ChargeArm_MatchesEngine(float origin, bool fires)
+        {
+            var blade = Blade(attacks: 3);
+            var attacker = MakeUnit(3, blade, atX: 0f);
+            AttachUnitRule(attacker, "Ferocious", RangeConditional36Definitions.ExtraHit("Ferocious"));
+            var defender = MakeUnit(5, null, atX: 1f);
+            float distance = Distance(attacker, defender);
+
+            float engine = await EngineVolleyWounds(attacker, defender, blade, 3, isMelee: true, isCharging: true,
+                chargeOriginInches: origin);
+            float estimate = CombatMath.EstimateVolley(_ctx.RuleEvaluator, attacker, defender, blade, 3,
+                new AttackContext(distance, IsMelee: true, IsCharging: true, ChargeOriginInches: origin),
+                new List<string>());
+            float noOrigin = CombatMath.EstimateVolley(_ctx.RuleEvaluator, attacker, defender, blade, 3,
+                new AttackContext(distance, IsMelee: true, IsCharging: true), new List<string>());
+
+            Assert.That(estimate, Is.EqualTo(engine).Within(Math.Max(0.05f, 0.02f * engine)));
+            if (fires) Assert.That(estimate, Is.GreaterThan(noOrigin + 0.01f), "a charge from over 6\" scores the extra hit");
+            else Assert.That(estimate, Is.EqualTo(noOrigin).Within(0.0001f));
+        }
+
+        [TestCase(7f)]
+        [TestCase(5f)]
+        public async Task ChangeboundDefender_ChargedFromOverSix_MatchesEngine(float origin)
+        {
+            var blade = Blade(attacks: 3);
+            var attacker = MakeUnit(3, blade, atX: 0f);
+            var defender = MakeUnit(5, null, atX: 1f);
+            AttachUnitRule(defender, "Changebound", RangeConditional36Definitions.MinusHit("Changebound"));
+            float distance = Distance(attacker, defender);
+
+            float engine = await EngineVolleyWounds(attacker, defender, blade, 3, isMelee: true, isCharging: true,
+                chargeOriginInches: origin);
+            float estimate = CombatMath.EstimateVolley(_ctx.RuleEvaluator, attacker, defender, blade, 3,
+                new AttackContext(distance, IsMelee: true, IsCharging: true, ChargeOriginInches: origin),
+                new List<string>());
+
+            Assert.That(estimate, Is.EqualTo(engine).Within(Math.Max(0.05f, 0.02f * engine)));
+        }
+
+        [TestCase(10f)]
+        [TestCase(8f)]
+        public async Task KnightbornDefender_SaveSideShootingArm_MatchesEngine(float gapInches)
+        {
+            var weapon = Rifle(attacks: 2);
+            var attacker = MakeUnit(5, weapon, atX: 0f);
+            var defender = MakeUnit(5, null, defense: 5, atX: gapInches + 1f);
+            AttachUnitRule(defender, "Knightborn", RangeConditional36Definitions.Ward("Knightborn"));
+            float distance = Distance(attacker, defender);
+
+            float engine = await EngineVolleyWounds(attacker, defender, weapon, 5);
+            float estimate = CombatMath.EstimateVolley(_ctx.RuleEvaluator, attacker, defender, weapon, 5,
+                new AttackContext(distance), new List<string>());
+
+            Assert.That(estimate, Is.EqualTo(engine).Within(Math.Max(0.05f, 0.02f * engine)),
+                "the 6+ ignore applies only when shot from over 9\"");
+        }
+
+        [TestCase(10f)]
+        [TestCase(8f)]
+        public async Task InfectedWeapon_SaveSideShootingArm_MatchesEngine(float gapInches)
+        {
+            var weapon = Rifle(attacks: 2);
+            weapon.AttachRuleDefinition(new ResolvedRule("Infected", RangeConditional36Definitions.ExtraWound()));
+            var attacker = MakeUnit(5, weapon, atX: 0f);
+            var defender = MakeUnit(10, null, defense: 4, atX: gapInches + 1f);
+            float distance = Distance(attacker, defender);
+
+            float engine = await EngineVolleyWounds(attacker, defender, weapon, 5);
+            float estimate = CombatMath.EstimateVolley(_ctx.RuleEvaluator, attacker, defender, weapon, 5,
+                new AttackContext(distance), new List<string>());
+
+            Assert.That(estimate, Is.EqualTo(engine).Within(Math.Max(0.05f, 0.02f * engine)),
+                "1s to block deal an extra wound only from over 9\"");
+        }
+
+        [Test]
+        public void EstimateMelee_ChargeOrigin_ReachesTheChargerOnly_AndACounterStripsIt()
+        {
+            var attacker = MakeUnit(3, Blade(attacks: 3), atX: 0f);
+            AttachUnitRule(attacker, "Ferocious", RangeConditional36Definitions.ExtraHit("Ferocious"));
+            var defender = MakeUnit(5, Blade(), atX: 1f);
+            AttachUnitRule(defender, "Ferocious", RangeConditional36Definitions.ExtraHit("Ferocious"));
+            var plainDefender = MakeUnit(5, Blade(), atX: 1f);
+
+            MeleeEstimate far = CombatMath.EstimateMelee(_ctx.RuleEvaluator, attacker, defender, chargeOriginInches: 8f);
+            MeleeEstimate near = CombatMath.EstimateMelee(_ctx.RuleEvaluator, attacker, defender, chargeOriginInches: 4f);
+            MeleeEstimate farPlain = CombatMath.EstimateMelee(_ctx.RuleEvaluator, attacker, plainDefender,
+                chargeOriginInches: 8f);
+            Assert.That(far.AttackerAttack.ExpectedWounds, Is.GreaterThan(near.AttackerAttack.ExpectedWounds + 0.01f));
+            Assert.That(far.DefenderReturn.ExpectedWounds,
+                Is.EqualTo(farPlain.DefenderReturn.ExpectedWounds).Within(0.0001f),
+                "a strike-back is never a charge: the defender's own Ferocious never fires");
+
+            var counterBlade = Blade(attacks: 3);
+            counterBlade.AttachRuleDefinition(new ResolvedRule("Counter", CoreRuleCatalog.Counter));
+            var counter = MakeUnit(5, counterBlade, atX: 1f);
+            MeleeEstimate countered = CombatMath.EstimateMelee(_ctx.RuleEvaluator, attacker, counter, chargeOriginInches: 8f);
+            MeleeEstimate counteredNear = CombatMath.EstimateMelee(_ctx.RuleEvaluator, attacker, counter, chargeOriginInches: 4f);
+            Assert.That(countered.AttackerAttack.ExpectedWounds,
+                Is.EqualTo(counteredNear.AttackerAttack.ExpectedWounds).Within(0.0001f),
+                "a Countered charge loses its charge, and with it the launch distance (CombatActionContext)");
+        }
+
+        [Test]
+        public async Task EstimateSpellDamage_SpellArm_MatchesTheSpellStages()
+        {
+            var caster = MakeUnit(1, null, atX: 0f);
+            var defender = MakeUnit(5, null, defense: 5, atX: 6f);
+            AttachUnitRule(defender, "Knightborn", RangeConditional36Definitions.Ward("Knightborn"));
+            var spell = new RuntimeSpell(new SpellDefinition("Bolt", 1,
+                new TargetSelector(18f, 1, 1, ETargetAffinity.Foe, RequireLineOfSight: false),
+                new Effect.DealHits(6, Array.Empty<string>(), ArmorPenetration: 1)), Array.Empty<ResolvedRule>());
+
+            // Engine side - ResolveSpellDamageStage's child chain, built the same way.
+            var weapon = new Weapon("Bolt", rangeInches: 0f, attacks: 0, armorPenetration: 1);
+            SyntheticHitResolution.Result hits = SyntheticHitResolution.Resolve(_ctx, caster.GetValue(),
+                defender.GetValue(), 6, weapon, isSpell: true);
+            var metadata = new CombatMetadata(_ctx, caster, defender, weapon, weaponCount: 1, isMelee: false,
+                isSpell: true);
+            var hitResults = new RollToHitResults(hits.HitGroups, new List<FailedHitInfo>())
+            {
+                SaveModifier = hits.SaveModifier,
+                ArmorPenetrationReduction = hits.ArmorPenetrationReduction,
+            };
+            metadata.AddResult(hitResults);
+            metadata.AddResult(new CoverCheckResults(0));
+            await RunStage(new DetermineSaveRollsNeededStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>()), metadata);
+            await RunStage(new RollToSaveStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>()), metadata);
+            await RunStage(new AssignWoundsStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>()), metadata);
+            Assert.That(metadata.QueryForResult(out AssignWoundsResults engineResults), Is.True);
+
+            AttackEstimate estimate = CombatMath.EstimateSpellDamage(_ctx.RuleEvaluator, caster, defender, spell);
+
+            // 6 hits, Defense 5 at AP 1 saves on 6+ only -> 5 wounds, of which 5/6 are ignored on the spell arm's 2+.
+            Assert.That(estimate.ExpectedWounds, Is.EqualTo(engineResults.TotalAssignedWounds).Within(0.05f));
+            Assert.That(estimate.ExpectedWounds, Is.EqualTo(5f / 6f).Within(0.01f));
+        }
+
         // --- Harness --------------------------------------------------------------------------------
 
         /// <summary>

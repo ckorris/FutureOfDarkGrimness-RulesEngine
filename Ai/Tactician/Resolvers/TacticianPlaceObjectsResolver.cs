@@ -248,7 +248,10 @@ namespace FDG.Ai.Tactician.Resolvers
                 if (TacticalAnalysis.MeleeThreatReach(arriver.GetValue(), victim.GetValue(), _evaluator,
                         Terrain) >= distance)
                 {
-                    MeleeEstimate melee = CombatMath.EstimateMelee(_evaluator, arriver, victim);
+                    // #442: the next activation's charge launches from about here (arriver not yet on the table:
+                    // the victim's spread and a base off the centroid distance).
+                    MeleeEstimate melee = CombatMath.EstimateMelee(_evaluator, arriver, victim,
+                        chargeOriginInches: Math.Max(0f, distance - TacticalAnalysis.Spread(victim.GetValue()) - 1f));
                     damage = Math.Max(damage,
                         ValueFraction(melee.AttackerAttack.ExpectedWounds, victim.GetValue())
                         - ValueFraction(melee.DefenderReturn.ExpectedWounds, arriver.GetValue()));
@@ -311,7 +314,9 @@ namespace FDG.Ai.Tactician.Resolvers
                         Terrain) >= distance - 1f)
                 {
                     value = Math.Max(value, 0.5f * ValueFraction(
-                        CombatMath.EstimateMelee(_evaluator, enemy, arriver).AttackerAttack.ExpectedWounds,
+                        CombatMath.EstimateMelee(_evaluator, enemy, arriver,
+                            chargeOriginInches: Math.Max(0f, distance - TacticalAnalysis.Spread(enemy.GetValue()) - 1f))
+                            .AttackerAttack.ExpectedWounds,
                         arriver.GetValue()));
                 }
                 worst = Math.Max(worst, value);

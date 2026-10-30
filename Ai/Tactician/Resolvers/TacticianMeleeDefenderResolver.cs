@@ -40,7 +40,10 @@ namespace FDG.Ai.Tactician.Resolvers
                 if (attacker != null)
                 {
                     UnitData target = option.Option.GetValue();
-                    MeleeEstimate melee = CombatMath.EstimateMelee(_evaluator, attacker, option.Option);
+                    // #442: the charge was launched from the activation-start gap the planner measured (the engine's
+                    // snapshot); re-measuring now would read base contact.
+                    MeleeEstimate melee = CombatMath.EstimateMelee(_evaluator, attacker, option.Option,
+                        chargeOriginInches: _planner.MeasuredChargeOrigin(option.Option));
                     float remaining = Math.Max(1f, target.RemainingWounds);
                     float dealtFraction = Math.Min(1f, melee.AttackerAttack.ExpectedWounds / remaining);
                     float takenFraction = Math.Min(1f, melee.DefenderReturn.ExpectedWounds

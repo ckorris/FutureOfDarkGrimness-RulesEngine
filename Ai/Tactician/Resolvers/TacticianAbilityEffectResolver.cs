@@ -135,7 +135,7 @@ namespace FDG.Ai.Tactician.Resolvers
                     if (mayCharge && distance <= TacticalAnalysis.MeleeThreatReach(self, enemy, _evaluator, terrain))
                     {
                         MeleeEstimate melee = CombatMath.EstimateMelee(_evaluator, unitBinding, enemyBinding,
-                            hypotheticalAttackerRule: helper);
+                            chargeOriginInches: distance, hypotheticalAttackerRule: helper);
                         best = Math.Max(best, ValueFraction(melee.AttackerAttack.ExpectedWounds, enemy));
                     }
                 }

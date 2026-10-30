@@ -669,6 +669,51 @@ namespace FDG.Tests
         private static Weapon Rifle() => new Weapon("Rifle", rangeInches: 24f, attacks: 1, armorPenetration: 0);
         private static Weapon Blade(int attacks = 2) => new Weapon("Blade", 0f, attacks, 0);
 
+        // #442 (#432's charge arms): the planner prices its charge with the engine's launch distance - the
+        // activation-start gap - so a Ferocious unit's extra hit is worth something charging from 7" and nothing from 5".
+        [TestCase(7f, true)]
+        [TestCase(5f, false)]
+        public void ChargeCandidate_PricesTheChargeArm_FromTheActivationStartGap(float gap, bool arms)
+        {
+            float ferocious = ChargeCandidateScore(gap, ferocious: true);
+            float plain = ChargeCandidateScore(gap, ferocious: false);
+
+            if (arms) Assert.That(ferocious, Is.GreaterThan(plain + 0.001f), "a charge from over 6\" earns the extra hit");
+            else Assert.That(ferocious, Is.EqualTo(plain).Within(0.0001f), "inside 6\" the arm adds nothing");
+        }
+
+        private static float ChargeCandidateScore(float gap, bool ferocious)
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var tableState = new TableState(store);
+            var us = new PlayerID(Guid.NewGuid());
+            var them = new PlayerID(Guid.NewGuid());
+            DataBinding<UnitData> Unit(PlayerID owner, Weapon weapon, float x)
+            {
+                var models = new List<DataBinding<ModelData>>();
+                for (int i = 0; i < 3; i++)
+                    models.Add(store.GetDataBinding<ModelData>(store.Create(new ModelData(0.5f,
+                        new List<Weapon> { weapon }, new Position(x, 24f + i * 1.1f), store))));
+                var binding = store.GetDataBinding<UnitData>(store.Create(new UnitData(owner, $"U{x}", 4, 4,
+                    modelBindings: models)));
+                store.Create(new ArmyData(owner, new List<DataBinding<UnitData>> { binding }));
+                return binding;
+            }
+
+            var brawlers = Unit(us, Blade(attacks: 3), 20f);
+            if (ferocious)
+                brawlers.GetValue().AttachRuleDefinition(new Rules.Dispatch.ResolvedRule("Ferocious",
+                    RangeConditional36Definitions.ExtraHit("Ferocious")));
+            Unit(them, Rifle(), 21f + gap);
+            var planner = new TacticianPlanner(tableState, new RuleEvaluator(new ProbabilisticDiceRoller()));
+            planner.BeginActivation(brawlers);
+
+            MacroAction charge = MacroActionGenerator.Enumerate(new RuleEvaluator(new ProbabilisticDiceRoller()),
+                    tableState, brawlers)
+                .First(c => c.Intent == EMacroIntent.ChargeToContact && c.Feasibility == EFeasibility.Reachable);
+            return planner.Score(charge);
+        }
+
         private DataBinding<UnitData> MakeUnit(PlayerID owner, int modelCount, Weapon weapon,
             float atX, float atZ, int quality = 4, int defense = 4)
         {

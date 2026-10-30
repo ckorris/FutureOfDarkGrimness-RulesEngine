@@ -69,7 +69,13 @@ namespace FDG.Ai.Tactician
         // above; the search's scratch planner begins an activation per unit it enumerates.
         private readonly Dictionary<DataReference, EnemyFacts> _enemyFacts = new();
         private readonly Dictionary<DataReference, MeleeEstimate> _meleeSelfVsEnemy = new();
-        private readonly Dictionary<DataReference, MeleeEstimate> _meleeEnemyVsSelf = new();
+        // #442: the enemy's charge into us is keyed by its launch distance too (half-inch buckets), because the
+        // "charged from over 6"" arms (a Changebound defender, a Ferocious charger) depend on where the endpoint is.
+        private readonly Dictionary<(DataReference Enemy, int HalfInches), MeleeEstimate> _meleeEnemyVsSelf = new();
+        // #442: base-to-base distance from the active unit (its transport while embarked) to each enemy at
+        // activation START - the engine's charge-origin snapshot (UnitActionContext.SnapshotDistancesToEnemies).
+        // Survives the activation-start move's memo reset, since the engine measured before that move too.
+        private readonly Dictionary<DataReference, float> _chargeOrigins = new();
 
         // #191 search perf: the three shooting estimates Score asks for per (candidate x enemy). Unlike
         // the melee pair above they are NOT board-fixed - each carries the candidate's endpoint through
@@ -281,6 +287,7 @@ namespace FDG.Ai.Tactician
             _enemyFacts.Clear();
             _meleeSelfVsEnemy.Clear();
             _meleeEnemyVsSelf.Clear();
+            _chargeOrigins.Clear();
             _shotEstimates.Clear();
             _objectiveProjections = null;
             _moveBudgets.Clear();
@@ -589,7 +596,12 @@ namespace FDG.Ai.Tactician
             }
 
             Position here = Centroid(_activeUnit.GetValue());
+            // #442: the engine snapshots charge origins at activation start, BEFORE this move - keep ours from then.
+            var origins = new Dictionary<DataReference, float>();
+            foreach (DataBinding<UnitData> enemy in EnemyBindings(_activeUnit.GetValue().PlayerID))
+                origins[enemy.Reference] = ChargeOriginTo(enemy);
             BeginActivation(_activeUnit); // the triggered move changes the board every memo above was built on
+            foreach (KeyValuePair<DataReference, float> origin in origins) _chargeOrigins[origin.Key] = origin.Value;
             if (best == null) return (ETriggeredMoveAim.NoClaim, default);
             if (best.Intent == EMacroIntent.Hold || Distance(here, best.ProjectedCentroid) < 0.5f)
             {
@@ -805,7 +817,8 @@ namespace FDG.Ai.Tactician
                     && MeleeReachOf(enemyBinding, transport.GetValue()) >= d - 1f)
                 {
                     incoming = Math.Max(incoming, CombatMath.EstimateMelee(_evaluator, enemyBinding,
-                        transport).AttackerAttack.ExpectedWounds);
+                        transport, chargeOriginInches: TacticalAnalysis.ChargeOriginDistance(_tableState, enemy,
+                            transport.GetValue())).AttackerAttack.ExpectedWounds);
                 }
             }
             if (incoming >= TacticianWeights.TransportEvacuationFraction
@@ -995,10 +1008,17 @@ namespace FDG.Ai.Tactician
 
                 // Melee threat: if they can charge the endpoint (charge + 3" melee cylinder),
                 // count their melee margin too.
-                float meleeThreat =
-                    facts.ThreatReach >= endDistance - 1f && facts.HasMelee
-                        ? 0.5f * ValueFraction(MeleeEnemyVs(enemyBinding).AttackerAttack.ExpectedWounds, self)
-                        : 0f;
+                // #442: priced with the charge launched from where the enemy stands to this endpoint, so the charge
+                // arms (our Changebound's -1, its Ferocious) price; the cover habit's share below keeps the
+                // endpoint-independent, origin-free estimate its denominator (MeleeThreatTotal) is built from.
+                bool canChargeEndpoint = facts.ThreatReach >= endDistance - 1f && facts.HasMelee;
+                float meleeThreat = canChargeEndpoint
+                    ? 0.5f * ValueFraction(MeleeEnemyVs(enemyBinding,
+                        ApproxEdgeGap(endDistance, enemyBinding)).AttackerAttack.ExpectedWounds, self)
+                    : 0f;
+                float meleeHabit = canChargeEndpoint
+                    ? 0.5f * ValueFraction(MeleeEnemyVs(enemyBinding, 0f).AttackerAttack.ExpectedWounds, self)
+                    : 0f;
 
                 // #365 Tier 1, the wall-hugging reflex. Two coarse signals in one currency, both
                 // weighted by threat TO US (so a tank's AP4 Deadly(3) pair dominates when we are the
@@ -1020,7 +1040,7 @@ namespace FDG.Ai.Tactician
                 if (!ReferenceEquals(candidate.TargetEnemy, enemy))
                 {
                     bool wantThatFight = meleeThreat > 0f && MeleeApproachAgainst(enemyBinding).Margin > 0f;
-                    if (!wantThatFight) meleeReaching += meleeThreat;
+                    if (!wantThatFight) meleeReaching += meleeHabit;
                     shootingTotal += incomingValue;
                     if (!hasLane) shootingBlocked += incomingValue;
                 }
@@ -1079,7 +1099,8 @@ namespace FDG.Ai.Tactician
                         && facts.ThreatReach >= projDistance - 1f)
                     {
                         projValue = Math.Max(projValue, 0.5f * ValueFraction(
-                            MeleeEnemyVs(enemyBinding).AttackerAttack.ExpectedWounds, self));
+                            MeleeEnemyVs(enemyBinding, ApproxEdgeGap(projDistance, enemyBinding))
+                                .AttackerAttack.ExpectedWounds, self));
                     }
                     projectedThreat = Math.Max(projectedThreat, projValue);
                 }
@@ -1213,7 +1234,9 @@ namespace FDG.Ai.Tactician
                 // (their move + charge next activation, with a little slack).
                 if (nearest == null || nearestDistance > 26f) continue;
 
-                MeleeEstimate exchange = CombatMath.EstimateMelee(_evaluator, nearest, friendly);
+                MeleeEstimate exchange = CombatMath.EstimateMelee(_evaluator, nearest, friendly,
+                    chargeOriginInches: TacticalAnalysis.ChargeOriginDistance(_tableState, nearest.GetValue(),
+                        friendly.GetValue()));
                 float inbound = ValueFraction(exchange.AttackerAttack.ExpectedWounds, friendly.GetValue());
                 // A5-6: a loaded transport is worth boat + payload - protect the delivery.
                 float plainValue = TacticalAnalysis.UnitValue(friendly.GetValue());
@@ -1466,21 +1489,53 @@ namespace FDG.Ai.Tactician
             return estimate;
         }
 
+        // #442: our charge into this enemy is launched from where we stand at activation start.
         private MeleeEstimate MeleeSelfVs(DataBinding<UnitData> enemyBinding)
         {
             if (_meleeSelfVsEnemy.TryGetValue(enemyBinding.Reference, out MeleeEstimate cached)) return cached;
-            MeleeEstimate melee = CombatMath.EstimateMelee(_evaluator, _activeUnit!, enemyBinding);
+            MeleeEstimate melee = CombatMath.EstimateMelee(_evaluator, _activeUnit!, enemyBinding,
+                chargeOriginInches: ChargeOriginTo(enemyBinding));
             _meleeSelfVsEnemy[enemyBinding.Reference] = melee;
             return melee;
         }
 
-        private MeleeEstimate MeleeEnemyVs(DataBinding<UnitData> enemyBinding)
+        // The enemy charging us from <paramref name="chargeOriginInches"/> (0 = launch distance ignored).
+        private MeleeEstimate MeleeEnemyVs(DataBinding<UnitData> enemyBinding, float chargeOriginInches)
         {
-            if (_meleeEnemyVsSelf.TryGetValue(enemyBinding.Reference, out MeleeEstimate cached)) return cached;
-            MeleeEstimate melee = CombatMath.EstimateMelee(_evaluator, enemyBinding, _activeUnit!);
-            _meleeEnemyVsSelf[enemyBinding.Reference] = melee;
+            int halfInches = (int)MathF.Round(Math.Max(0f, chargeOriginInches) * 2f);
+            var key = (enemyBinding.Reference, halfInches);
+            if (_meleeEnemyVsSelf.TryGetValue(key, out MeleeEstimate cached)) return cached;
+            MeleeEstimate melee = CombatMath.EstimateMelee(_evaluator, enemyBinding, _activeUnit!,
+                chargeOriginInches: halfInches / 2f);
+            _meleeEnemyVsSelf[key] = melee;
             return melee;
         }
+
+        /// <summary>
+        /// #442: the charge-origin snapshot for this enemy (see <see cref="_chargeOrigins"/>), measured on first ask.
+        /// </summary>
+        private float ChargeOriginTo(DataBinding<UnitData> enemyBinding)
+        {
+            if (_chargeOrigins.TryGetValue(enemyBinding.Reference, out float cached)) return cached;
+            float origin = TacticalAnalysis.ChargeOriginDistance(_tableState, _activeUnit!.GetValue(),
+                enemyBinding.GetValue());
+            _chargeOrigins[enemyBinding.Reference] = origin;
+            return origin;
+        }
+
+        /// <summary>
+        /// #442: the charge-origin distance to <paramref name="enemy"/> as of this activation's start, if the
+        /// planner measured it - what the melee-defender pick needs AFTER the charge move, when re-measuring would
+        /// read base contact. 0 when it was never measured (no charge arm prices, the conservative default).
+        /// </summary>
+        public float MeasuredChargeOrigin(DataBinding<UnitData> enemy) =>
+            _chargeOrigins.TryGetValue(enemy.Reference, out float origin) ? origin : 0f;
+
+        // #442: base-edge gap between the active unit standing at a hypothetical centroid and this enemy, from a
+        // centroid distance - both units' spreads (centroid to farthest living base edge) taken off.
+        private float ApproxEdgeGap(float centroidDistance, DataBinding<UnitData> enemyBinding) =>
+            Math.Max(0f, centroidDistance - TacticalAnalysis.Spread(_activeUnit!.GetValue())
+                - TacticalAnalysis.Spread(enemyBinding.GetValue()));
 
         private (float Margin, float Reach) MeleeApproachAgainst(DataBinding<UnitData> enemyBinding)
         {
@@ -1622,8 +1677,9 @@ namespace FDG.Ai.Tactician
                     && MeleeReachOf(enemyBinding, friendly) >= d - 1f)
                 {
                     value = Math.Max(value, 0.5f * ValueFraction(CombatMath.EstimateMelee(
-                        _evaluator, enemyBinding, friendlyBinding).AttackerAttack.ExpectedWounds,
-                        friendly));
+                        _evaluator, enemyBinding, friendlyBinding,
+                        chargeOriginInches: TacticalAnalysis.ChargeOriginDistance(_tableState, enemy, friendly))
+                        .AttackerAttack.ExpectedWounds, friendly));
                 }
                 best = Math.Max(best, value);
             }
@@ -1806,7 +1862,7 @@ namespace FDG.Ai.Tactician
                 // The same slack the per-endpoint test uses, so an enemy that reaches SOME endpoint
                 // is always in the denominator it is scored against.
                 if (facts.ThreatReach < Distance(now, facts.Centroid) - envelope - 1f) continue;
-                total += 0.5f * ValueFraction(MeleeEnemyVs(enemyBinding).AttackerAttack.ExpectedWounds, self);
+                total += 0.5f * ValueFraction(MeleeEnemyVs(enemyBinding, 0f).AttackerAttack.ExpectedWounds, self);
             }
             _meleeThreatTotal = total;
             return total;

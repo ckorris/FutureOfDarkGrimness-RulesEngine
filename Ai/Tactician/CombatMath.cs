@@ -26,13 +26,21 @@ namespace FDG.Ai.Tactician
     /// candidate instead (TacticianWeights.MoveCoverHabit). The fraction stays for #365's Tier 2,
     /// where a lethality gate wants to credit cover deliberately little rather than not at all.
     /// </param>
+    /// <param name="ChargeOriginInches">
+    /// #442 (#432's charge arms): how far, base to base, the charger stood from this defender when its activation
+    /// began - what the engine snapshots as <c>CombatMetadata.ChargeOriginDistanceInches</c>. Read only for a
+    /// charging melee swing (a strike-back or a Countered charge has none, as in the engine), and only by the
+    /// "charges / is charged from over 6"" rules (Ferocious's extra hit, a Changebound defender's -1, ...).
+    /// 0 = unknown / not a charge: no charge arm fires, the pre-#442 behaviour.
+    /// </param>
     public sealed record AttackContext(
         float DistanceInches,
         bool AttackerMoved = false,
         bool DefenderInCover = false,
         bool IsMelee = false,
         bool IsCharging = false,
-        float SightFactor = 1f);
+        float SightFactor = 1f,
+        float ChargeOriginInches = 0f);
 
     /// <summary>Expected outcome of one unit's whole attack (all weapon batches) against a defender.</summary>
     public sealed record AttackEstimate(
@@ -167,9 +175,11 @@ namespace FDG.Ai.Tactician
             }
 
             var notes = new List<string>();
+            // #442: a spell's wounds resolve with IsSpell set (ResolveSpellDamageStage), so the save-side spell arms
+            // price - Spell Resistance / Knightborn's "spell wounds ignored on 2+" - and the shooting arms do not.
             float wounds = ResolveSaves(evaluator, caster.GetValue(), defender.GetValue(), spellWeapon,
                 SingleGroup(dealHits.Count), apReduction: 0, wholeAttackSaveModifier: 0,
-                coverBonus: 0, isMelee: false, notes);
+                coverBonus: 0, isMelee: false, notes, isSpell: true);
             return Finish(wounds, defender, notes);
         }
             finally { global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.Combat, __probe); }
@@ -216,9 +226,12 @@ namespace FDG.Ai.Tactician
         /// </summary>
         /// <para>#442: <paramref name="hypotheticalAttackerRule"/> prices the charger's swings as if it also had that
         /// rule (see <see cref="EstimateShooting"/>); the defender's return strikes and the impact hits never see it.</para>
+        /// <para>#442: <paramref name="chargeOriginInches"/> is where the charge was launched from (see
+        /// <see cref="AttackContext.ChargeOriginInches"/>); it reaches the charger's swings only, exactly as the engine's
+        /// CombatMetadata carries it. 0 (unknown) prices no charge arm.</para>
         public static MeleeEstimate EstimateMelee(RuleEvaluator evaluator,
             DataBinding<UnitData> attacker, DataBinding<UnitData> defender, float distanceInches = 1f,
-            ResolvedRule? hypotheticalAttackerRule = null)
+            float chargeOriginInches = 0f, ResolvedRule? hypotheticalAttackerRule = null)
         {
             var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
             try
@@ -269,7 +282,7 @@ namespace FDG.Ai.Tactician
             bool defenderStrikesFirst = anyStrikeFirst && def.GetMeleeWeapons().Count > 0;
 
             var meleeContext = new AttackContext(distanceInches, IsMelee: true,
-                IsCharging: !defenderStrikesFirst);
+                IsCharging: !defenderStrikesFirst, ChargeOriginInches: chargeOriginInches);
 
             // --- Swings. The first striker attacks at full strength; the second striker's weapon pool
             // loses the models the first side is expected to kill (probabilistic play kills models only
@@ -344,8 +357,10 @@ namespace FDG.Ai.Tactician
             var __modsProbe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
             RuleParticipant attackerBatch = ActorWithBatch(atk, weapon);
             RuleParticipant defenderSeat = RuleParticipant.Subject(def, models: defenderModels);
+            // #442: only a charging melee swing carries a launch distance (CombatActionContext reports 0 otherwise).
+            float chargeOrigin = context.IsMelee && context.IsCharging ? context.ChargeOriginInches : 0f;
             var hitModContext = new HitRollModifierContext(atk, def, context.DistanceInches, context.AttackerMoved,
-                context.IsMelee, context.IsCharging);
+                context.IsMelee, context.IsCharging, ChargeOriginDistanceInches: chargeOrigin);
             IReadOnlyList<RuleOperation> hitModOps = Ops(carrier == null
                 ? evaluator.EvaluateAllNamed(hitModContext, attackerBatch, defenderSeat)
                 : evaluator.EvaluateAllNamed(hitModContext, attackerBatch, defenderSeat,
@@ -380,7 +395,7 @@ namespace FDG.Ai.Tactician
             // #418: the same fatigue decision the engine stamps on its hit context, so a fatigued melee
             // volley's 6s price no Furious/Surge extra hits and no Rending AP, exactly as they will roll.
             var hitContext = new HitRollCompleteContext(atk, def, rolls, context.DistanceInches,
-                context.IsMelee, context.IsCharging,
+                context.IsMelee, context.IsCharging, ChargeOriginDistanceInches: chargeOrigin,
                 SixesCountForSpecialRules: FatigueUtilities.SixesCountForSpecialRules(atk, context.IsMelee),
                 AttackerMoved: context.AttackerMoved);
 
@@ -437,7 +452,8 @@ namespace FDG.Ai.Tactician
             var bonusAttacks = new BonusAttackSink();
             var __saveProbe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
             float wounds = ResolveSaves(evaluator, atk, def, weapon, groups, apReduction,
-                saveNet, coverBonus, context.IsMelee, notes, bonusAttacks, defenderModels, carrier);
+                saveNet, coverBonus, context.IsMelee, notes, bonusAttacks, defenderModels, carrier,
+                context.DistanceInches, chargeOrigin);
             global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.VolleySave, __saveProbe);
 
             // --- ResolveBonusMeleeAttacksStage mirror (#376 Bloodthirsty): the follow-up batch earned
@@ -455,7 +471,7 @@ namespace FDG.Ai.Tactician
                     wounds += ResolveSaves(evaluator, atk, def, weapon,
                         new List<SuccessfulHitInfo> { SingleGroupInfo(bonusHits) }, apReduction,
                         saveNet, coverBonus, context.IsMelee, notes, defenderModels: defenderModels,
-                        carrier: carrier);
+                        carrier: carrier, distanceInches: context.DistanceInches, chargeOriginInches: chargeOrigin);
                 }
             }
             return wounds;
@@ -467,7 +483,8 @@ namespace FDG.Ai.Tactician
         private static float ResolveSaves(RuleEvaluator evaluator, UnitData atk, UnitData def,
             Weapon weapon, List<SuccessfulHitInfo> groups, int apReduction, int wholeAttackSaveModifier,
             int coverBonus, bool isMelee, List<string> notes, BonusAttackSink? bonusAttackSink = null,
-            IReadOnlyList<IModel>? defenderModels = null, Weapon? carrier = null)
+            IReadOnlyList<IModel>? defenderModels = null, Weapon? carrier = null,
+            float distanceInches = 0f, float chargeOriginInches = 0f, bool isSpell = false)
         {
             int baseDefense = HeroStatRules.GetSaveDefense(def);
             int ap = Math.Max(0, weapon.ArmorPenetration - apReduction);
@@ -494,7 +511,11 @@ namespace FDG.Ai.Tactician
             // confinement -> Shred injection -> Regeneration ignore. No terrain here (IHasTerrain):
             // valuation is position-hypothetical, so terrain-gated save rules (Grounded Protection)
             // conservatively don't fire - the bonus is only ever omitted, never wrongly granted.
-            var saveContext = new SaveRollCompleteContext(atk, def, new DiceResults(combinedSaveFaces), isMelee);
+            // #442 (#432's save-side arms): the distance and the charge's launch distance ride the save context as in
+            // AssignWoundsStage, so Infected / Violent / Warbound's extra wound and Knightborn / Warding's 6+ ignore
+            // price on the right side of 9"/6"; a spell's wounds carry IsSpell.
+            var saveContext = new SaveRollCompleteContext(atk, def, new DiceResults(combinedSaveFaces), isMelee,
+                isSpell, distanceInches, chargeOriginInches);
             RuleParticipant saveActor = RuleParticipant.Actor(atk, weapon);
             RuleParticipant saveSubject = RuleParticipant.Subject(def,
                 models: defenderModels ?? HeroStatRules.LivingModels(def));

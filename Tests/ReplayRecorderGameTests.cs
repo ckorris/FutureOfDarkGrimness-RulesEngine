@@ -22,9 +22,13 @@ namespace FDG.Tests
     [TestFixture]
     public class ReplayRecorderGameTests
     {
-        private sealed class RecordedGame
+        internal sealed class RecordedGame
         {
             public GameResult Result = null!;
+
+            /// <summary>The live store's save at the moment the game completed - the recording is closed by
+            /// then, so it is the state a full playback must reach (#454).</summary>
+            public string FinalSave = "";
             public FDGServer Server = null!;
             public GameDataStore Store = null!;
             public ReplayRecorder Recorder = null!;
@@ -32,7 +36,7 @@ namespace FDG.Tests
             public ReplayDocument Document = null!;
         }
 
-        private static async Task<RecordedGame> PlayFreshGame(int? seed, Action<ReplayRecorder>? configure = null)
+        internal static async Task<RecordedGame> PlayFreshGame(int? seed, Action<ReplayRecorder>? configure = null)
         {
             var store = GameDataStore.GameDataStoreBuilder.GetDefault();
             var bus = new InProcessBus();
@@ -59,7 +63,11 @@ namespace FDG.Tests
 
             var completed = new TaskCompletionSource<GameResult>();
             game.Server = new FDGServer(store, bus, settings, slots, presentationClock: null, replay: game.Recorder);
-            game.Server.OnGameCompleted += result => completed.TrySetResult(result);
+            game.Server.OnGameCompleted += result =>
+            {
+                game.FinalSave = GameSaveSerializer.Save(store);
+                completed.TrySetResult(result);
+            };
 
             return await Finish(game, completed);
         }

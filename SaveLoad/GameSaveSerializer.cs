@@ -38,7 +38,15 @@ namespace FDG.SaveLoad
             return JsonConvert.SerializeObject(file, Formatting.Indented);
         }
 
-        public static GameDataStore Load(string json)
+        public static GameDataStore Load(string json) => Load(json, stampLegacyReserves: true);
+
+        /// <summary>
+        /// <paramref name="stampLegacyReserves"/> false is replay playback's load (#454): a replay snapshot is an
+        /// exact store from this format, never a legacy save, and must come back exactly as recorded. The legacy
+        /// stamp would put an InReserve token on every not-yet-deployed unit of snapshot 0 (taken before
+        /// deployment, every model at the origin), where it would linger until that unit's next recorded update.
+        /// </summary>
+        internal static GameDataStore Load(string json, bool stampLegacyReserves)
         {
             GameSaveFile? file = JsonConvert.DeserializeObject<GameSaveFile>(json);
             if (file == null)
@@ -63,7 +71,10 @@ namespace FDG.SaveLoad
             // (GameDataUpdateReceiver) so both rebuild paths behave identically. See StoreReplay.
             StoreReplay.Rebuild(store, file.Entries);
 
-            StampLegacyReserves(store);
+            if (stampLegacyReserves)
+            {
+                StampLegacyReserves(store);
+            }
 
             return store;
         }

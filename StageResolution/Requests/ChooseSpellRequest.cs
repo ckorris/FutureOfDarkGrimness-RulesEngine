@@ -47,9 +47,14 @@ namespace FDG.StageResolution.Requests
         public int AvailableTokens { get; }
 
         /// <summary>The caster's own cast success threshold before token boosts, assists and relays (roll this or
-        /// higher succeeds): the base 4+ less any passive casting modifier its rules give it (#427 Spell
-        /// Amplifier: "+1 to casting rolls" reads 3+). The 2+ floor still applies.</summary>
+        /// higher succeeds): the base 4+ less every modifier the caster itself carries into the roll - its passive
+        /// casting rules (#427 Spell Amplifier: "+1 to casting rolls" reads 3+) and its granted cast-roll tokens
+        /// (#429: a Casting Debuff's -1 reads one worse). The same sum and [2, 6] clamp the roll uses.</summary>
         public int BaseThreshold { get; }
+
+        /// <summary>#429 - where <see cref="BaseThreshold"/> came from, in the cast banner's words ("base 4+,
+        /// rules +1, granted -1"), or empty when it is the plain 4+. For the picker's "Roll needed" line.</summary>
+        public string BaseThresholdNote { get; }
 
         /// <summary>Total spell tokens held by enemy Casters within assist range of the caster right now —
         /// the most the roll can be hindered by (see class remarks).</summary>
@@ -76,7 +81,7 @@ namespace FDG.StageResolution.Requests
         [JsonConstructor]
         public ChooseSpellRequest(PlayerID targetPlayerID, TaskID taskID, DataBinding<UnitData> castingUnit,
             int availableTokens, int baseThreshold, int hinderTokensInRange, IReadOnlyList<SpellOption> spells,
-            IReadOnlyList<RelayOption>? relaysInRange = null)
+            IReadOnlyList<RelayOption>? relaysInRange = null, string? baseThresholdNote = null)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
@@ -86,14 +91,15 @@ namespace FDG.StageResolution.Requests
             HinderTokensInRange = hinderTokensInRange;
             Spells = spells;
             RelaysInRange = relaysInRange ?? Array.Empty<RelayOption>();
+            BaseThresholdNote = baseThresholdNote ?? string.Empty;
             TaskName = "Choosing a Spell";
         }
 
         public ChooseSpellRequest(PlayerID targetPlayerID, DataBinding<UnitData> castingUnit,
             int availableTokens, int baseThreshold, int hinderTokensInRange, IReadOnlyList<SpellOption> spells,
-            IReadOnlyList<RelayOption>? relaysInRange = null)
+            IReadOnlyList<RelayOption>? relaysInRange = null, string? baseThresholdNote = null)
             : this(targetPlayerID, new TaskID(Guid.NewGuid()), castingUnit, availableTokens, baseThreshold,
-                   hinderTokensInRange, spells, relaysInRange)
+                   hinderTokensInRange, spells, relaysInRange, baseThresholdNote)
         {
         }
 

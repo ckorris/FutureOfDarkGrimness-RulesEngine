@@ -132,6 +132,97 @@ namespace FDG.Tests
                 "the staff-bearer is dead, so its Spell Amplifier is gone: base 4+ against a 3");
         }
 
+        // --- #429: one sum, one clamp ----------------------------------------------------------------------
+        // 3.6 patch notes: a Caster Staff's Spell Amplifier makes spells "go off on 3+, or on 2+ with one spell
+        // token" - plain modifier arithmetic. Every cast-roll term (rules, relay, self-boost, boosters/hinderers,
+        // granted tokens) is summed once and clamped once in CastSpellStage.
+
+        [Test]
+        public async Task AmplifierPlusOne_AndOneEnemyHinderToken_NetFourPlus()
+        {
+            // +1 (Spell Amplifier) - 1 (an enemy Caster's token) = 0: back to the plain 4+. A 3 fails, a 4 lands.
+            foreach ((int face, bool lands) in new[] { (3, false), (4, true) })
+            {
+                SetUp();
+                var requester = new CannedAssistRequester(tokensPerAssister: 1);
+                var ctx = new TriggeredMoveTestContext(_store, requester, new FixedFaceDiceRoller(face));
+                DataBinding<UnitData> caster = MakeCaster(withAmplifiedStaff: 1);
+                (DataBinding<UnitData> target, DataBinding<UnitData> hinderer) = MakeEnemyWithHinderer(hinderTokens: 1);
+
+                await RunCast(ctx, caster);
+
+                Assert.That(requester.AssistPromptCount, Is.EqualTo(1), $"face {face}: the enemy Caster was asked");
+                Assert.That(hinderer.GetValue().Tokens.GetTokenCount(TokenType.SpellTokens), Is.EqualTo(0),
+                    $"face {face}: and spent its one token");
+                Assert.That(target.GetValue().Tokens.GetAllTokens(TokenType.RuleGrant).Any(), Is.EqualTo(lands),
+                    $"face {face}: rules +1 and assists -1 net 4+");
+            }
+        }
+
+        [Test]
+        public async Task AmplifierAndHinder_TheBannerShowsBothTerms()
+        {
+            var sink = new RecordingPresentationSink();
+            var ctx = new TriggeredMoveTestContext(_store, new CannedAssistRequester(tokensPerAssister: 1),
+                new FixedFaceDiceRoller(4), presentationSink: sink);
+            DataBinding<UnitData> caster = MakeCaster(withAmplifiedStaff: 1);
+            MakeEnemyWithHinderer(hinderTokens: 1);
+
+            await RunCast(ctx, caster);
+
+            Assert.That(sink.Beats.OfType<BannerBeat>().Select(b => b.BannerText),
+                Has.Some.Contains("rolled 4, needed 4+ (base 4+, rules +1, assists -1)"),
+                "the log line shows every term that moved the threshold, not just the result");
+        }
+
+        [Test]
+        public async Task AmplifierAndOneSelfBoostToken_CastOnATwo()
+        {
+            // "on 2+ with one spell token": 4 - 1 (Amplifier) - 1 (self-boost) = 2+.
+            var ctx = new TriggeredMoveTestContext(_store, new CannedAssistRequester(tokensPerAssister: 0, boostTokens: 1),
+                new FixedFaceDiceRoller(2));
+            DataBinding<UnitData> caster = MakeCaster(withAmplifiedStaff: 1);
+            DataBinding<UnitData> target = MakeEnemy();
+
+            await RunCast(ctx, caster);
+
+            Assert.That(target.GetValue().Tokens.GetAllTokens(TokenType.RuleGrant), Is.Not.Empty);
+        }
+
+        [Test]
+        public async Task ThePickersBaseThreshold_CarriesTheCastersGrantedTokensToo_WithoutSpendingThem()
+        {
+            // Spell Amplifier +1 and a Casting Debuff "-1 to casting rolls once" on the caster: its own threshold is
+            // back to 4+, and the picker must say so (GUI "Roll needed", CLI boost cap). Cancelling the pick proves
+            // the read is a peek: the one-shot debuff is still there for the real roll.
+            var requester = new CancellingSpellRequester();
+            var ctx = new TriggeredMoveTestContext(_store, requester, new FixedFaceDiceRoller(3));
+            DataBinding<UnitData> caster = MakeCaster(withAmplifiedStaff: 1);
+            caster.GetValue().Tokens.AddToken(new Token(RollModifierTokens.TypeFor(ERollKind.Cast), 1,
+                new TokenClearTrigger.FirstTrigger(), Payload: new TokenPayload.StatModifier(-1)));
+            MakeEnemy();
+
+            await RunCast(ctx, caster);
+
+            Assert.That(requester.SpellRequest!.BaseThreshold, Is.EqualTo(4), "4+ less +1 (rules) less -1 (granted)");
+            Assert.That(requester.SpellRequest.BaseThresholdNote, Is.EqualTo("base 4+, rules +1, granted -1"));
+            Assert.That(caster.GetValue().Tokens.HasToken(RollModifierTokens.TypeFor(ERollKind.Cast)), Is.True,
+                "the picker only peeks - the debuff is spent by the roll, never by browsing the menu");
+        }
+
+        [Test]
+        public async Task AnUnmodifiedCaster_HasNoBaseThresholdNote()
+        {
+            var requester = new RecordingCastRequester();
+            DataBinding<UnitData> caster = MakeCaster(withAmplifiedStaff: 0);
+            MakeEnemy();
+
+            await RunCast(new TriggeredMoveTestContext(_store, requester, new FixedFaceDiceRoller(3)), caster);
+
+            Assert.That(requester.SpellRequest!.BaseThreshold, Is.EqualTo(4));
+            Assert.That(requester.SpellRequest.BaseThresholdNote, Is.Empty, "a plain 4+ needs no explanation");
+        }
+
         // --- the player is told ----------------------------------------------------------------------------
 
         [Test]
@@ -260,6 +351,46 @@ namespace FDG.Tests
             DataBinding<UnitData> binding = _store.GetDataBinding<UnitData>(_store.Create(unit));
             _store.Create(new ArmyData(_enemy, new List<DataBinding<UnitData>> { binding }));
             return binding;
+        }
+
+        // The usual target plus an enemy Caster(1) beside it holding `hinderTokens`, both in one enemy army,
+        // within 18" of the caster.
+        private (DataBinding<UnitData> target, DataBinding<UnitData> hinderer) MakeEnemyWithHinderer(int hinderTokens)
+        {
+            DataBinding<UnitData> Unit(string name, Position at)
+            {
+                var model = new ModelData(0.5f, new List<Weapon>(), at, _store);
+                var unit = new UnitData(_enemy, name, quality: 4, defense: 4,
+                    modelBindings: new List<DataBinding<ModelData>> { _store.GetDataBinding<ModelData>(_store.Create(model)) });
+                return _store.GetDataBinding<UnitData>(_store.Create(unit));
+            }
+
+            DataBinding<UnitData> target = Unit("Grunts", EnemyAt);
+            DataBinding<UnitData> hinderer = Unit("Hex-Witch", new Position(14f, 20f));
+            hinderer.GetValue().AttachRuleDefinition(new ResolvedRule("Caster", CoreRuleCatalog.Caster,
+                new RuleArgument[] { new RuleArgument.Int(1) }));
+            hinderer.GetValue().Tokens.AddToken(new Token(TokenType.SpellTokens, hinderTokens,
+                new TokenClearTrigger.ManualOnly()));
+            _store.Create(new ArmyData(_enemy, new List<DataBinding<UnitData>> { target, hinderer }));
+            return (target, hinderer);
+        }
+
+        // Records the spell picker's request and cancels it - nothing is spent and no roll is made.
+        private sealed class CancellingSpellRequester : IPlayerRequestByID
+        {
+            public ChooseSpellRequest? SpellRequest { get; private set; }
+
+            public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
+                where TRequest : IStageTaskRequest<TReply>
+            {
+                if (request is ChooseSpellRequest pick)
+                {
+                    SpellRequest = pick;
+                    return Task.FromResult((TReply)(object)ChooseSpellReply.Cancel);
+                }
+
+                throw new System.InvalidOperationException("Unexpected request: " + request.GetType());
+            }
         }
 
         // Foe-affinity, non-damage: the debuff lands as a RuleGrant token on the target, so "did the cast

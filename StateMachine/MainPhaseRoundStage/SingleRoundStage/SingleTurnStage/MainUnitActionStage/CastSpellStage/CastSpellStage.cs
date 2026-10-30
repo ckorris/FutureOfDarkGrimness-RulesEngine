@@ -531,14 +531,20 @@ namespace FDG.Stages
                 .Select(origin => new ChooseSpellRequest.RelayOption(origin.Unit.Name, origin.RollBonus))
                 .ToList();
 
-            // #427 - the picker's "roll needed" and the boost cap start from the caster's OWN threshold: the base 4+
-            // less its passive casting modifier (Spell Amplifier). Read-only (live: false) - the roll itself
-            // evaluates again, live, after the cost is spent.
-            int passive = CastRollRules.Net(casterBinding.GetValue(), GameContext.RuleEvaluator, live: false);
-            int ownThreshold = DiceUtilities.ClampSuccessRollNeeded(CAST_SUCCESS_THRESHOLD - passive);
+            // #427/#429 - the picker's "roll needed" and the boost cap start from the caster's OWN threshold: the
+            // base 4+ less every modifier the caster itself carries into the roll - its passive rules (Spell
+            // Amplifier) and its granted cast tokens (a Casting Buff/Debuff spell). Both read-only (live: false,
+            // PeekNet) - the roll folds them again, live, after the cost is spent, through the same sum and clamp.
+            // What is NOT in here depends on choices still to come: the self-boost (this picker), the relay bonus
+            // (which target is picked) and boosters/hinderers (asked after the caster commits).
+            IUnit casterUnit = casterBinding.GetValue();
+            int passive = CastRollRules.Net(casterUnit, GameContext.RuleEvaluator, live: false);
+            int grantedPeek = GrantedRollModifiers.PeekNet(casterUnit, ERollKind.Cast);
+            int ownThreshold = DiceUtilities.ClampSuccessRollNeeded(CAST_SUCCESS_THRESHOLD - passive - grantedPeek);
+            string ownBreakdown = DescribeRollParts(boost: 0, assist: 0, grantedPeek, relay: 0, passive);
 
             ChooseSpellRequest request = new ChooseSpellRequest(player, casterBinding, tokens,
-                ownThreshold, hinderTokens, options, relays);
+                ownThreshold, hinderTokens, options, relays, ownBreakdown);
 
             ChooseSpellReply reply = await GameContext.PlayerRequester
                 .RequestDecision<ChooseSpellRequest, ChooseSpellReply>(request);
@@ -558,7 +564,17 @@ namespace FDG.Stages
         // the roll is unmodified. "granted" is the #197 P6 token delta (Casting Debuff / Casting Buff); "relay"
         // is the #197 P23 Spell Conduit bonus, listed first because it is the one the player did not ask
         // for by name; "rules" (#427) is the caster's own passive modifier (Spell Amplifier), also unasked.
+        // #429: every cast-roll modifier the engine knows is one of these five terms, summed once into
+        // netModifier and clamped once (DiceUtilities.ClampSuccessRollNeeded) - there is no second fold.
         private static string BuildRollBreakdown(int boost, int assist, int granted, int relay, int rules = 0)
+        {
+            string parts = DescribeRollParts(boost, assist, granted, relay, rules);
+            return parts.Length == 0 ? "" : $" ({parts})";
+        }
+
+        // The breakdown's inner text, "base 4+, rules +1, granted -1", or "" when nothing modifies the roll. Shared by
+        // the cast banner and the picker's ChooseSpellRequest.BaseThresholdNote (#429), so both read the same words.
+        private static string DescribeRollParts(int boost, int assist, int granted, int relay, int rules)
         {
             if (boost == 0 && assist == 0 && granted == 0 && relay == 0 && rules == 0) return "";
             List<string> parts = new List<string> { $"base {CAST_SUCCESS_THRESHOLD}+" };
@@ -567,7 +583,7 @@ namespace FDG.Stages
             if (boost != 0) parts.Add($"self +{boost}");
             if (assist != 0) parts.Add($"assists {(assist > 0 ? "+" : "")}{assist}");
             if (granted != 0) parts.Add($"granted {(granted > 0 ? "+" : "")}{granted}");
-            return $" ({string.Join(", ", parts)})";
+            return string.Join(", ", parts);
         }
 
         private async Task<IReadOnlyList<DataBinding<UnitData>>> PickTargets(PlayerID player, RuntimeSpell spell,

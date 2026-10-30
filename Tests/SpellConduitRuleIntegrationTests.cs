@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using FDG.Data;
 using FDG.Players;
+using FDG.Presentation.Beats;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Foundation;
@@ -223,6 +224,31 @@ namespace FDG.Tests
 
             Assert.That(target.GetValue().Tokens.GetAllTokens(TokenType.RuleGrant), Is.Not.Empty,
                 "rolled 3, needed 3+ (base 4+, relay +1) - without the bonus this cast fails.");
+        }
+
+        // #429 - the relay's bonus and the caster's own Spell Amplifier are two terms of ONE sum with one clamp:
+        // rolled 2 needs 2+ (base 4+, rules +1, relay +1), and the banner names both.
+        [Test]
+        public async Task ARelayedCast_AndSpellAmplifier_StackIntoOneThreshold()
+        {
+            var requester = new RecordingCastRequester();
+            var sink = new RecordingPresentationSink();
+            var ctx = new TriggeredMoveTestContext(_store, requester, new FixedFaceDiceRoller(2),
+                presentationSink: sink);
+            DataBinding<UnitData> caster = MakeCasterWithArmy(tokens: 3,
+                new[] { DebuffSpell("Hex", threshold: 1) }, out ArmyData army);
+            caster.GetValue().AttachRuleDefinition(new ResolvedRule("Spell Amplifier", CoreRuleCatalog.SpellAmplifier));
+            AddConduitToArmy(army, ConduitAt);
+            DataBinding<UnitData> target = MakeEnemy(ReachableOnlyByRelay);
+
+            await RunCast(ctx, caster);
+
+            Assert.That(target.GetValue().Tokens.GetAllTokens(TokenType.RuleGrant), Is.Not.Empty,
+                "rolled 2, needed 2+: both bonuses applied");
+            Assert.That(sink.Beats.OfType<BannerBeat>().Select(b => b.BannerText),
+                Has.Some.Contains("needed 2+ (base 4+, rules +1, relay +1)"));
+            Assert.That(requester.SpellRequest!.BaseThreshold, Is.EqualTo(3),
+                "the picker's own threshold carries the Amplifier but not the relay, which depends on the target");
         }
 
         [Test]

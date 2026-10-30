@@ -55,6 +55,9 @@ namespace FDG.Stages
 
         private const int CAST_SUCCESS_THRESHOLD = 4;
 
+        /// <summary>#442: the base casting roll, for estimators that price the cast the way this stage rolls it.</summary>
+        public const int CastSuccessThreshold = CAST_SUCCESS_THRESHOLD;
+
         // #103 assist text-beat colors - match the GUI highlight: blue for a friendly boost (+), orange for
         // an enemy disruption (-).
         private static readonly TextColor AssistBannerColor = new TextColor(77, 153, 255, 255);

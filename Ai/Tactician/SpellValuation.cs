@@ -25,15 +25,32 @@ namespace FDG.Ai.Tactician
     /// #429 (Core Rules v3.6.0): line of sight is read from each spell's own
     /// <see cref="TargetSelector.RequireLineOfSight"/> (the importer sets it from the spell's "in line of sight"
     /// clause) - there is no caster-level LoS assumption, so a spell without the clause values targets behind
-    /// terrain. Known pricing gaps, recorded on #442: the success chance is the flat
-    /// <see cref="BaseCastSuccessChance"/> (no Spell Amplifier, granted cast tokens, relay bonus, boost or
-    /// hinder), and targets are measured from the caster only (no Spell Conduit relay origin).
+    /// terrain.
+    /// </para>
+    /// <para>
+    /// #442 (#429's casting gaps): the success chance is the engine's own threshold
+    /// (<see cref="CastThreshold"/>: the base 4+ less Spell Amplifier's passive bonus, the caster's granted cast
+    /// tokens and a relay's bonus, clamped 2-6 - what <c>CastSpellStage</c> puts in the picker), and targets are
+    /// reached from every cast origin <see cref="SpellRelay.OriginsFor"/> offers (a Spell Conduit relay measures range
+    /// and sight from ITS models, and adds its bonus when the chosen targets need it). Still unpriced: a self-boost
+    /// (the bots reply 0) and other casters' assists / hindrance, which are not known at the choice.
     /// </para>
     /// </summary>
     public static class SpellValuation
     {
-        /// <summary>Chance a cast succeeds before assists - the base 4+ roll.</summary>
-        public const float BaseCastSuccessChance = 0.5f;
+        /// <summary>
+        /// #442: the casting roll <paramref name="caster"/> needs from an origin worth <paramref name="relayBonus"/>
+        /// - exactly <c>CastSpellStage</c>'s threshold before any boost or assist: 4+ less the passive cast modifier
+        /// (<see cref="CastRollRules.Net"/>, read-only) and the granted cast tokens (peeked, not spent), clamped.
+        /// </summary>
+        public static int CastThreshold(RuleEvaluator evaluator, IUnit caster, int relayBonus = 0) =>
+            DiceUtilities.ClampSuccessRollNeeded(CastSpellStage.CastSuccessThreshold
+                - CastRollRules.Net(caster, evaluator, live: false)
+                - GrantedRollModifiers.PeekNet(caster, ERollKind.Cast) - relayBonus);
+
+        /// <summary>#442: the chance the cast succeeds at <see cref="CastThreshold"/> - (7 - threshold) / 6.</summary>
+        public static float CastSuccessChance(RuleEvaluator evaluator, IUnit caster, int relayBonus = 0) =>
+            (7 - CastThreshold(evaluator, caster, relayBonus)) / 6f;
 
         /// <summary>
         /// The player's army, by the engine's own lookup (first match) so spell enumeration agrees
@@ -104,36 +121,62 @@ namespace FDG.Ai.Tactician
         /// </summary>
         public static float GrossCastValue(RuleEvaluator evaluator, ITableState tableState,
             DataBinding<UnitData> caster, RuntimeSpell spell, bool seeThroughFriendlyUnits)
+            => Gross(evaluator, tableState, caster, spell, seeThroughFriendlyUnits).Value;
+
+        /// <summary>
+        /// Net expected value of ATTEMPTING the spell now: success chance x effect value, minus
+        /// the tokens the attempt burns win or lose. #442: the chance is the engine's own
+        /// (<see cref="CastSuccessChance"/>), from the best-bonus origin that reaches every target the value counts.
+        /// </summary>
+        public static float NetCastValue(RuleEvaluator evaluator, ITableState tableState,
+            DataBinding<UnitData> caster, RuntimeSpell spell, bool seeThroughFriendlyUnits)
         {
-            List<(DataBinding<UnitData> Unit, float Value)> ranked =
-                RankEligibleTargets(evaluator, tableState, caster, spell, seeThroughFriendlyUnits);
-            if (ranked.Count < Math.Max(1, spell.Target.MinCount)) return 0f;
+            (float gross, int relayBonus) = Gross(evaluator, tableState, caster, spell, seeThroughFriendlyUnits);
+            return CastSuccessChance(evaluator, caster.GetValue(), relayBonus) * gross
+                - spell.Threshold * TacticianWeights.CastTokenValue;
+        }
+
+        // The best-first targets' summed value (see GrossCastValue) and the largest relay bonus among the origins
+        // that reach ALL of them - CastSpellStage narrows the viable origins to the ones covering every pick.
+        private static (float Value, int RelayBonus) Gross(RuleEvaluator evaluator, ITableState tableState,
+            DataBinding<UnitData> caster, RuntimeSpell spell, bool seeThroughFriendlyUnits)
+        {
+            IReadOnlyList<SpellRelay.CastOrigin> origins = SpellRelay.OriginsFor(tableState, evaluator,
+                caster.GetValue());
+            List<(DataBinding<UnitData> Unit, float Value, ulong Origins)> ranked =
+                Rank(evaluator, tableState, caster, spell, seeThroughFriendlyUnits, origins);
+            if (ranked.Count < Math.Max(1, spell.Target.MinCount)) return (0f, 0);
 
             float total = 0f;
+            ulong covering = ulong.MaxValue;
             for (int i = 0; i < ranked.Count && i < spell.Target.MaxCount; i++)
             {
                 if (ranked[i].Value <= 0f && i >= spell.Target.MinCount) break;
                 total += ranked[i].Value;
+                covering &= ranked[i].Origins;
             }
-            return total;
+
+            int bonus = 0;
+            for (int o = 0; o < origins.Count && o < 64; o++)
+                if ((covering & (1UL << o)) != 0) bonus = Math.Max(bonus, origins[o].RollBonus);
+            return (total, bonus);
         }
 
-        /// <summary>
-        /// Net expected value of ATTEMPTING the spell now: success chance x effect value, minus
-        /// the tokens the attempt burns win or lose.
-        /// </summary>
-        public static float NetCastValue(RuleEvaluator evaluator, ITableState tableState,
-            DataBinding<UnitData> caster, RuntimeSpell spell, bool seeThroughFriendlyUnits)
-            => BaseCastSuccessChance * GrossCastValue(evaluator, tableState, caster, spell, seeThroughFriendlyUnits)
-               - spell.Threshold * TacticianWeights.CastTokenValue;
-
-        /// <summary>Eligible targets with their values, best first.</summary>
+        /// <summary>Eligible targets with their values, best first. #442: eligible from any cast origin (relays).</summary>
         public static List<(DataBinding<UnitData> Unit, float Value)> RankEligibleTargets(
             RuleEvaluator evaluator, ITableState tableState, DataBinding<UnitData> caster,
             RuntimeSpell spell, bool seeThroughFriendlyUnits)
+            => Rank(evaluator, tableState, caster, spell, seeThroughFriendlyUnits,
+                    SpellRelay.OriginsFor(tableState, evaluator, caster.GetValue()))
+                .Select(r => (r.Unit, r.Value)).ToList();
+
+        // Each eligible target with its value and the bit set of origins (by index in `origins`) that reach it.
+        private static List<(DataBinding<UnitData> Unit, float Value, ulong Origins)> Rank(
+            RuleEvaluator evaluator, ITableState tableState, DataBinding<UnitData> caster,
+            RuntimeSpell spell, bool seeThroughFriendlyUnits, IReadOnlyList<SpellRelay.CastOrigin> origins)
         {
             PlayerID casterPlayer = caster.GetValue().PlayerID;
-            var ranked = new List<(DataBinding<UnitData> Unit, float Value)>();
+            var ranked = new List<(DataBinding<UnitData> Unit, float Value, ulong Origins)>();
             foreach (IArmy army in tableState.Armies.Objects)
             {
                 if (army is not ArmyData data) continue;
@@ -143,8 +186,12 @@ namespace FDG.Ai.Tactician
                     if (!candidate.GetIsAlive() || !candidate.GetIsOnBattlefield()) continue;
                     bool friendly = IsFriendlyTo(tableState, casterPlayer, candidate.PlayerID);
                     if (!MatchesAffinity(spell.Target.TargetAffinity, caster, unit, friendly)) continue;
-                    if (!WithinRangeAndSight(tableState, caster, unit, spell.Target, seeThroughFriendlyUnits)) continue;
-                    ranked.Add((unit, TargetValue(evaluator, caster, spell, unit, friendly)));
+                    ulong reach = 0;
+                    for (int o = 0; o < origins.Count && o < 64; o++)
+                        if (WithinRangeAndSight(tableState, origins[o].Unit, unit, spell.Target, seeThroughFriendlyUnits))
+                            reach |= 1UL << o;
+                    if (reach == 0) continue;
+                    ranked.Add((unit, TargetValue(evaluator, caster, spell, unit, friendly), reach));
                 }
             }
             ranked.Sort((a, b) => b.Value.CompareTo(a.Value));
@@ -165,22 +212,22 @@ namespace FDG.Ai.Tactician
             };
         }
 
-        // SpellTargeting.WithinRangeAndSight's test, verbatim: some living caster model within
-        // range (base-to-base, 3D) of some living target model, with line of sight when required.
-        private static bool WithinRangeAndSight(ITableState tableState, DataBinding<UnitData> caster,
+        // SpellTargeting.WithinRangeAndSight's test, verbatim: some living ORIGIN model (the caster's own, or a
+        // Spell Conduit relay's - #442) within range (base-to-base, 3D) of some living target model, with line of
+        // sight when required; the origin's own models are the ones that cannot block.
+        internal static bool WithinRangeAndSight(ITableState tableState, IUnit origin,
             DataBinding<UnitData> target, TargetSelector selector, bool seeThroughFriendlyUnits)
         {
             List<ITerrain> terrain = tableState.Terrain.Objects.ToList();
             IReadOnlyList<ITerrain> blockers = selector.RequireLineOfSight
-                ? terrain.Concat(LineOfSightUtilities.BuildModelBlockers(tableState, caster, target,
+                ? terrain.Concat(LineOfSightUtilities.BuildModelBlockers(tableState, origin, (IUnit)target.GetValue(),
                     seeThroughFriendlyUnits)).ToList()
                 : terrain;
 
-            foreach (DataBinding<ModelData> casterModel in caster.GetValue().ModelBindings
-                .Where(m => m.GetValue().GetIsAlive()))
+            foreach (IModel cm in origin.Models)
             {
-                ModelData cm = casterModel.GetValue();
-                Position casterPos = cm.PositionBinding.GetValue();
+                if (!cm.GetIsAlive()) continue;
+                Position casterPos = cm.Position;
                 foreach (DataBinding<ModelData> targetModel in target.GetValue().ModelBindings
                     .Where(m => m.GetValue().GetIsAlive()))
                 {

@@ -116,6 +116,10 @@ namespace FDG.Ai.Tactician
             registry.RegisterResolver(new Resolvers.TacticianAbilityEffectResolver(planner, tableState, evaluator,
                 new FDG.Ai.Resolvers.AiChooseAbilityEffectResolver(), options.DecisionLog));
 
+            // #442 (#429): the before-attack target pick after the planner chose Spell Drain; solo's otherwise.
+            registry.RegisterResolver(new Resolvers.TacticianBeforeAttackTargetResolver(planner,
+                new FDG.Ai.Resolvers.AiChooseMeleeDefenderResolver()));
+
             return registry;
         }
 

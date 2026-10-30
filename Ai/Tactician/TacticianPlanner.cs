@@ -296,6 +296,8 @@ namespace FDG.Ai.Tactician
             _ignoresDifficultTerrain = null;
             _activeShootsAfterMoving = null;
             _activeMayCharge = null;
+            _drainAttempted = false;
+            _drainTarget = null;
             _advanceLanes = null;
             _terrainSnapshot = null;
             _sightSnapshot = null;
@@ -313,6 +315,11 @@ namespace FDG.Ai.Tactician
             try
             {
             if (_activeUnit == null) return null;
+
+            // #442 (#429 Spell Drain): a free, layered before-attack ability - taken first, at most once per
+            // activation (the attempt latch also guards a target pick that could not complete).
+            string? drain = SpellDrainChoice(validOptions);
+            if (drain != null) return drain;
 
             // #191 B1 5b: a prescribed action is the authority for this activation - taken before
             // every scoring branch below, which is what removes the policy-thinking cost from a
@@ -611,6 +618,82 @@ namespace FDG.Ai.Tactician
             _decisionLog?.Invoke($"activation-start move {unit.GetValue().Name}: toward " +
                 $"({best.ProjectedCentroid.x:F1},{best.ProjectedCentroid.z:F1}) [{best.Intent}]");
             return (ETriggeredMoveAim.Toward, best.ProjectedCentroid);
+        }
+
+        // --- #442 (#429): Spell Drain -----------------------------------------------------------------
+        // "Once per activation, before attacking, pick one enemy model within 18" in line of sight, which must take a
+        // Morale Test. If failed, it loses 2 spell tokens." Both bots used to skip every before-attack ability; the
+        // Tactician now takes a drain-shaped one (MoraleTestThen -> ConsumeToken(SpellTokens)) whenever an enemy it
+        // could pick holds tokens it might fail to keep, aimed at the most tokens expected to go.
+        private bool _drainAttempted;
+        private DataBinding<UnitData>? _drainTarget;
+
+        /// <summary>
+        /// The enemy the Tactician picked Spell Drain for this activation, handed to the before-attack target pick
+        /// once and then cleared (null: no pending drain - the pick is not ours).
+        /// </summary>
+        public DataBinding<UnitData>? TakePendingDrainTarget()
+        {
+            DataBinding<UnitData>? target = _drainTarget;
+            _drainTarget = null;
+            return target;
+        }
+
+        /// <summary>Expected spell tokens a drain of <paramref name="count"/> takes from <paramref name="enemy"/>:
+        /// what it holds (capped) times the chance it fails the rule-forced Morale Test.</summary>
+        public float ExpectedDrain(DataBinding<UnitData> enemy, int count = 2)
+        {
+            UnitData unit = enemy.GetValue();
+            int held = unit.Tokens.GetTokenCount(TokenType.SpellTokens);
+            if (held <= 0) return 0f;
+            float pass = TacticalAnalysis.MoralePassChance(_tableState, _evaluator, unit,
+                Rules.Foundation.EMoraleTestCause.Other, failureCausesShakenOrRout: false);
+            return Math.Min(count, held) * (1f - pass);
+        }
+
+        private string? SpellDrainChoice(IReadOnlyList<string> validOptions)
+        {
+            if (_drainAttempted || _activeUnit == null) return null;
+            UnitData self = _activeUnit.GetValue();
+            IEnumerable<ResolvedRule> rules = self.RuleDefinitions.Concat(self.Models
+                .Where(m => m.GetIsAlive()).SelectMany(m => m.RuleDefinitions));
+            foreach (ResolvedRule rule in rules)
+            {
+                string? option = validOptions.FirstOrDefault(o => o == rule.RequestedName || o == rule.Definition.Name);
+                if (option == null) continue;
+                foreach (ActivatedAbility ability in rule.Definition.Activated)
+                {
+                    if (ability.TriggerHook != EHookID.Activation_OnBeforeAttackAction
+                        || ability.TargetSelector.TargetAffinity != ETargetAffinity.Foe
+                        || ability.Effect is not Effect.MoraleTestThen { OnFailure: Effect.ConsumeToken consume }
+                        || consume.TType != TokenType.SpellTokens)
+                        continue;
+
+                    DataBinding<UnitData>? best = null;
+                    float bestValue = 0.05f; // a free ability, but not one worth a pick that drains nothing
+                    foreach (DataBinding<UnitData> enemy in EnemyBindings(self.PlayerID))
+                    {
+                        if (!SpellValuation.WithinRangeAndSight(_tableState, self, enemy, ability.TargetSelector,
+                                _seeThroughFriendlyUnits)) continue;
+                        float value = ExpectedDrain(enemy, consume.Count);
+                        if (value > bestValue) { bestValue = value; best = enemy; }
+                    }
+                    if (best == null)
+                    {
+                        // Asked once per activation: nothing this activation does changes who holds tokens.
+                        _drainAttempted = true;
+                        _decisionLog?.Invoke($"spell-drain {self.Name}: no enemy in reach holds tokens to lose");
+                        continue;
+                    }
+
+                    _drainAttempted = true;
+                    _drainTarget = best;
+                    _decisionLog?.Invoke($"spell-drain {self.Name} -> {best.GetValue().Name} " +
+                        $"(expected {bestValue:F2} tokens)");
+                    return option;
+                }
+            }
+            return null;
         }
 
         // --- casting (A5) ---------------------------------------------------------------------------

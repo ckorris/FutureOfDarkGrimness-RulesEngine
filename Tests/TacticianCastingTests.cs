@@ -173,6 +173,100 @@ namespace FDG.Tests
             Assert.That(declined, Is.Zero);
         }
 
+        // --- #442 (#429's casting gaps): the engine's own threshold, relay origins, the assist clamp ---------------
+
+        [Test]
+        public void CastChance_IsTheEnginesThreshold_SpellAmplifierAndGrantedTokens_ClampedAtTwo()
+        {
+            var caster = MakeUnit(_us, 1, Rifle(), 20f, 24f);
+            BuildArmies();
+            Assert.That(SpellValuation.CastSuccessChance(_evaluator, caster.GetValue()), Is.EqualTo(3f / 6f),
+                "the base 4+");
+
+            caster.GetValue().AttachRuleDefinition(new ResolvedRule("Spell Amplifier", CoreRuleCatalog.SpellAmplifier));
+            Assert.That(SpellValuation.CastThreshold(_evaluator, caster.GetValue()), Is.EqualTo(3),
+                "Spell Amplifier: +1 to casting rolls");
+
+            caster.GetValue().Tokens.AddToken(new Token(TokenType.CastRollModifier, 1,
+                new TokenClearTrigger.ManualOnly(), Payload: new TokenPayload.StatModifier(3)));
+            Assert.That(SpellValuation.CastThreshold(_evaluator, caster.GetValue()), Is.EqualTo(2),
+                "a granted +3 on top clamps at the 2+ floor");
+            Assert.That(SpellValuation.CastSuccessChance(_evaluator, caster.GetValue(), relayBonus: 1),
+                Is.EqualTo(5f / 6f), "and a relay bonus past the floor buys nothing");
+        }
+
+        [Test]
+        public void NetCastValue_RisesWithTheCastersOwnBonus()
+        {
+            var caster = MakeUnit(_us, 1, Rifle(), 20f, 24f);
+            GiveTokens(caster, 3);
+            MakeUnit(_them, 5, Blade(), 30f, 24f);
+            RuntimeSpell zap = DamageSpell("Zap", threshold: 2, hits: 6);
+            BuildArmies(zap);
+            float plain = SpellValuation.NetCastValue(_evaluator, _tableState, caster, zap, false);
+
+            caster.GetValue().AttachRuleDefinition(new ResolvedRule("Spell Amplifier", CoreRuleCatalog.SpellAmplifier));
+            float amplified = SpellValuation.NetCastValue(_evaluator, _tableState, caster, zap, false);
+
+            float gross = SpellValuation.GrossCastValue(_evaluator, _tableState, caster, zap, false);
+            Assert.That(amplified - plain, Is.EqualTo(gross / 6f).Within(0.0001f), "one face of the 4+ is 1/6 of the effect");
+        }
+
+        // A Spell Conduit relays range and sight from ITS position, +1 to the roll when the targets need it.
+        [Test]
+        public void ATargetOnlyARelayReaches_IsValued_AtTheRelaysBonus()
+        {
+            var caster = MakeUnit(_us, 1, Rifle(), 10f, 24f);
+            GiveTokens(caster, 3);
+            var conduit = MakeUnit(_us, 1, Rifle(), 20f, 24f); // 9" from the caster: inside the 12" relay
+            conduit.GetValue().AttachRuleDefinition(new ResolvedRule("Spell Conduit", SpellConduit()));
+            var far = MakeUnit(_them, 5, Blade(), 36f, 24f); // 26" from the caster, 15" from the conduit
+            RuntimeSpell zap = DamageSpell("Zap", threshold: 2, hits: 6);
+            BuildArmies(zap);
+
+            var ranked = SpellValuation.RankEligibleTargets(_evaluator, _tableState, caster, zap, false);
+            Assert.That(ranked.Any(r => r.Unit.Reference.Equals(far.Reference)), Is.True,
+                "out of the caster's 18\", inside the conduit's");
+
+            float gross = SpellValuation.GrossCastValue(_evaluator, _tableState, caster, zap, false);
+            float net = SpellValuation.NetCastValue(_evaluator, _tableState, caster, zap, false);
+            Assert.That(net + 2 * TacticianWeights.CastTokenValue, Is.EqualTo(gross * 4f / 6f).Within(0.0001f),
+                "cast from the relay: 3+ instead of 4+");
+        }
+
+        [Test]
+        public void Assist_NeverPushesPastTheClamp()
+        {
+            var caster = MakeUnit(_us, 1, Rifle(), 20f, 24f);
+            var helper = MakeUnit(_us, 1, Rifle(), 22f, 24f);
+            GiveTokens(caster, 3);
+            GiveTokens(helper, 3);
+            MakeUnit(_them, 5, Blade(), 30f, 24f);
+            BuildArmies(DamageSpell("Zap", threshold: 2, hits: 6, ap: 1));
+            caster.GetValue().AttachRuleDefinition(new ResolvedRule("Spell Amplifier", CoreRuleCatalog.SpellAmplifier));
+            caster.GetValue().Tokens.AddToken(new Token(TokenType.CastRollModifier, 1,
+                new TokenClearTrigger.ManualOnly(), Payload: new TokenPayload.StatModifier(1)));
+            var resolver = new TacticianCastAssistResolver(_tableState, _evaluator);
+
+            int boost = resolver.Resolve(new CastAssistRequest(_us, helper, caster,
+                isFriendly: true, availableTokens: 3, spellName: "Zap")).Result;
+            Assert.That(boost, Is.Zero, "already at the 2+ floor: a boost token buys nothing");
+
+            int hinder = resolver.Resolve(new CastAssistRequest(_us, helper, caster,
+                isFriendly: false, availableTokens: 3, spellName: "Zap")).Result;
+            Assert.That(hinder, Is.GreaterThan(0));
+            Assert.That(hinder, Is.LessThanOrEqualTo(TacticianWeights.CastAssistMaxTokens));
+        }
+
+        private static SpecialRuleDefinition SpellConduit() => new("Spell Conduit",
+            new[]
+            {
+                new HookEntry(EHookID.Lifecycle_OnCapabilityQuery,
+                    new Condition.Not(new Condition.TokenPresent(TokenType.Shaken)),
+                    new Effect.EnableSpellRelay(12f, 1), ELifetime.UntilEndOfGame),
+            },
+            Array.Empty<ActivatedAbility>());
+
         // --- fixtures ---
 
         private static RuntimeSpell DamageSpell(string name, int threshold, int hits, int ap = 0,

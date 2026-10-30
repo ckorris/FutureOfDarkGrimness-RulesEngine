@@ -2,6 +2,7 @@ using FDG.Data;
 using FDG.Rules.Dispatch;
 using FDG.StageResolution;
 using FDG.StageResolution.Requests;
+using FDG.Utilities;
 
 namespace FDG.Ai.Tactician.Resolvers
 {
@@ -11,7 +12,7 @@ namespace FDG.Ai.Tactician.Resolvers
     /// one alike (the solo bot always declines both). The spell is priced from the CASTING unit's
     /// eligible targets, since the already-chosen targets are not in the request (recorded
     /// approximation). Spends only while a token's buy beats its opportunity cost, capped per
-    /// request so one cast never drains a whole pool.
+    /// request so one cast never drains a whole pool - and (#442) never past the clamp a token can still move.
     /// </summary>
     public class TacticianCastAssistResolver : IStageResolver<CastAssistRequest, int>
     {
@@ -41,7 +42,17 @@ namespace FDG.Ai.Tactician.Resolvers
             float perToken = gross / 6f;
             if (perToken <= TacticianWeights.CastTokenValue) return Task.FromResult(0);
 
-            return Task.FromResult(Math.Min(request.AvailableTokens, TacticianWeights.CastAssistMaxTokens));
+            // #442 (#429): a token only buys a face while the roll is inside the engine's 2-6 clamp - past the 2+
+            // floor (a boost) or the 6+ ceiling (a hinder) it buys nothing. Measured from the caster's own threshold
+            // (its passive bonus and granted tokens; the self-boost and other assists are not known here).
+            int threshold = SpellValuation.CastThreshold(_evaluator, request.CastingUnit.GetValue());
+            int useful = request.IsFriendly
+                ? threshold - DiceUtilities.MINIMUM_SUCCESS_ROLL
+                : DiceUtilities.MAXIMUM_SUCCESS_ROLL - threshold;
+            if (useful <= 0) return Task.FromResult(0);
+
+            return Task.FromResult(Math.Min(useful,
+                Math.Min(request.AvailableTokens, TacticianWeights.CastAssistMaxTokens)));
         }
     }
 }

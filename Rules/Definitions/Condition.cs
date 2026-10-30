@@ -259,15 +259,20 @@ public abstract record Condition
     }
 
     /// <summary>
-    /// True if the relevant die came up exactly this value before any modifiers
-    /// were applied. Typically <see cref="DieValue"/> is 6 (Furious / Rending /
-    /// Surge fire on natural 6) or 1 (Shred fires on natural 1 to block).
+    /// True if some hit die came up exactly this value before any modifiers were applied AND counts as
+    /// that value for special rules. Typically <see cref="DieValue"/> is 6 (Furious / Rending / Surge fire
+    /// on a natural 6) or 1 (Hazardous fires on a natural 1 to hit).
+    /// <para>
+    /// Reads <see cref="IHasUnmodifiedHitRolls.SpecialRuleHitRolls"/>, not the raw histogram: under
+    /// Core Rules v3.6.0 Fatigue (#418) a fatigued unit's melee 6s "don't count as rolls of 6 for special
+    /// rules", so this is false for them even though the dice show 6.
+    /// </para>
     /// </summary>
     public sealed record UnmodifiedRollEquals(int DieValue) : CapabilityCondition<IHasUnmodifiedHitRolls>
     {
         protected override bool EvaluateCore(IHasUnmodifiedHitRolls context)
         {
-            return context.UnmodifiedHitRolls.At(DieValue) > 0;
+            return context.SpecialRuleHitRolls.At(DieValue) > 0;
         }
     }
 

@@ -77,17 +77,26 @@ namespace FDG.Stages
             IUnit defender = metaData.DefendingUnit.GetValue();
             float distance = UnitCompareUtilities.MinDistanceBetweenUnits(attacker, defender, out _, out _, includeVertical: true);
 
+            // #418 (Core Rules v3.6.0 Fatigue): a Fatigued (or Shaken) unit's melee hits are its natural 6s,
+            // and "those hits don't count as rolls of 6 for special rules". Decided once, here, on the
+            // context: every on-a-6 trigger (Furious, Surge, Rending's AP, the book rules built on the same
+            // primitives) reads the context's SpecialRuleHitRolls view, which zeroes face 6 for such an
+            // attack, and the per-hit AP split below reads the same view. The raw histogram is untouched,
+            // so the hits themselves (and the dice beat) are exactly what was rolled.
+            var hitContext = new HitRollCompleteContext(attacker, defender, rollToHitResults, distance,
+                metaData.IsMelee, metaData.IsCharging, IsSpell: false,
+                ChargeOriginDistanceInches: metaData.ChargeOriginDistanceInches,
+                UnpredictableBranch: metaData.UnpredictableBranch,
+                // #197 misc (Grounded family): the terrain-proximity conditions read the bearer's
+                // models against the live terrain layout.
+                TerrainPieces: GameContext.TableState.Terrain.Objects.ToList(),
+                SixesCountForSpecialRules: FatigueUtilities.SixesCountForSpecialRules(attacker, metaData.IsMelee));
+
             // #204: the LIVE named evaluation - spends grants / narrates exactly like EvaluateAll, but also
             // pairs each op with the alias-aware rule name so the save presentation can say "+1 (Furious)",
             // "x3 (Blast)", "Rending AP+1". `operations` is the plain-op view the existing sinks consume.
             IReadOnlyList<(RuleOperation Op, string RuleName)> named = GameContext.RuleEvaluator.EvaluateAllNamedLive(
-                new HitRollCompleteContext(attacker, defender, rollToHitResults, distance, metaData.IsMelee,
-                    metaData.IsCharging, IsSpell: false,
-                    ChargeOriginDistanceInches: metaData.ChargeOriginDistanceInches,
-                    UnpredictableBranch: metaData.UnpredictableBranch,
-                    // #197 misc (Grounded family): the terrain-proximity conditions read the bearer's
-                    // models against the live terrain layout.
-                    TerrainPieces: GameContext.TableState.Terrain.Objects.ToList()),
+                hitContext,
                 // #006 slice F / #093: the attacker batch's living owners contribute their per-model rules
                 // under AllOwners semantics (fires only when every owner shares it), so a joined hero's
                 // Furious/Relentless fire for a hero-only batch and a homogeneous squad's shared per-model
@@ -122,8 +131,9 @@ namespace FDG.Stages
             // matching-face hits carry the raised save threshold; the rest stay at base AP. With no such
             // rule the splitter returns a single group — identical to the old one-group behaviour. The named
             // form (#204) tags each peeled group with its rule so the save stage can say "Rending AP+1".
+            // #418: a face the special-rule view zeroes (a fatigued melee attack's 6s) is never peeled.
             RollToHitResults results = new RollToHitResults(
-                PerHitApSplitter.Split(successfulResults, named),
+                PerHitApSplitter.Split(successfulResults, named, hitContext.SpecialRuleHitRolls),
                 new List<FailedHitInfo>() { new FailedHitInfo(failedResults) });
 
             // #042 extra-hit rules (Surge / Furious / Relentless) fire at hit-roll-complete: an unmodified 6

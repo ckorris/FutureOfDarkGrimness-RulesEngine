@@ -352,6 +352,32 @@ namespace FDG.Tests
             await AssertVolleyPinned(attacker, defender, blade, weaponCount: 3, isMelee: true);
         }
 
+        // #418: a fatigued charge's natural 6s don't count as 6s for special rules, so Furious (unit),
+        // Surge and Rending (weapon) all price nothing - and the estimate must agree with the engine on it.
+        // Hand value: 6 dice hitting only on 6s = 1 hit at base AP, saved on 4+ = 0.5 wounds. Without the
+        // view the estimate would carry Furious's and Surge's extra hits and Rending's AP(+4) on the 6.
+        [TestCase(true)]
+        [TestCase(false)]
+        public async Task FatiguedAttacker_SixTriggersPriceNothing_MatchesEngine(bool fatigued)
+        {
+            var blade = Blade();
+            blade.AttachRuleDefinition(new ResolvedRule("Surge", CoreRuleCatalog.Surge));
+            blade.AttachRuleDefinition(new ResolvedRule("Rending", CoreRuleCatalog.Rending));
+            var attacker = MakeUnit(3, blade, atX: 0f);
+            AttachUnitRule(attacker, "Furious", CoreRuleCatalog.Furious);
+            if (fatigued)
+                FatigueUtilities.ApplyFatigued(attacker.GetValue());
+            var defender = MakeUnit(5, null, atX: 1f);
+
+            float estimate = CombatMath.EstimateVolley(_ctx.RuleEvaluator, attacker, defender, blade, 3,
+                new AttackContext(Distance(attacker, defender), IsMelee: true, IsCharging: true),
+                new List<string>());
+            if (fatigued)
+                Assert.That(estimate, Is.EqualTo(0.5f).Within(0.0001f), "one base-AP hit, half saved");
+
+            await AssertVolleyPinned(attacker, defender, blade, weaponCount: 3, isMelee: true, isCharging: true);
+        }
+
         // --- Unit-level estimates (composition; the volley math above is the pinned core) -----------
 
         [Test]

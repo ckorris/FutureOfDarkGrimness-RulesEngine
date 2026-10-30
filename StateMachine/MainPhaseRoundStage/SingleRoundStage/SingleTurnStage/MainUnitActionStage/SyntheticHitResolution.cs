@@ -60,11 +60,16 @@ namespace FDG.Stages
             float distance = UnitCompareUtilities.MinDistanceBetweenUnits(attacker, target, out _, out _,
                 includeVertical: false);
 
+            // Synthetic hits are never a melee hit roll, so Fatigue's "don't count as 6s for special rules"
+            // (#418) cannot apply: the context keeps SixesCountForSpecialRules at its default, and the
+            // special-rule view the split reads below is the rolled dice unchanged.
+            var hitContext = new HitRollCompleteContext(attacker, target, rolled, distance, IsMelee: false,
+                IsCharging: false, IsSpell: isSpell);
+
             // The DEFENDER participates too (Subject seat), mirroring RollToHitStage: Fortified's AP
             // reduction fires against synthetic damage like any other hit.
             IReadOnlyList<RuleOperation> ops = gameContext.RuleEvaluator.EvaluateAll(
-                new HitRollCompleteContext(attacker, target, rolled, distance, IsMelee: false,
-                    IsCharging: false, IsSpell: isSpell),
+                hitContext,
                 RuleParticipant.Actor(attacker, weapon),
                 // #183: the target's living models surface a joined hero's relocated defensive rules
                 // (Fortified vs spell AP; Shielded self-gates out via IsNotSpell) after the merge.
@@ -72,7 +77,7 @@ namespace FDG.Stages
 
             // Split the auto-hitting rolled dice so a natural 6 carries Rending/Crack AP per-hit while the
             // rest save at base AP. No per-hit rule -> a single base-AP group holding every rolled hit.
-            List<SuccessfulHitInfo> groups = PerHitApSplitter.Split(rolled, ops);
+            List<SuccessfulHitInfo> groups = PerHitApSplitter.Split(rolled, ops, hitContext.SpecialRuleHitRolls);
 
             // Surge-style extra hits are base AP (a generated hit is not itself a natural 6).
             HitInjectionSink injection = new HitInjectionSink();

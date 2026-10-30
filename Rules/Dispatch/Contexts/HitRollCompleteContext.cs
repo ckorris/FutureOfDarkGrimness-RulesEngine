@@ -9,7 +9,7 @@ namespace FDG.Rules.Dispatch.Contexts
     /// Fires at <see cref="EHookID.Shooting_OnHitRollComplete"/>: hit rolls are
     /// collected, before the save flow. Carries the unmodified hit rolls as an
     /// <see cref="IDiceResults"/> histogram (so natural-6 rules read
-    /// <c>UnmodifiedHitRolls.At(6)</c> and stay correct under both the realistic
+    /// <c>SpecialRuleHitRolls.At(6)</c> and stay correct under both the realistic
     /// and probabilistic rollers), plus the shooting distance for range-gated ones
     /// (Relentless &gt; 9").
     ///
@@ -26,12 +26,18 @@ namespace FDG.Rules.Dispatch.Contexts
     /// that isn't a charge. See <see cref="IHasAttackOriginDistance"/>.</param>
     /// <param name="TerrainPieces">The table's terrain pieces, for terrain-proximity conditions (the
     /// Grounded family). Null/empty on paths that cannot supply it; see <see cref="IHasTerrain"/>.</param>
+    /// <param name="SixesCountForSpecialRules">#418 (Core Rules v3.6.0 Fatigue): false when the attacking
+    /// unit counts as Fatigued and this is a melee attack, so its natural 6s still hit but "don't count as
+    /// rolls of 6 for special rules" - <see cref="SpecialRuleHitRolls"/> then reads zero on face 6. Every
+    /// builder of a melee hit context decides it through <c>FatigueUtilities.SixesCountForSpecialRules</c>;
+    /// shooting, spells and synthetic hits are never Fatigued and keep the default.</param>
     public sealed record HitRollCompleteContext(
         IUnit Attacker, IUnit Target, IDiceResults UnmodifiedHitRolls,
         float DistanceInches = 0f, bool IsMelee = false, bool IsCharging = false, bool IsSpell = false,
         float ChargeOriginDistanceInches = 0f,
         EUnpredictableBranch UnpredictableBranch = EUnpredictableBranch.None,
-        IReadOnlyList<ITerrain>? TerrainPieces = null)
+        IReadOnlyList<ITerrain>? TerrainPieces = null,
+        bool SixesCountForSpecialRules = true)
         : IHookContext, IHasUnmodifiedHitRolls, IHasDistance, IHasCombatKind, IHasCharging, IHasTarget,
             IHasIsSpell, IHasAttackOriginDistance, IHasUnpredictableBranch, IHasTerrain
     {
@@ -43,5 +49,12 @@ namespace FDG.Rules.Dispatch.Contexts
         public float AttackOriginDistanceInches => IsMelee ? ChargeOriginDistanceInches : DistanceInches;
 
         public IReadOnlyList<ITerrain> Terrain => TerrainPieces ?? Array.Empty<ITerrain>();
+
+        // Computed on read rather than stored, so a `with` copy that flips the flag can never carry a stale
+        // view. The common case (sixes count) allocates nothing.
+        public IDiceResults SpecialRuleHitRolls =>
+            SixesCountForSpecialRules ? UnmodifiedHitRolls : UnmodifiedHitRolls.WithoutFaces(SixFace);
+
+        private static readonly int[] SixFace = { 6 };
     }
 }

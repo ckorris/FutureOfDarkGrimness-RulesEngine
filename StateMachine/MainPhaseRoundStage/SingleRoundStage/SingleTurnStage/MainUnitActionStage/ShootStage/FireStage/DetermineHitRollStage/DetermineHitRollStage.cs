@@ -140,11 +140,13 @@ namespace FDG.Stages
             GameContext.Log($"Base hit roll required is {results.HitRollNeeded} based on attacker's quality.");
 
             // Override the computed threshold rather than stacking a modifier; the d6 comparison in
-            // RollToHitStage then admits only natural 6s.
+            // RollToHitStage then admits only natural 6s. #418: RollToHitStage also stops those 6s from
+            // counting as 6s for special rules (the hit context's SpecialRuleHitRolls view).
             if (fatiguedInMelee)
             {
                 results.HitRollNeeded = 6;
-                GameContext.Log($"{attacker.Name} is fatigued - hits only on unmodified 6s in melee.");
+                GameContext.Log($"{attacker.Name} is fatigued - hits only on unmodified 6s in melee, " +
+                    "and those don't count as 6s for special rules.");
             }
 
             results.ThresholdTags = ComposeThresholdTags(baseQuality, named, grantedNet, fatiguedInMelee,

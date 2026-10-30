@@ -245,6 +245,27 @@ namespace FDG.Tests
             });
         }
 
+        // #418: the calculator runs the real stages, so a fatigued charge's 6s add no Furious hits there
+        // either. 10 dice: fresh = 5 hits on 4+ plus 10/6 Furious extras; fatigued = only the 10/6 sixes.
+        [Test]
+        public void AFatiguedFuriousCharger_GetsNoExtraHitsFromItsSixes()
+        {
+            CombatSituation charge = new(Mode: ECombatMode.Melee, AttackerCharging: true);
+            ArmyListFile brawlers = Army(Unit("Brawlers", 5, 4, 4, new[] { "Furious" }, Blade(5)));
+            ArmyListFile targets = Army(Unit("Targets", 10, 4, 4));
+
+            CombatReport fresh = CombatCalculator.Run(brawlers, targets, charge);
+            CombatReport tired = CombatCalculator.Run(brawlers, targets, charge with { AttackerFatigued = true });
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(fresh.Volleys[0].ExpectedHits, Is.EqualTo(5f + 10f / 6f).Within(Tolerance),
+                    "fresh: Furious adds one hit per natural 6");
+                Assert.That(tired.Volleys[0].ExpectedHits, Is.EqualTo(10f / 6f).Within(Tolerance),
+                    "fatigued: the 6s hit but don't count as 6s for Furious");
+            });
+        }
+
         [Test]
         public void AChargingImpactUnit_LandsItsHitsBeforeAnythingSwings()
         {

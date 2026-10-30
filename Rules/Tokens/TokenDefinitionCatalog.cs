@@ -77,7 +77,8 @@ public static class TokenDefinitionCatalog
 
             new(TokenType.FATIGUED_ID, "Fatigued", EValence.Negative, ETokenProminence.FirstClass,
                 DefaultClearTrigger: new TokenClearTrigger.RoundEnd(),
-                Description: "Fatigued - hits only on unmodified 6s in melee for the rest of the round."),
+                Description: "Fatigued - hits only on unmodified 6s in melee for the rest of the round, " +
+                             "and those don't count as 6s for special rules."),
 
             // #197 Inquisitorial Agent's per-round army quota counter. Normal prominence: it explains why
             // a sibling unit is no longer being offered its second activation, which is otherwise invisible.

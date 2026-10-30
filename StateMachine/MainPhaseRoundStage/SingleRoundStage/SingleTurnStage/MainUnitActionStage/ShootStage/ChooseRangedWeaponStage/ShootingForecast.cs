@@ -127,11 +127,14 @@ namespace FDG.Stages
             // --- RollToHitStage's whole-attack fold, evaluated against an EMPTY histogram:
             // unconditional save modifiers (Shielded, Fortified, a defensive aura) contribute; a
             // face-triggered op reads zero natural 6s and contributes nothing - which is exactly what
-            // a pre-roll number wants.
+            // a pre-roll number wants. The #418 fatigue flag goes through the engine's own decision for
+            // parity, though a shooting forecast is never Fatigued (it is always true here).
             IReadOnlyList<(RuleOperation Op, string RuleName)> completeNamed =
                 gameContext.RuleEvaluator.EvaluateAllNamed(
                     new HitRollCompleteContext(attacker, defender, EmptyRolls(), distance,
-                        TerrainPieces: terrain),
+                        TerrainPieces: terrain,
+                        SixesCountForSpecialRules: FatigueUtilities.SixesCountForSpecialRules(attacker,
+                            isMelee: false)),
                     actor, subject);
             List<RuleOperation> completeOps = completeNamed.Select(n => n.Op).ToList();
 

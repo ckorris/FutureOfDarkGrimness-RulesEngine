@@ -24,19 +24,27 @@ namespace FDG.Stages
         /// hits (each carrying its summed save delta) plus one base-AP group for the remainder. Always
         /// returns at least one group — a whiffed volley (0 hits) still yields a single empty group, so
         /// downstream save stages see one entry per volley exactly as before.
+        /// <para>
+        /// <paramref name="specialRuleRolls"/> is the hit context's
+        /// <c>IHasUnmodifiedHitRolls.SpecialRuleHitRolls</c> view: a face it reads zero on does not count
+        /// for special rules (#418, a fatigued melee attack's 6s), so its hits are never peeled and keep
+        /// base AP even if a per-hit op for that face reached the splitter. Null = every face counts.
+        /// </para>
         /// </summary>
         public static List<SuccessfulHitInfo> Split(
-            IDiceResults successfulHits, IReadOnlyList<RuleOperation> operations)
-            => Split(successfulHits, operations.Select(o => (o, "")).ToList());
+            IDiceResults successfulHits, IReadOnlyList<RuleOperation> operations,
+            IDiceResults? specialRuleRolls = null)
+            => Split(successfulHits, operations.Select(o => (o, "")).ToList(), specialRuleRolls);
 
         /// <summary>
-        /// As <see cref="Split(IDiceResults, IReadOnlyList{RuleOperation})"/>, but each per-hit-AP operation
+        /// As <see cref="Split(IDiceResults, IReadOnlyList{RuleOperation}, IDiceResults)"/>, but each per-hit-AP operation
         /// carries the alias-aware name of the rule that produced it (#204), so the peeled group's
         /// <see cref="HitGroupSource"/> can attribute the raised save threshold to "Rending" / "Crack" in
         /// the save-roll presentation. The base remainder is tagged <see cref="HitGroupSource.Base"/>.
         /// </summary>
         public static List<SuccessfulHitInfo> Split(
-            IDiceResults successfulHits, IReadOnlyList<(RuleOperation Op, string RuleName)> namedOperations)
+            IDiceResults successfulHits, IReadOnlyList<(RuleOperation Op, string RuleName)> namedOperations,
+            IDiceResults? specialRuleRolls = null)
         {
             // Sum the deltas per triggering face — two AP-on-6 rules (e.g. Rending + Crack) on the same
             // weapon stack onto the same natural-6 hits — and remember which rule(s) named each face.
@@ -67,6 +75,11 @@ namespace FDG.Stages
                 // the hit threshold is never a hit). Nothing to peel.
                 if (face < successfulHits.SideMin || face > successfulHits.SideMax) continue;
 
+                // #418: the special-rule view only ever zeroes WHOLE faces, so "no die counts at this face"
+                // is exact - there is no partial count to peel.
+                if (specialRuleRolls != null && face >= specialRuleRolls.SideMin && face <= specialRuleRolls.SideMax
+                    && specialRuleRolls.At(face) <= 0f) continue;
+
                 IDiceResults faceHits = successfulHits.SubsetAt(face);
                 if (faceHits.TotalRolls > 0f)
                 {
@@ -79,7 +92,7 @@ namespace FDG.Stages
                 }
             }
 
-            IDiceResults remainder = RemoveFaces(successfulHits, peeledFaces);
+            IDiceResults remainder = successfulHits.WithoutFaces(peeledFaces);
             if (remainder.TotalRolls > 0f)
             {
                 groups.Add(new SuccessfulHitInfo(remainder, 0, HitGroupSource.Base));
@@ -93,22 +106,6 @@ namespace FDG.Stages
             }
 
             return groups;
-        }
-
-        // Copies the histogram with the given faces zeroed out — the base-AP remainder after the
-        // per-face AP groups have been peeled off.
-        private static IDiceResults RemoveFaces(IDiceResults source, ICollection<int> facesToRemove)
-        {
-            if (facesToRemove.Count == 0) return source;
-
-            int length = source.SideMax - source.SideMin + 1;
-            float[] values = new float[length];
-            for (int face = source.SideMin; face <= source.SideMax; face++)
-            {
-                values[face - source.SideMin] = facesToRemove.Contains(face) ? 0f : source.At(face);
-            }
-
-            return new DiceResults(values, source.SideMin);
         }
     }
 }

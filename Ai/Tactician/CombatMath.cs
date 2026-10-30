@@ -351,17 +351,22 @@ namespace FDG.Ai.Tactician
             IDiceResults rolls = Dice.Roll(attackCount);
             IDiceResults successful = rolls.SubsetAtOrAbove(DiceUtilities.ClampSuccessRollNeeded(hitRollNeeded));
 
+            // #418: the same fatigue decision the engine stamps on its hit context, so a fatigued melee
+            // volley's 6s price no Furious/Surge extra hits and no Rending AP, exactly as they will roll.
+            var hitContext = new HitRollCompleteContext(atk, def, rolls, context.DistanceInches,
+                context.IsMelee, context.IsCharging,
+                SixesCountForSpecialRules: FatigueUtilities.SixesCountForSpecialRules(atk, context.IsMelee));
+
             var __completeProbe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
             IReadOnlyList<RuleOperation> completeOps = Ops(evaluator.EvaluateAllNamed(
-                new HitRollCompleteContext(atk, def, rolls, context.DistanceInches,
-                    context.IsMelee, context.IsCharging),
+                hitContext,
                 attackerBatch,
                 defenderSeat));
 
             // With no operations the splitter returns exactly this one-group list.
             List<SuccessfulHitInfo> groups = completeOps.Count == 0
                 ? new List<SuccessfulHitInfo> { new SuccessfulHitInfo(successful) }
-                : PerHitApSplitter.Split(successful, completeOps);
+                : PerHitApSplitter.Split(successful, completeOps, hitContext.SpecialRuleHitRolls);
 
             int saveNet = 0;
             int apReduction = 0;

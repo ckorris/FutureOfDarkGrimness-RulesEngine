@@ -10,6 +10,8 @@ namespace FDG.Tests
     // round; while Fatigued (or Shaken, #089) it hits only on unmodified 6s in melee. Two halves:
     //   - the EFFECT: DetermineHitRollStage forces the melee threshold to 6 for a fatigued attacker;
     //   - the APPLICATION: ApplyFatigueStage tokens the units that actually fought, after the swings.
+    // The 3.6 clause "those hits don't count as rolls of 6 for special rules" (#418) is pinned in
+    // FatigueSpecialSixesRuleIntegrationTests.
     [TestFixture]
     public class FatigueTests
     {

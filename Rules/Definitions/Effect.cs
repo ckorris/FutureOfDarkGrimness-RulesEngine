@@ -150,11 +150,26 @@ public abstract record Effect
     /// this tags only the matching-face hits: the hit-roll stage peels those hits into their own group
     /// carrying <see cref="Delta"/> while the rest save at base AP. The stage reads the roll histogram,
     /// so the matching-face count stays correct — and fractional — under the probabilistic roller.
+    /// <para>
+    /// #418: when the firing context carries hit rolls and none of them count as
+    /// <see cref="OnRollValue"/> for special rules (<see cref="IHasUnmodifiedHitRolls.SpecialRuleHitRolls"/>
+    /// - a fatigued melee attack's 6s), nothing is emitted, so no AP group, no "Rending AP+4" proc chip.
+    /// Kept a plain <c>Effect</c> rather than a <c>CapabilityEffect</c>, so the validator's requirements for
+    /// it are unchanged; off a hit-roll context it emits exactly as before.
+    /// </para>
     /// </summary>
     public sealed record PerHitSaveModifier(int OnRollValue, int Delta) : Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
+            if (ruleInvocation.Hook is IHasUnmodifiedHitRolls rolls
+                && OnRollValue >= rolls.SpecialRuleHitRolls.SideMin
+                && OnRollValue <= rolls.SpecialRuleHitRolls.SideMax
+                && rolls.SpecialRuleHitRolls.At(OnRollValue) <= 0f)
+            {
+                return;
+            }
+
             operations.Add(new RuleOperation.ApplyPerHitSaveModifier(OnRollValue, Delta));
         }
     }
@@ -194,13 +209,16 @@ public abstract record Effect
     /// <summary>
     /// Each die that came up unmodified <see cref="OnRollValue"/> generates
     /// <see cref="Count"/> additional hits (defaults to one). Covers Furious,
-    /// Surge, Relentless — all the "natural 6 → bonus hit" rules.
+    /// Surge, Relentless — all the "natural 6 → bonus hit" rules. Counts the dice in
+    /// <see cref="IHasUnmodifiedHitRolls.SpecialRuleHitRolls"/>, so a fatigued melee attack's 6s add
+    /// nothing (#418). The generated hits are not rolls at all, so they never trigger anything themselves
+    /// ("only the original hit counts as a 6 for special rules").
     /// </summary>
     public sealed record AddExtraHit(int OnRollValue, int Count = 1) : CapabilityEffect<IHasUnmodifiedHitRolls>
     {
         protected override void ApplyCore(IHasUnmodifiedHitRolls context, List<RuleOperation> operations)
         {
-            operations.Add(new RuleOperation.InsertExtraHits(context.UnmodifiedHitRolls.At(OnRollValue) * Count));
+            operations.Add(new RuleOperation.InsertExtraHits(context.SpecialRuleHitRolls.At(OnRollValue) * Count));
         }
     }
 
@@ -219,8 +237,10 @@ public abstract record Effect
     {
         protected override void ApplyCore(IHasUnmodifiedHitRolls context, List<RuleOperation> operations)
         {
+            // The special-rule view, like every other natural-N trigger; it only differs from the raw roll
+            // on a fatigued melee attack's 6s (#418), so Hazardous's 1s are unaffected.
             operations.Add(new RuleOperation.InflictSelfWounds(
-                context.UnmodifiedHitRolls.At(OnRollValue) * Count));
+                context.SpecialRuleHitRolls.At(OnRollValue) * Count));
         }
     }
 

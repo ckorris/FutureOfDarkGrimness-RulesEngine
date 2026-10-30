@@ -354,6 +354,37 @@ namespace FDG.Tests
             Assert.That(deserialized.WeaponRangeOverrides[0].EffectiveRangeInches, Is.EqualTo(30f));
         }
 
+        // #429: the spell picker crosses the wire to a remote caster, so the per-spell LoS tag and the threshold
+        // note must survive JSON (both are constructor parameters, the way Newtonsoft rebuilds records).
+        [Test]
+        public void ChooseSpellRequest_LineOfSightTagAndThresholdNote_RoundTrip()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var playerID = new PlayerID(Guid.NewGuid());
+            var model = new ModelData(0.5f, new List<Weapon>(), new Position(), store);
+            var unit = new UnitData(playerID, "Psy-Seer", 4, 4,
+                new List<DataBinding<ModelData>> { store.GetDataBinding<ModelData>(store.Create(model)) });
+            DataBinding<UnitData> caster = store.GetDataBinding<UnitData>(store.Create(unit));
+
+            var request = new ChooseSpellRequest(playerID, caster, availableTokens: 3, baseThreshold: 3,
+                hinderTokensInRange: 0,
+                new List<ChooseSpellRequest.SpellOption>
+                {
+                    new("Seen Hex (1)", "desc", 1, Castable: false, "no target in line of sight", RequiresLineOfSight: true),
+                    new("Unseen Hex (1)", "desc", 1, Castable: true, null),
+                },
+                baseThresholdNote: "base 4+, rules +1");
+
+            string json = JsonConvert.SerializeObject(request, store.GetJsonSettings());
+            var back = JsonConvert.DeserializeObject<ChooseSpellRequest>(json, store.GetJsonSettings())!;
+
+            Assert.That(back.Spells[0].RequiresLineOfSight, Is.True);
+            Assert.That(back.Spells[0].UnavailableReason, Is.EqualTo("no target in line of sight"));
+            Assert.That(back.Spells[1].RequiresLineOfSight, Is.False);
+            Assert.That(back.BaseThreshold, Is.EqualTo(3));
+            Assert.That(back.BaseThresholdNote, Is.EqualTo("base 4+, rules +1"));
+        }
+
         [Test]
         public void ChooseRangedAttackRequest_SerializesAndDeserializesCorrectly_SameStore()
         {

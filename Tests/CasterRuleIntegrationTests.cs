@@ -1584,6 +1584,59 @@ namespace FDG.Tests
             Assert.That(target.GetValue().Tokens.GetAllTokens(TokenType.RuleGrant), Is.Not.Empty);
         }
 
+        // The picker (#244 ChooseSpellRequest) carries each spell's LoS requirement for the front ends' "(LoS)" tag,
+        // and a LoS spell whose only in-range target is out of sight is greyed with that reason - not the generic
+        // "no valid target", because moving the caster fixes it.
+        [Test]
+        public async Task Cast36_ThePicker_TagsLineOfSightSpells_AndSaysWhyOneIsGreyed()
+        {
+            var requester = new CannedAssistRequester(tokensPerAssister: 0);
+            var ctx = new TriggeredMoveTestContext(_store, requester, new FixedDiceRoller(6));
+            DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 2,
+                new[]
+                {
+                    LosDebuffSpell("Seen Hex", requireLineOfSight: true),
+                    LosDebuffSpell("Unseen Hex", requireLineOfSight: false),
+                }, CasterBehindWall);
+            MakeEnemyUnit(new PlayerID(System.Guid.NewGuid()), TargetBehindWall);
+            AddWallBetweenCasterAndTarget();
+
+            await RunCastStage(ctx, caster);
+
+            ChooseSpellRequest pick = requester.CapturedSpellPick!;
+            Assert.That(pick.Spells[0].RequiresLineOfSight, Is.True, "Seen Hex is tagged");
+            Assert.That(pick.Spells[0].Castable, Is.False);
+            Assert.That(pick.Spells[0].UnavailableReason, Is.EqualTo(CastSpellStage.NoTargetInSightReason));
+            Assert.That(pick.Spells[1].RequiresLineOfSight, Is.False, "Unseen Hex is not");
+            Assert.That(pick.Spells[1].Castable, Is.True, "and reaches the same unit through the wall");
+            Assert.That(pick.Spells[0].Label, Is.EqualTo("Seen Hex (1)"),
+                "the label stays 'Name (cost)' - the Tactician finds spells by it; the tag is a separate field");
+        }
+
+        [Test]
+        public async Task Cast36_ALineOfSightSpellWithNothingInRange_KeepsTheGenericReason()
+        {
+            // The only enemy is 29" away AND behind the wall: range, not sight, is the problem, so the row must not
+            // claim otherwise. A self-buff keeps the picker open.
+            var requester = new CannedAssistRequester(tokensPerAssister: 0);
+            var ctx = new TriggeredMoveTestContext(_store, requester, new FixedDiceRoller(6));
+            DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 2,
+                new[]
+                {
+                    LosDebuffSpell("Seen Hex", requireLineOfSight: true),
+                    SelfBuffSpell("Self Ward", threshold: 1, grantedRule: "Furious"),
+                }, CasterBehindWall);
+            MakeEnemyUnit(new PlayerID(System.Guid.NewGuid()), new Position(10f, 40f));
+            AddWallBetweenCasterAndTarget();
+
+            await RunCastStage(ctx, caster);
+
+            ChooseSpellRequest pick = requester.CapturedSpellPick!;
+            Assert.That(pick.Spells[0].Castable, Is.False);
+            Assert.That(pick.Spells[0].UnavailableReason, Is.EqualTo("no valid target"));
+            Assert.That(pick.Spells[1].Castable, Is.True);
+        }
+
         // 3.6: "Models within 18\" of the Caster may spend any number of spell tokens at the same time before
         // rolling to give the Caster +1/-1 to the roll per token." Range only - no line of sight. A friendly
         // Caster 15" away (base to base) with a Blocking wall squarely between still boosts: face 3 fails the base

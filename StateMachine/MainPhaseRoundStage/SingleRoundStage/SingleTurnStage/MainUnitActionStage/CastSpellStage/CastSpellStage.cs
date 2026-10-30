@@ -459,6 +459,10 @@ namespace FDG.Stages
         // legal target) and, when it can't, the reason shown on the disabled row.
         internal readonly record struct SpellOffer(RuntimeSpell Spell, bool Castable, string? Reason);
 
+        /// <summary>#429 - the disabled-row reason for a line-of-sight spell whose in-range targets are all out of
+        /// sight. Public so the front ends' tests can name it rather than copy the words.</summary>
+        public const string NoTargetInSightReason = "no target in line of sight";
+
         // Every army spell in stable order, each marked castable or carrying its unavailability reason.
         // Affordability is checked before targets so the cheaper check names the blocking condition first.
         // #249: already-tried spells are checked first — that one is permanent for the activation, so it
@@ -491,7 +495,13 @@ namespace FDG.Stages
                 {
                     // From ANY origin: a spell the caster cannot reach itself is still castable through a
                     // relay that can, so gating on the caster's own reach would hide it from the picker.
-                    offer.Add(new SpellOffer(spell, false, "no valid target"));
+                    // #429: a spell that demands line of sight (3.6: its own "in line of sight" clause) and has
+                    // targets in range that are all out of sight says so - the player can fix that by moving.
+                    bool onlyOutOfSight = spell.Target.RequireLineOfSight
+                        && SpellTargeting.HasAnyEligibleTargetFromAny(GameContext, caster, player,
+                            spell.Target with { RequireLineOfSight = false }, origins);
+                    offer.Add(new SpellOffer(spell, false,
+                        onlyOutOfSight ? NoTargetInSightReason : "no valid target"));
                 }
                 else
                 {
@@ -509,7 +519,8 @@ namespace FDG.Stages
         {
             List<ChooseSpellRequest.SpellOption> options = offer
                 .Select(o => new ChooseSpellRequest.SpellOption(SpellOptionLabel(o.Spell),
-                    SpellText.Describe(o.Spell.Definition), o.Spell.Threshold, o.Castable, o.Reason))
+                    SpellText.Describe(o.Spell.Definition), o.Spell.Threshold, o.Castable, o.Reason,
+                    o.Spell.Target.RequireLineOfSight))
                 .ToList();
 
             // How much the roll could still be hindered after the caster commits — enemy Casters in assist

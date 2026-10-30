@@ -27,9 +27,13 @@ namespace FDG.StageResolution.Requests
         /// <summary>One offered spell. <paramref name="Label"/> is the picker label ("Name (cost)");
         /// <paramref name="Description"/> summarizes the effect, shown as subtext. Non-castable entries
         /// (unaffordable, or no legal target) are display-only, with <paramref name="UnavailableReason"/>
-        /// saying why — replying with one is treated as a cancel.</summary>
+        /// saying why — replying with one is treated as a cancel. <paramref name="RequiresLineOfSight"/> (#429):
+        /// the spell's own "in line of sight" clause (Core Rules v3.6.0 moved LoS from Caster into each spell),
+        /// so the front ends can tag it ("(LoS)"); a LoS spell whose in-range targets are all out of sight is
+        /// disabled with <c>CastSpellStage.NoTargetInSightReason</c>. The label itself stays "Name (cost)" - the
+        /// Tactician matches spells by it.</summary>
         public record SpellOption(string Label, string Description, int Cost, bool Castable,
-            string? UnavailableReason);
+            string? UnavailableReason, bool RequiresLineOfSight = false);
 
         /// <summary>One Spell Conduit in range: whose it is and what it adds to the roll when a cast is
         /// made from its position.</summary>

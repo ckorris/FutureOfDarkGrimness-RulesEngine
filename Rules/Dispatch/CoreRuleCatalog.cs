@@ -76,7 +76,7 @@ public static class CoreRuleCatalog
     /// case-sensitive, so e.g. the base is "Bane when shooting" even though the aura is "Bane when Shooting
     /// Aura". Every aura in <see cref="All"/> is checked against the resolver by a catalog-integrity test.
     /// </summary>
-    private static SpecialRuleDefinition UnitAura(string name, string grantedRuleName) =>
+    private static SpecialRuleDefinition UnitAura(string name, string grantedRuleName, string? description = null) =>
         new SpecialRuleDefinition(name,
             new[]
             {
@@ -86,7 +86,7 @@ public static class CoreRuleCatalog
                     ELifetime.UntilEndOfGame),
             },
             Array.Empty<ActivatedAbility>(),
-            Description: $"This model and its whole unit gain {grantedRuleName}.");
+            Description: description ?? $"This model and its whole unit gain {grantedRuleName}.");
 
     // Hit-roll-modifier sink (DetermineHitRollStage) -----------------------
 
@@ -201,7 +201,7 @@ public static class CoreRuleCatalog
         },
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Positive,
-        Description: "Enemies take -1 to hit when attacking this unit, in melee or shooting.");
+        Description: "Enemies get -1 to hit rolls when attacking units where most models have this rule.");
 
     /// <summary>
     /// Defensive: enemies take -1 to hit in melee when attacking this unit. As <see cref="Evasive"/> but
@@ -219,7 +219,7 @@ public static class CoreRuleCatalog
         },
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Positive,
-        Description: "Enemies take -1 to hit when attacking this unit in melee.");
+        Description: "Enemies get -1 to hit rolls in melee when attacking units where most models have this rule.");
 
     /// <summary>
     /// Attacker: +1 to hit when attacking with this weapon (melee or shooting) — lowers the bearer's hit
@@ -862,9 +862,14 @@ public static class CoreRuleCatalog
         Array.Empty<ActivatedAbility>(),
         ERuleScope.Weapon,
         Valence: EValence.Positive,
-        Description: "The defender must re-roll unmodified Defense 6s.");
+        Description: "When attacking, the target must re-roll unmodified Defense results of 6.");
 
     // Combat-kind-scoped variants (#093) -----------------------------------------
+    // #434: OPR 3.6 words every one of these grants "gets X ON ITS WEAPONS when shooting / in melee / when attacking",
+    // and a spell's hits are not this model's weapons - yet the spell-damage pipeline fires the CASTER's rules at the
+    // same hit/save hooks with IsMelee false. So the "when shooting" and "when attacking" members also gate on
+    // Condition.IsNotSpell at those hooks (the melee ones already exclude spells). The supplement's twins (Rending when
+    // shooting, Piercing Shooter / Shooting, Piercing Frenzy / Growth, Piercing Debuff Effect) carry the same gate.
     // A base save-side rule gated to shooting via Not(IsMelee), now that IsMelee is threaded into
     // SaveRollCompleteContext. These are the named rules the "X when shooting" spell grants (and units)
     // resolve to. The "in melee" mirror is the same with Condition.IsMelee().
@@ -875,7 +880,7 @@ public static class CoreRuleCatalog
             new[]
             {
                 new HookEntry(EHookID.Shooting_OnSaveRollComplete,
-                    new Condition.Not(new Condition.IsMelee()),
+                    new Condition.And(new Condition.Not(new Condition.IsMelee()), new Condition.IsNotSpell()),
                     new Effect.IgnoreRule("Regeneration"),
                     ELifetime.ThisAttack),
                 new HookEntry(EHookID.Shooting_OnHitRollModifier,
@@ -883,15 +888,14 @@ public static class CoreRuleCatalog
                     new Effect.IgnoreNegativeWeaponModifiers(),
                     ELifetime.ThisAttack),
                 new HookEntry(EHookID.Shooting_OnHitRollComplete,
-                    new Condition.Not(new Condition.IsMelee()),
+                    new Condition.And(new Condition.Not(new Condition.IsMelee()), new Condition.IsNotSpell()),
                     new Effect.IgnoreNegativeWeaponModifiers(),
                     ELifetime.ThisAttack),
             },
             Array.Empty<ActivatedAbility>(),
             ERuleScope.Weapon,
             Valence: EValence.Positive,
-            Description: "When shooting, ignores Regeneration, and ignores all negative modifiers to this weapon " +
-                "which are not from this model's special rules.");
+            Description: "This model gets Unstoppable on its weapons when shooting.");
 
     /// <summary> Shred on shooting attacks only: +1 wound per unmodified save of 1 when shooting. </summary>
     public static SpecialRuleDefinition ShredWhenShooting { get; } =
@@ -899,14 +903,14 @@ public static class CoreRuleCatalog
             new[]
             {
                 new HookEntry(EHookID.Shooting_OnSaveRollComplete,
-                    new Condition.Not(new Condition.IsMelee()),
+                    new Condition.And(new Condition.Not(new Condition.IsMelee()), new Condition.IsNotSpell()),
                     new Effect.AddExtraWound(OnRollValue: 1),
                     ELifetime.ThisAttack),
             },
             Array.Empty<ActivatedAbility>(),
             ERuleScope.Weapon,
             Valence: EValence.Positive,
-            Description: "When shooting, each of the defender's unmodified Defense rolls of 1 deals an extra wound.");
+            Description: "This model gets Shred on its weapons when shooting.");
 
     /// <summary> Bane on shooting attacks only: defender re-rolls unmodified Defense 6s + ignore Regeneration, when shooting. </summary>
     public static SpecialRuleDefinition BaneWhenShooting { get; } =
@@ -914,18 +918,18 @@ public static class CoreRuleCatalog
             new[]
             {
                 new HookEntry(EHookID.Shooting_OnSaveRollComplete,
-                    new Condition.Not(new Condition.IsMelee()),
+                    new Condition.And(new Condition.Not(new Condition.IsMelee()), new Condition.IsNotSpell()),
                     new Effect.Reroll(ERollKind.Save, new RerollCondition.OnUnmodifiedValue()),
                     ELifetime.ThisAttack),
                 new HookEntry(EHookID.Shooting_OnSaveRollComplete,
-                    new Condition.Not(new Condition.IsMelee()),
+                    new Condition.And(new Condition.Not(new Condition.IsMelee()), new Condition.IsNotSpell()),
                     new Effect.IgnoreRule("Regeneration"),
                     ELifetime.ThisAttack),
             },
             Array.Empty<ActivatedAbility>(),
             ERuleScope.Weapon,
             Valence: EValence.Positive,
-            Description: "When shooting, the defender must re-roll unmodified Defense 6s, and the attack ignores Regeneration.");
+            Description: "This model gets Bane on its weapons when shooting.");
 
     // "in melee" mirrors of the when-shooting variants: the SAME base effect at the shared hit/save
     // hooks, gated to melee via Condition.IsMelee() (the flip of Not(IsMelee)). Weapon-scoped like their
@@ -953,8 +957,7 @@ public static class CoreRuleCatalog
             Array.Empty<ActivatedAbility>(),
             ERuleScope.Weapon,
             Valence: EValence.Positive,
-            Description: "In melee, ignores Regeneration, and ignores all negative modifiers to this weapon " +
-                "which are not from this model's special rules.");
+            Description: "This model gets Unstoppable on its weapons in melee.");
 
     /// <summary> Shred in melee only: +1 wound per unmodified save of 1 when in melee. </summary>
     public static SpecialRuleDefinition ShredInMelee { get; } =
@@ -969,7 +972,7 @@ public static class CoreRuleCatalog
             Array.Empty<ActivatedAbility>(),
             ERuleScope.Weapon,
             Valence: EValence.Positive,
-            Description: "In melee, each of the defender's unmodified Defense rolls of 1 deals an extra wound.");
+            Description: "This model gets Shred on its weapons in melee.");
 
     /// <summary> Bane in melee only: defender re-rolls unmodified Defense 6s + ignore Regeneration, in melee. </summary>
     public static SpecialRuleDefinition BaneInMelee { get; } =
@@ -1007,7 +1010,7 @@ public static class CoreRuleCatalog
             Array.Empty<ActivatedAbility>(),
             ERuleScope.Weapon,
             Valence: EValence.Positive,
-            Description: "In melee, an unmodified 6 to hit gives the attack AP(+4), and the attack ignores Regeneration.");
+            Description: "This model gets Rending on its weapons in melee.");
 
     // Spell-granted phrase rules (#377) ------------------------------------------------------------------
     // The names GDF/AoF buff & mark spells grant verbatim ("...which gets +1 to hit rolls in melee once",
@@ -1068,7 +1071,7 @@ public static class CoreRuleCatalog
             new[]
             {
                 new HookEntry(EHookID.Shooting_OnHitRollComplete,
-                    new Condition.Not(new Condition.IsMelee()),
+                    new Condition.And(new Condition.Not(new Condition.IsMelee()), new Condition.IsNotSpell()),
                     new Effect.RollModifier(ERollKind.Save, Delta: -1),
                     ELifetime.ThisAttack),
             },
@@ -1082,11 +1085,11 @@ public static class CoreRuleCatalog
             new[]
             {
                 new HookEntry(EHookID.Shooting_OnSaveRollComplete,
-                    new Condition.Always(),
+                    new Condition.IsNotSpell(),
                     new Effect.Reroll(ERollKind.Save, new RerollCondition.OnUnmodifiedValue()),
                     ELifetime.ThisAttack),
                 new HookEntry(EHookID.Shooting_OnSaveRollComplete,
-                    new Condition.Always(),
+                    new Condition.IsNotSpell(),
                     new Effect.IgnoreRule("Regeneration"),
                     ELifetime.ThisAttack),
             },
@@ -1101,7 +1104,7 @@ public static class CoreRuleCatalog
             new[]
             {
                 new HookEntry(EHookID.Shooting_OnSaveRollComplete,
-                    new Condition.Always(),
+                    new Condition.IsNotSpell(),
                     new Effect.AddExtraWound(OnRollValue: 1),
                     ELifetime.ThisAttack),
             },
@@ -1193,7 +1196,8 @@ public static class CoreRuleCatalog
         },
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Positive,
-        Description: "Ignores each wound on a roll of 6+.");
+        Description: "When a unit where most models have this rule takes wounds, roll one die for each. On a 6+ it is " +
+            "ignored.");
 
     /// <summary>
     /// Piercing Assault: this model gets AP(+1) when charging — the AP facet of <see cref="Thrust"/> alone
@@ -1250,7 +1254,8 @@ public static class CoreRuleCatalog
         },
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Positive,
-        Description: "+1 to this unit's Defense rolls.");
+        Description: "Units where most models have this rule get +1 to Defense rolls against hits that are not from " +
+            "spells.");
 
     /// <summary>
     /// Fortified: incoming hits count as having AP reduced by 1, to a minimum of AP(0). Unlike
@@ -1271,7 +1276,8 @@ public static class CoreRuleCatalog
         },
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Positive,
-        Description: "Incoming hits have their AP reduced by 1, to a minimum of 0.");
+        Description: "When units where most models have this rule take hits, those hits count as having AP(-1), to a " +
+            "min. of AP(0).");
 
     // Wound-injection sink (AssignWoundsStage) -----------------------------------
 
@@ -1731,7 +1737,7 @@ public static class CoreRuleCatalog
         },
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Positive,
-        Description: "After shooting or being in melee, this unit may immediately move up to 3\".");
+        Description: "Once per round, this model may move by up to 3\" after shooting or being in melee.");
 
     // Post-combat-move family (same TriggeredMove seam as Harassing) --------------
     // The corpus splits the "may move 3\" after combat" rule into shooting-only, melee-only, and both
@@ -1754,7 +1760,7 @@ public static class CoreRuleCatalog
         },
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Positive,
-        Description: "After shooting, this unit may immediately move up to 3\".");
+        Description: "Once per round, this model may move by up to 3\" after shooting.");
 
     /// <summary>
     /// Hit &amp; Run Fighter: after this unit is in melee, the charged unit may move up to 3" (optional).
@@ -1770,7 +1776,7 @@ public static class CoreRuleCatalog
         },
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Positive,
-        Description: "After a melee, this unit may immediately move up to 3\".");
+        Description: "Once per round, this model may move by up to 3\" after being in melee.");
 
     /// <summary>
     /// Hit &amp; Run: after this unit shoots OR is in melee, it may move up to 3" (optional). Both
@@ -1791,7 +1797,7 @@ public static class CoreRuleCatalog
         },
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Positive,
-        Description: "After shooting or a melee, this unit may immediately move up to 3\".");
+        Description: "Once per round, this model may move by up to 3\" after shooting or being in melee.");
 
     /// <summary>
     /// Guerrilla: the Rebel Guerrillas' name for <see cref="HitAndRun"/> — move up to 3" after shooting
@@ -1811,7 +1817,7 @@ public static class CoreRuleCatalog
         },
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Positive,
-        Description: "After shooting or a melee, this unit may immediately move up to 3\".");
+        Description: "Once per round, this model may move by up to 3\" after shooting or being in melee.");
 
     // Boost variants: "if the unit has the base rule, move 6\" instead of 3\"". Authored as a separate
     // post-combat-move rule emitting a 6" move gated on UnitHasRule(base); PostCombatMoveGate coalesces it
@@ -1905,21 +1911,28 @@ public static class CoreRuleCatalog
     /// <summary> Rapid Rush Aura: grants <see cref="RapidRush"/> unit-wide. </summary>
     public static SpecialRuleDefinition RapidRushAura { get; } = UnitAura("Rapid Rush Aura", "Rapid Rush");
     /// <summary> Bane when Shooting Aura: grants <see cref="BaneWhenShooting"/> ("Bane when shooting") unit-wide. </summary>
-    public static SpecialRuleDefinition BaneWhenShootingAura { get; } = UnitAura("Bane when Shooting Aura", "Bane when shooting");
+    public static SpecialRuleDefinition BaneWhenShootingAura { get; } = UnitAura("Bane when Shooting Aura", "Bane when shooting",
+        "This model and its unit get Bane on its weapons when shooting.");
     /// <summary> Shred when Shooting Aura: grants <see cref="ShredWhenShooting"/> ("Shred when shooting") unit-wide. </summary>
-    public static SpecialRuleDefinition ShredWhenShootingAura { get; } = UnitAura("Shred when Shooting Aura", "Shred when shooting");
+    public static SpecialRuleDefinition ShredWhenShootingAura { get; } = UnitAura("Shred when Shooting Aura", "Shred when shooting",
+        "This model and its unit get Shred on its weapons when shooting.");
     /// <summary> Unstoppable when Shooting Aura: grants <see cref="UnstoppableWhenShooting"/> ("Unstoppable when shooting") unit-wide. </summary>
-    public static SpecialRuleDefinition UnstoppableWhenShootingAura { get; } = UnitAura("Unstoppable when Shooting Aura", "Unstoppable when shooting");
+    public static SpecialRuleDefinition UnstoppableWhenShootingAura { get; } = UnitAura("Unstoppable when Shooting Aura", "Unstoppable when shooting",
+        "This model and its unit get Unstoppable on its weapons when shooting.");
     /// <summary> Courage Aura: grants <see cref="Courage"/> (+1 to morale tests) unit-wide. </summary>
     public static SpecialRuleDefinition CourageAura { get; } = UnitAura("Courage Aura", "Courage");
     /// <summary> Bane in Melee Aura: grants <see cref="BaneInMelee"/> unit-wide. </summary>
-    public static SpecialRuleDefinition BaneInMeleeAura { get; } = UnitAura("Bane in Melee Aura", "Bane in melee");
+    public static SpecialRuleDefinition BaneInMeleeAura { get; } = UnitAura("Bane in Melee Aura", "Bane in melee",
+        "This model and its unit get Bane on its weapons in melee.");
     /// <summary> Rending in Melee Aura: grants <see cref="RendingInMelee"/> unit-wide. </summary>
-    public static SpecialRuleDefinition RendingInMeleeAura { get; } = UnitAura("Rending in Melee Aura", "Rending in melee");
+    public static SpecialRuleDefinition RendingInMeleeAura { get; } = UnitAura("Rending in Melee Aura", "Rending in melee",
+        "This model and its unit get Rending on its weapons in melee.");
     /// <summary> Shred in Melee Aura: grants <see cref="ShredInMelee"/> unit-wide. </summary>
-    public static SpecialRuleDefinition ShredInMeleeAura { get; } = UnitAura("Shred in Melee Aura", "Shred in melee");
+    public static SpecialRuleDefinition ShredInMeleeAura { get; } = UnitAura("Shred in Melee Aura", "Shred in melee",
+        "This model and its unit get Shred on its weapons in melee.");
     /// <summary> Unstoppable in Melee Aura: grants <see cref="UnstoppableInMelee"/> unit-wide. </summary>
-    public static SpecialRuleDefinition UnstoppableInMeleeAura { get; } = UnitAura("Unstoppable in Melee Aura", "Unstoppable in melee");
+    public static SpecialRuleDefinition UnstoppableInMeleeAura { get; } = UnitAura("Unstoppable in Melee Aura", "Unstoppable in melee",
+        "This model and its unit get Unstoppable on its weapons in melee.");
     /// <summary> Resistance Aura: grants <see cref="Resistance"/> unit-wide. </summary>
     public static SpecialRuleDefinition ResistanceAura { get; } = UnitAura("Resistance Aura", "Resistance");
     /// <summary> Protected Aura: grants <see cref="Protected"/> unit-wide. </summary>
@@ -1933,7 +1946,8 @@ public static class CoreRuleCatalog
     /// <summary> Fortified Aura: grants <see cref="Fortified"/> unit-wide. </summary>
     public static SpecialRuleDefinition FortifiedAura { get; } = UnitAura("Fortified Aura", "Fortified");
     /// <summary> Increased Shooting Range Aura (#102): grants <see cref="IncreasedShootingRange"/> unit-wide. </summary>
-    public static SpecialRuleDefinition IncreasedShootingRangeAura { get; } = UnitAura("Increased Shooting Range Aura", "Increased Shooting Range");
+    public static SpecialRuleDefinition IncreasedShootingRangeAura { get; } = UnitAura("Increased Shooting Range Aura", "Increased Shooting Range",
+        "This model and its unit get +6\" range on its weapons when shooting.");
     /// <summary> Ranged Shrouding Aura (#102): grants <see cref="RangedShrouding"/> unit-wide. </summary>
     public static SpecialRuleDefinition RangedShroudingAura { get; } = UnitAura("Ranged Shrouding Aura", "Ranged Shrouding");
     /// <summary> Melee Shrouding Aura (#029): grants <see cref="MeleeShrouding"/> unit-wide. </summary>
@@ -2021,7 +2035,10 @@ public static class CoreRuleCatalog
                 new Condition.EveryModelHasThisRule()),
         },
         Valence: EValence.Positive,
-        Description: "Once per game, this unit may activate a second time.");
+        Description: "Once per game, if all models in this unit have this rule, it may be activated even if it had " +
+            "already activated this round (stops being Fatigued when activated again). Only up to one third " +
+            "of the units in the army with this rule at the beginning of the game (rounding up) may use it " +
+            "in a single round.");
 
     // Mid-move attack primitive (StrafingStage offer -> save+wound sub-pipeline) ---
 
@@ -2241,7 +2258,7 @@ public static class CoreRuleCatalog
         },
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Positive,
-        Description: "This unit's ranged weapons get +6\" range.");
+        Description: "This model gets +6\" range on its weapons when shooting.");
 
     /// <summary>
     /// Ranged Shrouding (#102, OPR 3.6 numbers since #432): "When a unit where most models have this rule is

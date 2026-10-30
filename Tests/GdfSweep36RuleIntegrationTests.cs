@@ -244,6 +244,41 @@ namespace FDG.Tests
                 charging: false), Is.EqualTo(4), "striking back is not charging");
         }
 
+        // --- the "X on its weapons" grants are weapons only -----------------------------------------------------
+
+        [Test]
+        public void AnApWhenShootingGrant_DoesNotReachTheCastersSpellHits()
+        {
+            // OPR 3.6 "gets AP(+1) on its weapons when shooting": the spell-damage pipeline fires the caster's rules
+            // at the hit-complete hook with IsMelee false, so the gate is IsNotSpell (catalog "AP(1) when shooting").
+            DataBinding<UnitData> caster = MakeUnit("Casters", 0f, 1, CoreRuleCatalog.ApBonusWhenShooting);
+            DataBinding<UnitData> target = MakeDefender();
+            Place(target, 12f);
+
+            SyntheticHitResolution.Result spell = SyntheticHitResolution.Resolve(_ctx, caster.GetValue(),
+                target.GetValue(), baseHits: 2, new Weapon("Bolt", 0f, 2, 0), isSpell: true);
+            SyntheticHitResolution.Result volley = SyntheticHitResolution.Resolve(_ctx, caster.GetValue(),
+                target.GetValue(), baseHits: 2, new Weapon("Bolt", 0f, 2, 0), isSpell: false);
+
+            Assert.That(spell.SaveModifier, Is.EqualTo(0), "a spell's hits are not the model's weapons");
+            Assert.That(volley.SaveModifier, Is.EqualTo(-1), "control: weapon hits get the AP");
+        }
+
+        [TestCase(true, 0)]
+        [TestCase(false, 1)]
+        public void AShredWhenAttackingGrant_IsWeaponsOnly(bool isSpell, int expectedOps)
+        {
+            var harness = new TestRuleHarness();
+            harness.Register(CoreRuleCatalog.ShredWhenAttacking);
+            IUnit attacker = harness.BuildUnit("P1", 1, "Shred when attacking");
+            IUnit defender = harness.BuildUnit("P2", 1);
+
+            IReadOnlyList<RuleOperation> ops = harness.Evaluate(attacker, ERuleSeat.Actor,
+                new SaveRollCompleteContext(attacker, defender, TestDice.Faces(1, 1), IsSpell: isSpell));
+
+            Assert.That(ops.OfType<RuleOperation.InsertExtraWounds>().Count(), Is.EqualTo(expectedOps));
+        }
+
         // --- Versatile Expert -----------------------------------------------------------------------------------
 
         [Test]

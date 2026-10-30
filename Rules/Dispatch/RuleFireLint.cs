@@ -687,7 +687,8 @@ public static class RuleFireLint
                 break;
             case EHookID.Shooting_OnHitRollComplete:
                 // chargeOrigin varies independently of the live distance: a melee swing is always resolved in
-                // base contact, so only the charge's launch distance can satisfy AttackedFromOverInches there.
+                // base contact, so only the charge's launch distance can satisfy AttackedFromOverInches there
+                // (and #432's attackingFromOver / attackedFromOver charge arm, which also needs isCharging).
                 // Without a far-origin variant, every "shoots or charges over 9in away" rule's melee arm would
                 // look unfireable to the lint.
                 foreach (float distance in new[] { NearInches, FarInches })
@@ -778,6 +779,10 @@ public static class RuleFireLint
                 break;
             case EHookID.Morale_OnPreMoraleTest:
                 yield return new PreMoraleTestContext(bearer);
+                // #432: tests triggered by a long shot and by a long charge, so the "+1 to Morale Test rolls when
+                // shot/charged from over 9"/6" away" family (attackedFromOver) proves fireable on each arm.
+                yield return new PreMoraleTestContext(bearer, ShotFromInches: FarInches);
+                yield return new PreMoraleTestContext(bearer, ChargedFromInches: FarInches);
                 break;
             case EHookID.Morale_OnMoraleTestComplete:
                 yield return new MoraleTestContext(bearer);

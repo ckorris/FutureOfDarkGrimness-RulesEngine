@@ -50,8 +50,10 @@ namespace FDG.Stages
             if (counted > 0f)
                 GameContext.Log($"{defenderBinding.Name()} counts as having taken {counted:0.##} extra wound(s) for morale.");
 
+            // #432: the distance this defender was shot from rides along for the 3.6 "shot from over 9\"" morale
+            // rules (Hive Bond, Hold the Line, Valiant).
             bool? result = await MoraleUtilities.ResolveWoundDrivenMorale(
-                GameContext, defenderBinding, attacked.RemainingWoundsAtStart, counted);
+                GameContext, defenderBinding, attacked.RemainingWoundsAtStart, counted, attacked.ShotFromInches);
 
             if (result == true)
             {

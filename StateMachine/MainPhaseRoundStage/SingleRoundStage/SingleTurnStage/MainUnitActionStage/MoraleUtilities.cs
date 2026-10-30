@@ -58,9 +58,17 @@ namespace FDG.Stages
         /// single decisive die (#090). On a failure it fires <see cref="EHookID.Morale_OnMoraleTestComplete"/>
         /// and, if a morale re-roll is granted (Fearless), rolls one more decisive die that passes on a 4+
         /// regardless of Quality.
+        /// <para>
+        /// #432: <paramref name="shotFromInches"/> / <paramref name="chargedFromInches"/> describe the attack that
+        /// triggered the test - a shooting attack's distance, or the charge the testing unit received - and ride the
+        /// pre-test context (<see cref="PreMoraleTestContext"/>) so OPR 3.6's "+1 to Morale Test rolls when
+        /// shot/charged from over 9\"/6\" away" rules can read them. Null (the default) for tests nothing like that
+        /// triggered (spells, Mind Control, a charger losing its own melee).
+        /// </para>
         /// </summary>
         public static async Task<MoraleTestOutcome> TakeMoraleTest(IGameContext gameContext, IUnit testingUnit,
-            int baseRollNeeded, bool failureCausesShakenOrRout = false)
+            int baseRollNeeded, bool failureCausesShakenOrRout = false, float? shotFromInches = null,
+            float? chargedFromInches = null)
         {
             // A Shaken unit always fails its morale tests (GF v3.5.1) — no die is rolled. This is what
             // escalates a Shaken unit that loses a later melee at half strength into a Rout, and keeps an
@@ -85,7 +93,8 @@ namespace FDG.Stages
             // #245: the NAMED live evaluation - identical to EvaluateAll (logs, spends grants), but each
             // op carries its rule name so the beat's chips can say which rule shifted the test.
             IReadOnlyList<(RuleOperation Op, string RuleName)> named = gameContext.RuleEvaluator.EvaluateAllNamedLive(
-                new PreMoraleTestContext(testingUnit), RuleParticipant.Actor(testingUnit));
+                new PreMoraleTestContext(testingUnit, shotFromInches, chargedFromInches),
+                RuleParticipant.Actor(testingUnit));
             RollModifierSink modifiers = new RollModifierSink();
             modifiers.ApplyFrom(named.Select(n => n.Op).ToList());
             // #033 granted morale modifiers (e.g. a spell's "-1 to morale" debuff) fold in with the same
@@ -292,9 +301,11 @@ namespace FDG.Stages
         /// passed, false if failed and Shaken. Logging is left to the caller, which knows the wound source.
         /// <paramref name="countedWounds"/>: #431 Scourge's counted wounds - see
         /// <see cref="WoundsLeftUnitAtHalfStrength"/>; the caller takes them (<c>CountedWounds.Take</c>).
+        /// <paramref name="shotFromInches"/>: #432, the shooting distance of the attack that wounded the unit, for
+        /// the "shot from over 9\"" morale rules (see <see cref="TakeMoraleTest"/>); null when not known.
         /// </summary>
         public static async Task<bool?> ResolveWoundDrivenMorale(IGameContext gameContext, DataBinding<UnitData> unitBinding,
-            float remainingWoundsBefore, float countedWounds = 0f)
+            float remainingWoundsBefore, float countedWounds = 0f, float? shotFromInches = null)
         {
             IUnit unit = unitBinding.GetValue();
             if (!unit.GetIsAlive()) return null;                              // wiped out outright — no test
@@ -304,7 +315,7 @@ namespace FDG.Stages
             // failureCausesShakenOrRout: this test's failure Shakens the unit, so a conversion rule
             // (#197 P7 No Retreat) may rescue it.
             if ((await TakeMoraleTest(gameContext, unit, HeroStatRules.GetMoraleQuality(unitBinding.GetValue()),
-                    failureCausesShakenOrRout: true)).Passed) return true;
+                    failureCausesShakenOrRout: true, shotFromInches: shotFromInches)).Passed) return true;
 
             await ApplyShakenWithPresentation(gameContext, unitBinding);
             return false;

@@ -1804,6 +1804,57 @@ namespace FDG.Tests
             Assert.That(closeShot.HitTags, Is.Null);
         }
 
+        // #432: the forecast shows a range-conditional rule's state - Changebound's "-1 to hit when shot from over
+        // 9\"" is a chip at 10" and silent at 8", the same evaluation the roll makes.
+        [Test]
+        public void Compute_ChangeboundDefender_ShowsTheRangeConditionState()
+        {
+            var (ctx, attackerBinding) = BuildTwoTeamWorld(
+                attackerPos: new Position(0, 0, 0),
+                enemyPositions: new[] { new Position(11, 0, 0), new Position(9, 0, 0) },  // 10" and 8" base to base
+                rifleRange: 24f);
+            var enemies = ctx.GameDataStore.GetAllDataBindings<ArmyData>()
+                .First(a => a.GetValue().PlayerID != attackerBinding.GetValue().PlayerID)
+                .GetValue().UnitBindings;
+            FDG.Rules.Definitions.SpecialRuleDefinition changebound = RangeConditional36Definitions.MinusHit();
+            foreach (var enemyUnit in enemies)
+            {
+                enemyUnit.GetValue().AttachRuleDefinition(new ResolvedRule(changebound.Name, changebound));
+            }
+            Weapon rifle = attackerBinding.GetValue().GetRangedWeapons().First();
+
+            var farShot = ShootingForecast.Compute(ctx, attackerBinding, rifle, enemies[0],
+                hasCover: false, ignoresCover: false, attackerMoved: false);
+            Assert.That(farShot.HitRollNeeded, Is.EqualTo(5));
+            Assert.That(farShot.HitTags, Is.EqualTo(new[] { "Quality 4+", "Changebound -1" }));
+
+            var closeShot = ShootingForecast.Compute(ctx, attackerBinding, rifle, enemies[1],
+                hasCover: false, ignoresCover: false, attackerMoved: false);
+            Assert.That(closeShot.HitRollNeeded, Is.EqualTo(4), "8\" is not over 9\" - no chip, no shift");
+            Assert.That(closeShot.HitTags, Is.Null);
+        }
+
+        // #432: the range tag (#387 stamp) shows Darkborn's -4" against the shooter.
+        [Test]
+        public async Task Enter_StampsEffectiveRange_DarkbornDefenderShowsTheShrunkRange()
+        {
+            var requester = new CapturingRangedRequester { Reply = _ => new Cancelled<RangedAttackChoice>() };
+            var (ctx, attackerBinding) = BuildTwoTeamWorld(
+                attackerPos: new Position(0, 0, 0),
+                enemyPositions: new[] { new Position(5, 0, 0) },
+                rifleRange: 24f,
+                playerRequester: requester);
+            FDG.Rules.Definitions.SpecialRuleDefinition darkborn = RangeConditional36Definitions.Shroud();
+            FirstEnemy(ctx, attackerBinding).GetValue().AttachRuleDefinition(new ResolvedRule(darkborn.Name, darkborn));
+
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            BindAllStageEvents(stage);
+            await stage.Enter(new CombatActionContext(ctx, attackerBinding, isMelee: false));
+
+            WeaponTargetStats stats = requester.Captured!.WeaponOptions.Single().WeaponTargetStats.Single();
+            Assert.That(stats.EffectiveRangeInches, Is.EqualTo(20f), "24\" - Darkborn's 4\"");
+        }
+
         [Test]
         public void Compute_ShieldedDefender_LowersTheSaveThreshold_WithTheBeatChip()
         {

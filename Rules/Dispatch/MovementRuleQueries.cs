@@ -88,15 +88,18 @@ namespace FDG.Rules.Dispatch
 
         /// <summary>
         /// The effective charge distance <paramref name="charger"/> may move toward <paramref name="target"/>,
-        /// given the charger's own (already movement-modified) <paramref name="baseChargeInches"/>: the base
-        /// plus every <see cref="RuleOperation.ApplyMovementBonus"/> for the Charge action contributed at
-        /// <see cref="EHookID.Movement_OnChargeDeclared"/> — most importantly the target's Subject-seat charge
-        /// penalty (Melee Shrouding's −3"), but also any charger Actor-seat charge bonus seated at that hook —
-        /// then floored by the largest <c>MinResultInches</c> among them (Melee Shrouding's "to a min. of 6\"").
-        /// Equals <paramref name="baseChargeInches"/> when no such rule is in play. Fires the previously dormant
-        /// <see cref="Contexts.ChargeDeclaredContext"/>. Non-logging — safe to call per-frame while building UI.
-        /// Note this is the per-target value; the engine applies it conservatively (worst case among reachable
-        /// enemies) because a charge's target isn't pinned until the move ends (see #029).
+        /// given the charger's own (already movement- and range-modified) <paramref name="baseChargeInches"/>: the
+        /// base plus the target's charge-range changes - #432's Subject-seat
+        /// <see cref="RuleOperation.ApplyRangeModifier.ChargeDelta"/> (Darkborn / Shadowborn / Shrouded / Wild Veil
+        /// −2", Melee Shrouding −2", each "to a min. of 6\"", via <see cref="RangeRuleQueries.TargetChargeRangeModifiers"/>)
+        /// - plus every <see cref="RuleOperation.ApplyMovementBonus"/> for the Charge action contributed at
+        /// <see cref="EHookID.Movement_OnChargeDeclared"/> (the pre-3.6 shape of the same penalty, which old army
+        /// files and the not-yet-rebaked books embed, and any charger Actor-seat bonus seated there). Floored by the
+        /// largest <c>MinResultInches</c> among the reductions, without ever lengthening a charge that was already
+        /// shorter than the floor (the <see cref="RangeRuleQueries.RangeFold"/> arithmetic shooting uses).
+        /// Equals <paramref name="baseChargeInches"/> when no such rule is in play. Non-logging — safe to call
+        /// per-frame while building UI. Note this is the per-target value; the engine applies it conservatively
+        /// (worst case among reachable enemies) because a charge's target isn't pinned until the move ends (see #029).
         /// </summary>
         public static float EffectiveChargeDistanceAgainst(IUnit charger, IUnit target, float baseChargeInches,
             RuleEvaluator evaluator)
@@ -104,8 +107,10 @@ namespace FDG.Rules.Dispatch
             var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
             try
             {
-            float delta = 0f;
-            float floor = 0f;
+            (int positive, int negative, int floor) = RangeRuleQueries.TargetChargeRangeModifiers(charger, target, evaluator);
+            float buff = positive;
+            float reduction = negative;
+            float minimum = floor;
             foreach ((RuleOperation op, string _) in evaluator.EvaluateAllNamed(
                          new ChargeDeclaredContext(charger, target, baseChargeInches),
                          RuleParticipant.Actor(charger),
@@ -115,11 +120,18 @@ namespace FDG.Rules.Dispatch
             {
                 if (op is RuleOperation.ApplyMovementBonus move && move.ActionType == EActionType.Charge)
                 {
-                    delta += move.DistanceInches;
-                    if (move.MinResultInches > floor) floor = move.MinResultInches;
+                    if (move.DistanceInches > 0f)
+                    {
+                        buff += move.DistanceInches;
+                    }
+                    else if (move.DistanceInches < 0f)
+                    {
+                        reduction += move.DistanceInches;
+                        if (move.MinResultInches > minimum) minimum = move.MinResultInches;
+                    }
                 }
             }
-            return System.Math.Max(floor, baseChargeInches + delta);
+            return RangeRuleQueries.RangeFold.ApplyTo(baseChargeInches, buff, reduction, minimum);
         }
             finally { global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.MoveQuery, __probe); }
         }
@@ -229,6 +241,8 @@ namespace FDG.Rules.Dispatch
                 AccumulateModelMovementRules(unit, model, evaluator, EActionType.Advance, GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES, sink, terrain);
                 AccumulateModelMovementRules(unit, model, evaluator, EActionType.Rush, GameWideConstants.RUSH_DISTANCE_INCHES, sink, terrain);
                 AccumulateModelMovementRules(unit, model, evaluator, EActionType.Charge, GameWideConstants.CHARGE_DISTANCE_INCHES, sink, terrain);
+                // #432: the model's own charge range (Highborn's +2") rides the Charge budget like a move bonus.
+                sink.Add(EActionType.Charge, RangeRuleQueries.OwnChargeRangeDelta(unit, evaluator, model));
                 budgets[model.ID] = (
                     GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES + sink.Net(EActionType.Advance),
                     GameWideConstants.RUSH_DISTANCE_INCHES + sink.Net(EActionType.Rush),

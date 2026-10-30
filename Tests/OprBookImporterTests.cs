@@ -222,10 +222,9 @@ public class OprBookImporterTests
         Assert.That(Opt("Noble", "mystery").Cost, Is.EqualTo(0));
     }
 
-    // #197 (Darkborn): OPR uses the bare name "Darkborn" for two different rules across armies. The catalog
-    // registers them disambiguated ("Darkborn (Offensive)"/"(Defensive)"), so the bare name resolved to
-    // nothing; the importer routes it to the right variant by army name. A rule name carried on a unit, a
-    // weapon, and an upgrade option all disambiguate (the walk reaches every rule-reference site).
+    // #197 (Darkborn): OPR 3.5 used the bare name "Darkborn" for two different rules across armies, and the
+    // importer routed it to the catalog's disambiguated variants by army name. #432: 3.6 has one Darkborn, so the
+    // bare name is kept at every rule-reference site (unit, weapon, upgrade option).
     private const string DarkbornJson = """
     {
       "name": "%ARMY%", "versionString": "1.0",
@@ -244,31 +243,24 @@ public class OprBookImporterTests
     }
     """;
 
-    [TestCase("Dark Brothers", "Darkborn (Defensive)")]
-    [TestCase("Dark Prime Brothers", "Darkborn (Offensive)")]
-    public void Import_DisambiguatesDarkborn_ByArmy(string army, string expected)
+    // #432: OPR 3.6 prints one Darkborn for both Dark Brothers books ("...that enemy unit gets -4"/-2" range to a
+    // min. of 6""), defined under the bare name in the GDF supplement, so the importer no longer rewrites it to the
+    // catalog's 3.5 "Darkborn (Defensive)" / "Darkborn (Offensive)" (those stay for old army files until #436).
+    [TestCase("Dark Brothers")]
+    [TestCase("Dark Prime Brothers")]
+    [TestCase("Some Other Legion")]
+    public void Import_KeepsTheBareDarkbornName_AtEverySite(string army)
     {
         BookFile book = OprBookImporter.Import(DarkbornJson.Replace("%ARMY%", army), "src", "lic");
         RosterUnit reaver = book.Units.Single();
+        var bare = new SpecialRuleEntry_Core("Darkborn");
 
-        Assert.That(reaver.Rules, Has.One.EqualTo(new SpecialRuleEntry_Core(expected)),
-            "unit-level Darkborn should route to the army's variant");
-        Assert.That(reaver.Weapons.Single().SpecialRules, Has.One.EqualTo(new SpecialRuleEntry_Core(expected)),
-            "weapon-level Darkborn should route too");
-        Assert.That(reaver.Sections.Single().Options.Single().RulesGained,
-            Has.One.EqualTo(new SpecialRuleEntry_Core(expected)),
-            "upgrade-gained Darkborn should route too");
-        Assert.That(book.Units.SelectMany(u => u.Rules), Has.None.EqualTo(new SpecialRuleEntry_Core("Darkborn")),
-            "the bare name must not survive for an army that defines Darkborn");
-    }
-
-    [Test]
-    public void Import_LeavesDarkbornUntouched_ForAnUnlistedArmy()
-    {
-        // Only the two armies that actually define "Darkborn" are disambiguated; a stray reference in any
-        // other book is left as-is (it simply stays an unresolved reference, exactly as before).
-        BookFile book = OprBookImporter.Import(DarkbornJson.Replace("%ARMY%", "Some Other Legion"), "src", "lic");
-        Assert.That(book.Units.Single().Rules, Has.One.EqualTo(new SpecialRuleEntry_Core("Darkborn")));
+        Assert.That(reaver.Rules, Has.One.EqualTo(bare), "unit-level Darkborn keeps its 3.6 name");
+        Assert.That(reaver.Weapons.Single().SpecialRules, Has.One.EqualTo(bare), "weapon-level too");
+        Assert.That(reaver.Sections.Single().Options.Single().RulesGained, Has.One.EqualTo(bare),
+            "upgrade-gained too");
+        Assert.That(book.Units.SelectMany(u => u.Rules).Select(r => r.PrintableName),
+            Has.None.StartsWith("Darkborn ("), "no 3.5 variant name is introduced");
     }
 
     // #197 P8: the same reuse, six armies wide. Four books say the picked enemy "counts as being in

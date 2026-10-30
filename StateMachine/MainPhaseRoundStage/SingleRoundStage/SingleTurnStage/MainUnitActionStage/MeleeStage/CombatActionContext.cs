@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using FDG.Data;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Foundation;
+using FDG.Utilities;
 
 namespace FDG.Stages
 {
@@ -14,10 +15,19 @@ namespace FDG.Stages
         public DataBinding<UnitData> Defender { get; }
         public float RemainingWoundsAtStart { get; }
 
-        public AttackedDefender(DataBinding<UnitData> defender, float remainingWoundsAtStart)
+        /// <summary>
+        /// #432: how far away the shooter was when it first targeted this defender (closest living models, base
+        /// to base) - the "shot from over 9\" away" the 3.6 morale rules (Hive Bond, Hold the Line, Valiant) read
+        /// when the shooting triggers a morale test. Null for a defender registered by a non-shooting action.
+        /// </summary>
+        public float? ShotFromInches { get; }
+
+        public AttackedDefender(DataBinding<UnitData> defender, float remainingWoundsAtStart,
+            float? shotFromInches = null)
         {
             Defender = defender;
             RemainingWoundsAtStart = remainingWoundsAtStart;
+            ShotFromInches = shotFromInches;
         }
     }
 
@@ -207,9 +217,19 @@ namespace FDG.Stages
 
         /// <summary>
         /// Add a defender to <see cref="AttackedDefenderRefs"/> and <see cref="AttackedDefenders"/>. Safe to
-        /// call multiple times with the same defender; only the first call snapshots its wounds.
+        /// call multiple times with the same defender; only the first call snapshots its wounds (and, for a
+        /// shooting action, the distance it was shot from - #432).
         /// </summary>
         public void RegisterAttackedDefender(DataBinding<UnitData> defender);
+
+        /// <summary>
+        /// #432: the charge distance <paramref name="unit"/> was charged from in this melee - the pre-charge gap
+        /// (closest models, base to base) snapshotted at the charger's activation start - or null when
+        /// <paramref name="unit"/> was not the charged unit (it IS the charger, the action is not a charge, or the
+        /// snapshot has no entry for it). Read by <c>RollForMoraleStage</c> so the melee loser's morale rules can
+        /// tell "charged from over 6\" away" (Hive Bond, Hold the Line, Valiant).
+        /// </summary>
+        public float? ChargedFromInchesFor(IUnit unit);
 
         /// <summary>
         /// Swaps the attacker and defender roles for the rest of this melee (Counter: the charged unit
@@ -338,7 +358,25 @@ namespace FDG.Stages
             // Snapshot on first sight only. A later weapon aimed at the same unit must not re-baseline its
             // wounds, or the wounds-taken check would be measured against damage we already dealt.
             if (_attackedDefenderRefs.Add(defender.Reference))
-                _attackedDefenders.Add(new AttackedDefender(defender, defender.GetValue().RemainingWounds));
+            {
+                // #432: the shooting distance the ranged morale test's "shot from over 9\"" rules read, taken
+                // before any of this action's shots land (the same closest-models, base-to-base measurement the
+                // hit stages use for the attack itself).
+                float? shotFrom = _isMelee
+                    ? null
+                    : UnitCompareUtilities.MinDistanceBetweenUnits(AttackingUnit.GetValue(), defender.GetValue(),
+                        out _, out _, includeVertical: true);
+                _attackedDefenders.Add(new AttackedDefender(defender, defender.GetValue().RemainingWounds,
+                    shotFrom));
+            }
+        }
+
+        public float? ChargedFromInchesFor(IUnit unit)
+        {
+            if (ChargingUnit == null || _activationContext == null || unit == null) return null;
+            if (unit.ID == ChargingUnit.GetValue().ID) return null;
+
+            return _activationContext.TryGetActivationStartDistanceTo(unit.ID, out float distance) ? distance : null;
         }
 
         private QueryableResults _queryableResults = new QueryableResults();

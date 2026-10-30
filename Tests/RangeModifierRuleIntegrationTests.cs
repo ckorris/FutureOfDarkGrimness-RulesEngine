@@ -9,7 +9,7 @@ using NUnit.Framework;
 namespace FDG.Tests
 {
     // #102 — the RangeModifier family. Increased Shooting Range (+6" to the bearer's own weapons, Actor seat)
-    // and Ranged Shrouding (enemies get -6" range shooting this unit, Subject seat) fold via
+    // and Ranged Shrouding (enemies get -4" range shooting this unit since 3.6, Subject seat) fold via
     // RangeRuleQueries.EffectiveRange into ChooseRangedAttackStage's target-eligibility check. Models are
     // base radius 0.5", so base-to-base distance = centre distance - 1.0"; a 12" rifle reaches 13" of centre.
     [TestFixture]
@@ -52,17 +52,17 @@ namespace FDG.Tests
         [Test]
         public void RangedShrouding_OnDefender_PushesAnInRangeTargetOutOfRange()
         {
-            // Enemy centre 8" → 7" base-to-base, comfortably within the 12" rifle.
+            // Enemy centre 10" → 9" base-to-base, within the 12" rifle.
             DataBinding<UnitData> attacker = MakeArmyUnit(_attackerPlayer, new Position(0, 0, 0), Rifle(12f));
-            DataBinding<UnitData> enemy = MakeArmyUnit(_enemyPlayer, new Position(8, 0, 0));
+            DataBinding<UnitData> enemy = MakeArmyUnit(_enemyPlayer, new Position(10, 0, 0));
 
             Assert.That(ChooseRangedAttackStage.HasAnyFireableTarget(attacker, _ctx), Is.True,
-                "7\" base-to-base is within the rifle's 12\" range.");
+                "9\" base-to-base is within the rifle's 12\" range.");
 
             Attach(enemy, "Ranged Shrouding", CoreRuleCatalog.RangedShrouding);
 
             Assert.That(ChooseRangedAttackStage.HasAnyFireableTarget(attacker, _ctx), Is.False,
-                "the defender's -6\" range (6\" effective) no longer reaches the 7\" target.");
+                "the defender's 3.6 -4\" range (8\" effective) no longer reaches the 9\" target.");
         }
 
         [Test]
@@ -82,7 +82,7 @@ namespace FDG.Tests
 
             Attach(defender, "Ranged Shrouding", CoreRuleCatalog.RangedShrouding);
             Assert.That(RangeRuleQueries.EffectiveRange(attacker.GetValue(), weapon, defender.GetValue(), ev),
-                Is.EqualTo(12f), "defender's -6 debuff (Subject seat) nets against the +6 buff.");
+                Is.EqualTo(14f), "defender's 3.6 -4 debuff (Subject seat) nets against the +6 buff.");
         }
 
         [Test]
@@ -93,13 +93,17 @@ namespace FDG.Tests
             Attach(defender, "Ranged Shrouding", CoreRuleCatalog.RangedShrouding);
             RuleEvaluator ev = _ctx.RuleEvaluator;
 
-            // 9" weapon: 9 - 6 = 3, but the rule floors the result at 6".
+            // 9" weapon: 9 - 4 = 5, but the rule floors the result at 6".
             Assert.That(RangeRuleQueries.EffectiveRange(attacker.GetValue(), Rifle(9f), defender.GetValue(), ev),
-                Is.EqualTo(6f), "the -6 reduction is floored at the rule's 6\" minimum.");
+                Is.EqualTo(6f), "the -4 reduction is floored at the rule's 6\" minimum.");
 
-            // 24" weapon: 24 - 6 = 18, comfortably above the floor.
+            // 24" weapon: 24 - 4 = 20, comfortably above the floor.
             Assert.That(RangeRuleQueries.EffectiveRange(attacker.GetValue(), Rifle(24f), defender.GetValue(), ev),
-                Is.EqualTo(18f), "the floor doesn't apply when the reduced range is already above it.");
+                Is.EqualTo(20f), "the floor doesn't apply when the reduced range is already above it.");
+
+            // #432: "to a min. of 6\"" limits the reduction - it never lengthens a gun already shorter than 6".
+            Assert.That(RangeRuleQueries.EffectiveRange(attacker.GetValue(), Rifle(4f), defender.GetValue(), ev),
+                Is.EqualTo(4f), "a 4\" weapon keeps its 4\" against the rule; the floor does not raise it to 6\".");
         }
 
         [Test]

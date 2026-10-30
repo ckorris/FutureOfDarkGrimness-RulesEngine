@@ -1017,15 +1017,29 @@ public abstract record RuleOperation
     /// by <see cref="Rules.Dispatch.RangeRuleQueries.EffectiveRange"/> and read by
     /// <c>ChooseRangedAttackStage</c>'s target-eligibility check (#102). Resolution of
     /// <see cref="Effect.RangeModifier"/>.
+    /// <para>
+    /// #432: <see cref="ChargeDelta"/> is the same rule's CHARGE range change (OPR 3.6 "-4"/-2" range to a min. of
+    /// 6"", "+4"/+2" range when shooting/charging"), folded into the charge budget - the charger's own at the Actor
+    /// seat (<see cref="Rules.Dispatch.RangeRuleQueries.OwnChargeRangeDelta"/>), the charge against the bearer at
+    /// the Subject seat (<see cref="Rules.Dispatch.MovementRuleQueries.EffectiveChargeDistanceAgainst"/>).
+    /// <see cref="MinResultInches"/> floors whichever half the op changes.
+    /// </para>
     /// </summary>
-    public sealed record ApplyRangeModifier(int Delta, int MinResultInches = 0) : RuleOperation
+    public sealed record ApplyRangeModifier(int Delta, int MinResultInches = 0, int ChargeDelta = 0) : RuleOperation
     {
         // Deliberately does not say WHOSE range: the same op serves the Actor seat (the bearer's own
         // shooting range) and the Subject seat (the range of enemies shooting the bearer), and the
         // operation cannot see which seat produced it. "shooting range" is true of both.
-        public override string Describe() =>
-            $"changed shooting range by {(Delta >= 0 ? "+" : "")}{Delta}\"" +
-            (MinResultInches > 0 ? $" (no lower than {MinResultInches}\")" : "");
+        public override string Describe()
+        {
+            string Signed(int value) => $"{(value >= 0 ? "+" : "")}{value}\"";
+            string change = ChargeDelta == 0
+                ? $"changed shooting range by {Signed(Delta)}"
+                : Delta == 0
+                    ? $"changed charge range by {Signed(ChargeDelta)}"
+                    : $"changed shooting range by {Signed(Delta)} and charge range by {Signed(ChargeDelta)}";
+            return change + (MinResultInches > 0 ? $" (no lower than {MinResultInches}\")" : "");
+        }
     }
 
     /// <summary>

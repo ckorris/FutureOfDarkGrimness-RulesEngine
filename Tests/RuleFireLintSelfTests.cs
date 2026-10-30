@@ -33,6 +33,26 @@ namespace FDG.Tests
             Assert.That(RuleFireLint.Check(rule), Is.Empty);
         }
 
+        // #432: every shape of the OPR 3.6 range-conditional family lints clean - the hit/save variants already carry
+        // far shots and long charges, and the pre-morale hook now has a shot-from and a charged-from variant (without
+        // them Hive Bond's attackedFromOver could never fire there, and the lint would flag it).
+        [Test]
+        public void RangeConditionalFamily_LintsClean()
+        {
+            foreach (SpecialRuleDefinition rule in new[]
+                     {
+                         RangeConditional36Definitions.ExtraHit(), RangeConditional36Definitions.ApPlusOne(),
+                         RangeConditional36Definitions.ExtraWound(), RangeConditional36Definitions.PickPiercing(),
+                         RangeConditional36Definitions.PickPrecision(), RangeConditional36Definitions.MinusHit(),
+                         RangeConditional36Definitions.PlusDefense(), RangeConditional36Definitions.Ward(),
+                         RangeConditional36Definitions.Shroud(), RangeConditional36Definitions.Morale(),
+                         RangeConditional36Definitions.Reach(), RangeConditional36Definitions.Move(),
+                     })
+            {
+                Assert.That(RuleFireLint.Check(rule), Is.Empty, rule.Name);
+            }
+        }
+
         [Test]
         public void MarkerRule_WithNoEntries_IsFlagged()
         {

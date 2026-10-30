@@ -39,7 +39,7 @@ namespace FDG.Rules.Dispatch.Contexts
         IReadOnlyList<ITerrain>? TerrainPieces = null,
         bool SixesCountForSpecialRules = true)
         : IHookContext, IHasUnmodifiedHitRolls, IHasDistance, IHasCombatKind, IHasCharging, IHasTarget,
-            IHasIsSpell, IHasAttackOriginDistance, IHasUnpredictableBranch, IHasTerrain
+            IHasIsSpell, IHasAttackOriginDistance, IHasUnpredictableBranch, IHasTerrain, IHasShootChargeDistance
     {
         public EHookID Hook => EHookID.Shooting_OnHitRollComplete;
 
@@ -47,6 +47,11 @@ namespace FDG.Rules.Dispatch.Contexts
         // this attack come from" in melee — the charge's declared distance is. Shooting launches from
         // where the shooter stands, so the two coincide.
         public float AttackOriginDistanceInches => IsMelee ? ChargeOriginDistanceInches : DistanceInches;
+
+        // #432: a spell's hits are not a shooting attack ("when shot from over 9"" never reads a spell).
+        public float? ShootingDistanceInches => IsMelee || IsSpell ? null : DistanceInches;
+
+        public float? ChargeDistanceInches => IsMelee && IsCharging ? ChargeOriginDistanceInches : null;
 
         public IReadOnlyList<ITerrain> Terrain => TerrainPieces ?? Array.Empty<ITerrain>();
 

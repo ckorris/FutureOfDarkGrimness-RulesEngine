@@ -119,6 +119,9 @@ namespace FDG.Ai.Tactician
                         RuleParticipant.Actor(unit))
                     .Select(tagged => tagged.Op));
             }
+            // #432: the unit's own charge range (Highborn's +2") is part of the charge move, as in
+            // MovementActionContext.
+            sink.Add(EActionType.Charge, RangeRuleQueries.OwnChargeRangeDelta(unit, evaluator));
             return GameWideConstants.CHARGE_DISTANCE_INCHES + sink.Net(EActionType.Charge);
         }
             finally { global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.MoveQuery, __probe); }

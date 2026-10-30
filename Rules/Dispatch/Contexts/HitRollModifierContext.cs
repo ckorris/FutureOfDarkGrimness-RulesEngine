@@ -25,11 +25,16 @@ namespace FDG.Rules.Dispatch.Contexts
         EUnpredictableBranch UnpredictableBranch = EUnpredictableBranch.None,
         IReadOnlyList<ITerrain>? TerrainPieces = null)
         : IHookContext, IHasDistance, IHasAttackerMoved, IHasCombatKind, IHasCharging, IHasTarget,
-            IHasAttackOriginDistance, IHasUnpredictableBranch, IHasTerrain
+            IHasAttackOriginDistance, IHasUnpredictableBranch, IHasTerrain, IHasShootChargeDistance
     {
         public EHookID Hook => EHookID.Shooting_OnHitRollModifier;
 
         public float AttackOriginDistanceInches => IsMelee ? ChargeOriginDistanceInches : DistanceInches;
+
+        // #432: spell damage never fires this hook (synthetic hits skip the to-hit roll), so no spell exclusion here.
+        public float? ShootingDistanceInches => IsMelee ? null : DistanceInches;
+
+        public float? ChargeDistanceInches => IsMelee && IsCharging ? ChargeOriginDistanceInches : null;
 
         public IReadOnlyList<ITerrain> Terrain => TerrainPieces ?? Array.Empty<ITerrain>();
     }

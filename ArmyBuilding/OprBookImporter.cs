@@ -337,13 +337,12 @@ namespace FDG.ArmyBuilding
                     ? new SpecialRuleEntry_Text(r.Name ?? "Rule", r.Rating!.Trim())
                     : new SpecialRuleEntry_Core(r.Name ?? "Rule");
 
-        // #197 (Darkborn): OPR reuses the bare name "Darkborn" for two mechanically different rules across
-        // armies -- Dark Brothers' is the defensive debuff (enemies get -4" range / -2" charge vs this unit),
-        // Dark Prime Brothers' is the offensive self-buff (+3" range / +3" charge). The catalog registers them
-        // under disambiguated names ("Darkborn (Defensive)" / "Darkborn (Offensive)"); the bare name resolves
-        // to neither, so all references were dead. Only the importer has the owning-army context needed to
-        // route the bare name to the right variant, so it does the disambiguation once, at import time, keyed
-        // on the OPR army name -- a re-import stays correct rather than reintroducing the dead bare name.
+        // #197 (Darkborn) -> #432: OPR 3.5 reused the bare name "Darkborn" for two different rules (Dark
+        // Brothers' defensive debuff, Dark Prime Brothers' offensive self-buff), so the importer routed it to the
+        // catalog's "Darkborn (Defensive)" / "Darkborn (Offensive)" by army. OPR 3.6 gives both books the same
+        // rule ("...that enemy unit gets -4"/-2" range to a min. of 6""), defined under the bare name in the GDF
+        // supplement, so the bare name is no longer rewritten. The two catalog entries stay only for pre-3.6 army
+        // files and the not-yet-rebaked books that name them (#436 removes them).
         //
         // #197 P8 (Dangerous Terrain Debuff): the same reuse, six armies wide. Four books say "pick one
         // enemy unit within 18" IN LINE OF SIGHT, which counts as being in Dangerous Terrain once (next
@@ -354,8 +353,6 @@ namespace FDG.ArmyBuilding
         // references, and one of the two must diverge from its own book either way.
         private static readonly Dictionary<(string Army, string Rule), string> AmbiguousRuleNames = new()
         {
-            [("Dark Brothers", "Darkborn")] = "Darkborn (Defensive)",
-            [("Dark Prime Brothers", "Darkborn")] = "Darkborn (Offensive)",
             [("Lust Disciples", "Dangerous Terrain Debuff")] = "Dangerous Terrain Debuff (Immediate)",
             [("War Disciples", "Dangerous Terrain Debuff")] = "Dangerous Terrain Debuff (Immediate)",
         };

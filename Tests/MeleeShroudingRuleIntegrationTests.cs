@@ -6,8 +6,9 @@ using NUnit.Framework;
 
 namespace FDG.Tests
 {
-    // #029 — Melee Shrouding: enemies get -3" movement (to a min. of 6") when charging this unit — the charge
-    // twin of Ranged Shrouding. It fires the previously-dormant ChargeDeclaredContext; the per-target value
+    // #029 — Melee Shrouding: enemies get -2" range (to a min. of 6") when charging this unit (OPR 3.6, #432; 3.5
+    // printed -3" movement) — the charge twin of Ranged Shrouding, authored as the charge half of #432's range
+    // family (rangeModifier chargeDelta at the range check); the per-target value
     // (MovementRuleQueries.EffectiveChargeDistanceAgainst) is what DefinePathStage applies as a worst-case
     // reduction to the charge budget. These tests pin the per-target query + the floor.
     [TestFixture]
@@ -24,7 +25,7 @@ namespace FDG.Tests
         }
 
         [Test]
-        public void EffectiveChargeDistance_AgainstShroudingDefender_ReducedByThree()
+        public void EffectiveChargeDistance_AgainstShroudingDefender_ReducedByTwo()
         {
             DataBinding<UnitData> charger = MakeUnit();
             DataBinding<UnitData> defender = MakeUnit();
@@ -33,7 +34,7 @@ namespace FDG.Tests
             float effective = MovementRuleQueries.EffectiveChargeDistanceAgainst(
                 charger.GetValue(), defender.GetValue(), baseChargeInches: 12f, _ctx.RuleEvaluator);
 
-            Assert.That(effective, Is.EqualTo(9f), "Melee Shrouding's -3\" reduces the 12\" charge to 9\".");
+            Assert.That(effective, Is.EqualTo(10f), "Melee Shrouding's 3.6 -2\" reduces the 12\" charge to 10\".");
         }
 
         [Test]
@@ -55,11 +56,11 @@ namespace FDG.Tests
             DataBinding<UnitData> defender = MakeUnit();
             Attach(defender, "Melee Shrouding", CoreRuleCatalog.MeleeShrouding);
 
-            // Base charge already short (8"): 8 - 3 = 5, but the rule floors the result at 6".
+            // Base charge already short (7"): 7 - 2 = 5, but the rule floors the result at 6".
             float effective = MovementRuleQueries.EffectiveChargeDistanceAgainst(
-                charger.GetValue(), defender.GetValue(), baseChargeInches: 8f, _ctx.RuleEvaluator);
+                charger.GetValue(), defender.GetValue(), baseChargeInches: 7f, _ctx.RuleEvaluator);
 
-            Assert.That(effective, Is.EqualTo(6f), "the -3\" reduction is floored at the rule's 6\" minimum.");
+            Assert.That(effective, Is.EqualTo(6f), "the -2\" reduction is floored at the rule's 6\" minimum.");
         }
 
         // The Army-Creator picker derives from CoreRuleCatalog.All; guard the rule + aura are registered.

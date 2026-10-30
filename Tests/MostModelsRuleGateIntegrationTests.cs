@@ -275,9 +275,9 @@ namespace FDG.Tests
         [Test]
         public void MeleeShrouding_ChargeModifier_GateGovernsHostAndHero()
         {
+            // #432: 3.6 Melee Shrouding is the charge half of the range family, authored at the range check.
             UnitData charger = MakeUnit(1);
-            AssertGate(CoreRuleCatalog.MeleeShrouding,
-                d => new ChargeDeclaredContext(charger, d, BaseDistanceInches: 12f));
+            AssertGate(CoreRuleCatalog.MeleeShrouding, _ => new RangeModifierContext(charger));
         }
 
         // --- harness ---

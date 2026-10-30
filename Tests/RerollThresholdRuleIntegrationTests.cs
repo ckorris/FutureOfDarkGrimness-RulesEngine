@@ -128,9 +128,10 @@ namespace FDG.Tests
                 "only the original failed save lands");
         }
 
-        // The shipped Boosts carry attackedFromOverInches(9). That gate is only meaningful if the stage
-        // actually threads the attacker-to-defender distance into SaveRollCompleteContext - which the
-        // app-side data test cannot prove, because it never runs a stage.
+        // The 3.5 Boosts carried attackedFromOverInches(9) (#432 deleted them from the supplements; old army files
+        // and the not-yet-rebaked books still embed them). That gate is only meaningful if the stage actually
+        // threads the attacker-to-defender distance into SaveRollCompleteContext - which an app-side data test
+        // cannot prove, because it never runs a stage. (#432's attackingFromOver reads the same distance.)
         [Test]
         public async Task TheDistanceGate_ReadsTheRealAttackerToDefenderDistance()
         {

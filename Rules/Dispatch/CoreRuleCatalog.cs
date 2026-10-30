@@ -311,7 +311,7 @@ public static class CoreRuleCatalog
         Valence: EValence.Negative,
         Description: "Moves -2\" when Advancing and -4\" when Rushing or Charging.");
 
-    /// <summary> Advance +1", Rush/Charge +2" (a smaller Fast). </summary>
+    /// <summary> Advance +1", Rush/Charge +2" (a smaller Fast). The 3.6.0 book text, verbatim (#432). </summary>
     public static SpecialRuleDefinition Agile { get; } = new SpecialRuleDefinition("Agile",
         new[]
         {
@@ -330,7 +330,7 @@ public static class CoreRuleCatalog
         },
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Positive,
-        Description: "Moves +1\" when Advancing and +2\" when Rushing or Charging.");
+        Description: "Moves +1\" when using Advance, and +2\" when using Rush/Charge.");
 
     /// <summary> Advance +2", Rush/Charge +2". </summary>
     public static SpecialRuleDefinition Quick { get; } = new SpecialRuleDefinition("Quick",
@@ -2074,27 +2074,28 @@ public static class CoreRuleCatalog
         Description: "This unit's ranged weapons get +6\" range.");
 
     /// <summary>
-    /// Ranged Shrouding (#102): enemies get −6" range when shooting this unit, to a minimum effective range of
-    /// 6". A Subject-seat passive at <see cref="EHookID.Shooting_OnRangeCheck"/> emitting
-    /// <see cref="Effect.RangeModifier"/>(−6, floor 6) — the defender contributes the debuff, mirroring how
-    /// <see cref="Shielded"/> contributes a Subject-seat save bonus. Scope: "where MOST MODELS have this rule"
-    /// (OPR 3.6) is enforced by <see cref="Condition.MostModelsHaveThisRule"/> (#183, #428) — a joined hero
-    /// counts as one model of the unit, lacking it or not. The floor adopts the "to a min. of 6\"" reading; some armies print
-    /// Ranged Shrouding without it, but the two differ only for a weapon whose post-reduction range would fall
-    /// below 6" (i.e. base range &lt; 12") — negligible for normal weapons.
+    /// Ranged Shrouding (#102, OPR 3.6 numbers since #432): "When a unit where most models have this rule is
+    /// targeted by an enemy unit for shooting, that enemy unit gets -4" range to a min. of 6"." A Subject-seat
+    /// passive at <see cref="EHookID.Shooting_OnRangeCheck"/> emitting <see cref="Effect.RangeModifier"/>(−4, floor
+    /// 6) — the defender contributes the debuff, mirroring how <see cref="Shielded"/> contributes a Subject-seat save
+    /// bonus. Scope: "where MOST MODELS have this rule" is enforced by <see cref="Condition.MostModelsHaveThisRule"/>
+    /// (#183, #428) — a joined hero counts as one model of the unit, lacking it or not. The floor only limits the
+    /// reduction (<see cref="RangeRuleQueries.EffectiveRange"/>): a 9" gun stays 6", a 4" gun stays 4". 3.5 printed
+    /// −6"; 3.6 prints −4".
     /// </summary>
     public static SpecialRuleDefinition RangedShrouding { get; } = new SpecialRuleDefinition("Ranged Shrouding",
         new[]
         {
             new HookEntry(EHookID.Shooting_OnRangeCheck,
                 new Condition.MostModelsHaveThisRule(),
-                new Effect.RangeModifier(Delta: -6, MinResultInches: 6),
+                new Effect.RangeModifier(Delta: -4, MinResultInches: 6),
                 ELifetime.ThisActivation,
                 ERuleSeat.Subject),
         },
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Positive,
-        Description: "Enemies get -6\" range when shooting this unit, to a minimum of 6\".");
+        Description: "When a unit where most models have this rule is targeted by an enemy unit for shooting, that " +
+            "enemy unit gets -4\" range to a min. of 6\".");
 
     /// <summary>
     /// Darkborn (Offensive) (#102): the bearer gets +3" range when shooting AND moves +3" when charging. Two
@@ -2150,27 +2151,31 @@ public static class CoreRuleCatalog
         Description: "Enemies get -4\" range when shooting this unit and -2\" movement when charging it (each to a minimum of 6\").");
 
     /// <summary>
-    /// Melee Shrouding (#029): enemies get −3" movement when charging this unit, to a minimum charge distance
-    /// of 6" — the charge twin of <see cref="RangedShrouding"/>. A Subject-seat
-    /// <see cref="Effect.MovementBonus"/>(Charge, −3, floor 6) at <see cref="EHookID.Movement_OnChargeDeclared"/>
-    /// (previously a dormant hook), read by <see cref="MovementRuleQueries.EffectiveChargeDistanceAgainst"/> and
-    /// applied as a worst-case reduction to the charger's budget in <c>DefinePathStage</c>. Scope: OPR 3.6's
-    /// "where MOST MODELS have this rule" is enforced by <see cref="Condition.MostModelsHaveThisRule"/> (#183, #428), and
-    /// the reduction is conservative (worst case among reachable enemies) because a charge's target isn't pinned
-    /// until the move ends. Same mechanism unblocks defensive Darkborn's "−2 charge" and Aircraft-style facets.
+    /// Melee Shrouding (#029, OPR 3.6 since #432): "When a unit where most models have this rule is targeted by an
+    /// enemy unit for charging, that enemy unit gets -2" range to a min. of 6"." — the charge twin of
+    /// <see cref="RangedShrouding"/>, written in #432's range family: a Subject-seat <see cref="Effect.RangeModifier"/>
+    /// with only a CHARGE half (<c>Delta 0, ChargeDelta −2, floor 6</c>) at <see cref="EHookID.Shooting_OnRangeCheck"/>.
+    /// Charge range is the charge move, so <see cref="MovementRuleQueries.EffectiveChargeDistanceAgainst"/> folds it
+    /// (via <see cref="RangeRuleQueries.TargetChargeRangeModifiers"/>) and <c>DefinePathStage</c> applies it as the
+    /// worst-case reduction to the charger's budget; shooting is untouched (a zero delta never floors a range).
+    /// Scope: "where MOST MODELS have this rule" is enforced by <see cref="Condition.MostModelsHaveThisRule"/> (#183,
+    /// #428), and the reduction is conservative (worst case among reachable enemies) because a charge's target isn't
+    /// pinned until the move ends. 3.5 printed −3" movement on the <see cref="EHookID.Movement_OnChargeDeclared"/>
+    /// hook; that shape still works for copies old army files embed.
     /// </summary>
     public static SpecialRuleDefinition MeleeShrouding { get; } = new SpecialRuleDefinition("Melee Shrouding",
         new[]
         {
-            new HookEntry(EHookID.Movement_OnChargeDeclared,
+            new HookEntry(EHookID.Shooting_OnRangeCheck,
                 new Condition.MostModelsHaveThisRule(),
-                new Effect.MovementBonus(EActionType.Charge, DistanceInches: -3f, MinResultInches: 6f),
+                new Effect.RangeModifier(Delta: 0, MinResultInches: 6, ChargeDelta: -2),
                 ELifetime.ThisActivation,
                 ERuleSeat.Subject),
         },
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Positive,
-        Description: "Enemies get -3\" movement when charging this unit, to a minimum of 6\".");
+        Description: "When a unit where most models have this rule is targeted by an enemy unit for charging, that " +
+            "enemy unit gets -2\" range to a min. of 6\".");
 
     // Unpredictable family (#197 P15): a per-attack-action randomized branch ---------------------------
 

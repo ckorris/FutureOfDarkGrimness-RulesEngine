@@ -63,6 +63,10 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(TargetAboveHalfStrength), "targetAboveHalfStrength")]
 [JsonDerivedType(typeof(TargetShakenOrFatigued), "targetShakenOrFatigued")]
 [JsonDerivedType(typeof(TargetMostModelsWithinInchesOfTerrain), "targetMostModelsWithinInchesOfTerrain")]
+// #432: the OPR 3.6 range-conditional army-rule family ("when this model shoots/charges enemies over 9"/6" away",
+// "when shot/charged from over 9"/6" away"). The thresholds are data, one per attack kind.
+[JsonDerivedType(typeof(AttackingFromOver), "attackingFromOver")]
+[JsonDerivedType(typeof(AttackedFromOver), "attackedFromOver")]
 public abstract record Condition
 {
 
@@ -306,6 +310,11 @@ public abstract record Condition
     /// Exists because six corpus rules (Devout/Ferocious/Warbound/Infected/Mischievous/Scrapper Boost)
     /// share the wording "when it shoots or charges enemies over 9\" away". Each expresses that as one
     /// condition; a non-charging melee swing reports 0 and is excluded, as the rule text intends.
+    /// <para>
+    /// #432: 3.5 vocabulary. OPR 3.6 gives shooting and charging separate thresholds (9"/6"), so new data uses
+    /// <see cref="AttackingFromOver"/> / <see cref="AttackedFromOver"/>; this kind stays because old army files and
+    /// the not-yet-rebaked bundled books embed it (the Boost family and its 3.5 base rules).
+    /// </para>
     /// </summary>
     public sealed record AttackedFromOverInches(float DistanceInches) : CapabilityCondition<IHasAttackOriginDistance>
     {
@@ -313,6 +322,61 @@ public abstract record Condition
         {
             return context.AttackOriginDistanceInches > DistanceInches;
         }
+    }
+
+    /// <summary>
+    /// #432: the shared predicate of <see cref="AttackingFromOver"/> and <see cref="AttackedFromOver"/> - the attack
+    /// was a shot from over <paramref name="shootInches"/> or a charge from over <paramref name="chargeInches"/>
+    /// (both strictly over; an absent kind of attack is never over anything).
+    /// </summary>
+    private static bool ShotOrChargedFromOver(IHasShootChargeDistance context, float shootInches, float chargeInches) =>
+        (context.ShootingDistanceInches is float shot && shot > shootInches)
+        || (context.ChargeDistanceInches is float charge && charge > chargeInches);
+
+    /// <summary>
+    /// #432 (Actor seat): true when the BEARER is attacking from over the given distance - shooting enemies over
+    /// <see cref="ShootInches"/> away, or charging enemies over <see cref="ChargeInches"/> away. OPR 3.6's offensive
+    /// army rules: "When this model shoots/charges enemies over 9"/6" away, ..." (Devout, Ferocious, Brutal, Lucky,
+    /// Havocbound, Piercing Warrior, Infected, Violent, Warbound, Destroyer, and the Versatile Warrior / Watchborn /
+    /// Vinci Tech picks). JSON <c>{"kind": "attackingFromOver", "shootInches": 9, "chargeInches": 6}</c>; the pair is
+    /// each rule's data, never a constant.
+    /// <para>
+    /// Distances come from <see cref="IHasShootChargeDistance"/>: the shooting distance is the closest-models,
+    /// base-to-base attacker-to-target distance (the measurement #431's <see cref="TargetOverHalfWeaponRange"/>
+    /// reads); the charge distance is the pre-charge gap snapshotted at the charger's activation start. False for a
+    /// strike-back (not a charge) and for spell damage (not shooting). Seat-agnostic as a predicate - the attack
+    /// context is the same for both seats - so <see cref="AttackedFromOver"/> is the same test under the name the
+    /// defender's rules read; author this one on Actor-seat entries.
+    /// </para>
+    /// </summary>
+    public sealed record AttackingFromOver(float ShootInches, float ChargeInches)
+        : CapabilityCondition<IHasShootChargeDistance>
+    {
+        protected override bool EvaluateCore(IHasShootChargeDistance context) =>
+            ShotOrChargedFromOver(context, ShootInches, ChargeInches);
+    }
+
+    /// <summary>
+    /// #432 (Subject seat, and the tested unit at <see cref="EHookID.Morale_OnPreMoraleTest"/>): true when the
+    /// BEARER was shot from over <see cref="ShootInches"/> away or charged from over <see cref="ChargeInches"/>
+    /// away - the defender's mirror of <see cref="AttackingFromOver"/>. OPR 3.6's defensive and morale army rules:
+    /// "If most models in this unit have this rule, enemy units shooting/charging them from over 9"/6" away get -1
+    /// to hit rolls" (Changebound, Machine-Fog, Screened, Empyrean Spirit), "+1 to Defense rolls when shot/charged
+    /// from over 9"/6" away" (Guarded, Sturdy), Knightborn / Warding / Angelic Blessing's 6+ wound ignore, and "+1
+    /// to Morale Test rolls when shot/charged from over 9"/6" away" (Hive Bond, Hold the Line, Valiant). JSON
+    /// <c>{"kind": "attackedFromOver", "shootInches": 9, "chargeInches": 6}</c>.
+    /// <para>
+    /// On an attack hook it reads the attack in flight (only the charger's swings carry a charge distance, so a
+    /// charging unit's own rules never see itself as "charged"); at the morale hook it reads the attack that
+    /// triggered the test (<see cref="Dispatch.Contexts.PreMoraleTestContext"/>). Pair it with
+    /// <see cref="MostModelsHaveThisRule"/> - the validator requires the gate on Subject-seat attack hooks.
+    /// </para>
+    /// </summary>
+    public sealed record AttackedFromOver(float ShootInches, float ChargeInches)
+        : CapabilityCondition<IHasShootChargeDistance>
+    {
+        protected override bool EvaluateCore(IHasShootChargeDistance context) =>
+            ShotOrChargedFromOver(context, ShootInches, ChargeInches);
     }
 
     /// <summary>

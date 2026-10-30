@@ -1418,12 +1418,27 @@ public abstract record Effect
     /// into the range check (#102). <see cref="MinResultInches"/> floors the resulting effective range —
     /// a reduction can't drop it below this (e.g. "−6\" to a min. of 6\""); 0 means no floor. Distinct from
     /// <see cref="Effect.RollModifier"/>, which adjusts the roll itself rather than the range threshold.
+    /// <para>
+    /// #432: <see cref="ChargeDelta"/> is the CHARGE half of the same rule - OPR 3.6 writes the range family as
+    /// one effect over both attack kinds: Darkborn / Shadowborn / Shrouded / Wild Veil "that enemy unit gets
+    /// -4"/-2" range to a min. of 6"" (Subject seat: <c>delta -4, chargeDelta -2, minResultInches 6</c>), Melee
+    /// Shrouding "-2" range to a min. of 6"" when charged (<c>delta 0, chargeDelta -2</c>), Highborn / Extra Reach /
+    /// Royal Legion "+4"/+2" range when shooting/charging" (Actor seat: <c>delta 4, chargeDelta 2</c>). Charge range
+    /// is the charge move (3.6: "may only charge if at least one charging model is within charge distance"), so the
+    /// charge half folds into the charge budget: the charger's own (Actor seat) through
+    /// <see cref="Dispatch.RangeRuleQueries.OwnChargeRangeDelta"/> into every charge-budget reader (the movement
+    /// context and its per-model budgets, the AI), the charged unit's (Subject seat) through
+    /// <see cref="Dispatch.MovementRuleQueries.EffectiveChargeDistanceAgainst"/> (the path stage's worst case, the
+    /// AI). <see cref="MinResultInches"/> floors each half the effect changes, and never RAISES a range that was
+    /// already shorter than the floor ("to a min. of 6"" limits a reduction; it does not lengthen a 4" gun).
+    /// Authored at <see cref="Foundation.EHookID.Shooting_OnRangeCheck"/>, the range check for both halves.
+    /// </para>
     /// </summary>
-    public sealed record RangeModifier(int Delta, int MinResultInches = 0) : Effect
+    public sealed record RangeModifier(int Delta, int MinResultInches = 0, int ChargeDelta = 0) : Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
-            operations.Add(new RuleOperation.ApplyRangeModifier(Delta, MinResultInches));
+            operations.Add(new RuleOperation.ApplyRangeModifier(Delta, MinResultInches, ChargeDelta));
         }
     }
 

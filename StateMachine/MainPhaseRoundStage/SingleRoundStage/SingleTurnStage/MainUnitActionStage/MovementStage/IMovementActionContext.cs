@@ -153,6 +153,9 @@ namespace FDG.Stages
             AccumulateMovementRules(unit, EActionType.Advance, _maxAdvanceDistance, movementModifiers);
             AccumulateMovementRules(unit, EActionType.Rush, _maxRushDistance, movementModifiers);
             AccumulateMovementRules(unit, EActionType.Charge, _maxChargeDistance, movementModifiers);
+            // #432: OPR 3.6 charge RANGE (Highborn / Extra Reach / Royal Legion "+4\"/+2\" range when
+            // shooting/charging") is the charge move, so the unit's own range rules join the Charge budget here.
+            movementModifiers.Add(EActionType.Charge, RangeRuleQueries.OwnChargeRangeDelta(unit, GameContext.RuleEvaluator));
 
             _maxAdvanceDistance += movementModifiers.Net(EActionType.Advance);
             _maxRushDistance += movementModifiers.Net(EActionType.Rush);
@@ -190,6 +193,7 @@ namespace FDG.Stages
                 AccumulateModelMovementRules(unit, model, EActionType.Advance, baseAdvance, perModel);
                 AccumulateModelMovementRules(unit, model, EActionType.Rush, baseRush, perModel);
                 AccumulateModelMovementRules(unit, model, EActionType.Charge, baseCharge, perModel);
+                perModel.Add(EActionType.Charge, RangeRuleQueries.OwnChargeRangeDelta(unit, GameContext.RuleEvaluator, model));
                 float modelAdvance = baseAdvance + perModel.Net(EActionType.Advance);
                 float modelRush = baseRush + perModel.Net(EActionType.Rush);
                 float modelCharge = baseCharge + perModel.Net(EActionType.Charge);

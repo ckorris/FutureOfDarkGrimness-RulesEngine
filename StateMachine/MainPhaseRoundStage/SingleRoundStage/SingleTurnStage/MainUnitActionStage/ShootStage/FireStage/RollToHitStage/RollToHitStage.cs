@@ -215,6 +215,9 @@ namespace FDG.Stages
             // attacking unit is never torn down while later stages of its own attack are still running.
             // The player learns of it at the moment of the roll, via the proc chip on the to-hit beat above.
             results.SelfWounds = operations.OfType<RuleOperation.InflictSelfWounds>().Sum(op => op.Wounds);
+            // #434: one weapon fires per volley, so one per-die value; the largest if a stacked copy ever disagrees.
+            results.SelfWoundsPerDie = operations.OfType<RuleOperation.InflictSelfWounds>()
+                .Where(op => op.Wounds > 0f).Select(op => op.WoundsPerDie).DefaultIfEmpty(1f).Max();
 
             await onFinished(results);
         }

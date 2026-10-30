@@ -124,7 +124,10 @@ namespace FDG.Stages
             GameContext.Log($"{attacker.Name} takes {hitResults.SelfWounds:0.##} " +
                 $"wound{(hitResults.SelfWounds == 1f ? "" : "s")} from its own {metaData.WeaponType.Name}.");
 
-            await CasualtyPresentation.ApplyUnitWounds(GameContext, attacker, hitResults.SelfWounds);
+            // #434 (3.6 Hazardous): "this MODEL takes one wound, or X wounds ..." - the models that fired the weapon
+            // take them, one die's worth per model, not the unit's assignment order.
+            await CasualtyPresentation.ApplyCarrierWounds(GameContext, attacker, metaData.WeaponType,
+                hitResults.SelfWounds, hitResults.SelfWoundsPerDie);
         }
     }
 }

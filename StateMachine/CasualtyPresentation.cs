@@ -1,3 +1,4 @@
+using System.Linq;
 using FDG.Data;
 using FDG.Presentation.Beats;
 
@@ -119,6 +120,75 @@ namespace FDG.Stages
             {
                 await UnitDestructionNotifier.NotifyUnitDestroyed(gameContext, unit, killer: null);
             }
+        }
+
+        /// <summary>
+        /// #434 (OPR 3.6 Hazardous): "on unmodified results of 1 to hit THIS MODEL takes one wound, or X wounds if this
+        /// weapon has the Blast(X)/Deadly(X) rule". The wounds land on the living models that fired
+        /// <paramref name="weapon"/> (the volley's profile), one die's worth (<paramref name="woundsPerDie"/>) per model in
+        /// turn - an already-wounded carrier first, then unit order - and what a die's wounds overflow on its model is
+        /// lost (like a Deadly clump), never passed to a model that did not fire. A fractional total (the probabilistic
+        /// roller) ends in a fractional last die. Unsaveable and unignorable, like <see cref="ApplyUnitWounds"/>, with the
+        /// same casualty presentation and destruction seam. No carrier found (a weapon off a synthetic path) falls back to
+        /// the unit's assignment order.
+        /// </summary>
+        public static async Task ApplyCarrierWounds(IGameContext gameContext, IUnit unit, IWeapon weapon,
+            float totalWounds, float woundsPerDie)
+        {
+            if (totalWounds <= 0f) return;
+
+            string profile = WeaponProfileKey.For(weapon);
+            List<IModel> carriers = unit.Models
+                .Where(model => model.GetIsAlive() && model.Weapons.Any(w => WeaponProfileKey.For(w) == profile))
+                .OrderByDescending(model => model.WoundsDealt > 0f)
+                .ToList();
+            if (carriers.Count == 0 || woundsPerDie <= 0f)
+            {
+                await ApplyUnitWounds(gameContext, unit, totalWounds);
+                return;
+            }
+
+            bool wasAlive = unit.GetIsAlive();
+            await ApplyAndPresent(gameContext, PlanCarrierWounds(carriers, totalWounds, woundsPerDie), unit);
+
+            if (wasAlive && !unit.GetIsAlive())
+            {
+                await UnitDestructionNotifier.NotifyUnitDestroyed(gameContext, unit, killer: null);
+            }
+        }
+
+        /// <summary>The die-by-die plan behind <see cref="ApplyCarrierWounds"/> (nothing applied). Internal for tests.</summary>
+        internal static List<PendingModelWound> PlanCarrierWounds(IReadOnlyList<IModel> carriers, float totalWounds,
+            float woundsPerDie)
+        {
+            const float Epsilon = 0.0001f;
+            var owed = new Dictionary<IModel, float>();
+            float RoomOn(IModel model) => model.TotalWounds - model.WoundsDealt - owed.GetValueOrDefault(model);
+
+            float dice = totalWounds / woundsPerDie;
+            int next = 0;
+            while (dice > Epsilon)
+            {
+                float thisDie = Math.Min(dice, 1f) * woundsPerDie;
+                dice -= Math.Min(dice, 1f);
+
+                // The next carrier with room; a die whose turn finds everyone full is lost with the rest.
+                IModel? target = null;
+                for (int tried = 0; tried < carriers.Count && target == null; tried++)
+                {
+                    IModel candidate = carriers[(next + tried) % carriers.Count];
+                    if (RoomOn(candidate) > Epsilon)
+                    {
+                        target = candidate;
+                        next = (next + tried + 1) % carriers.Count;
+                    }
+                }
+                if (target == null) break;
+
+                owed[target] = owed.GetValueOrDefault(target) + Math.Min(thisDie, RoomOn(target));
+            }
+
+            return carriers.Where(owed.ContainsKey).Select(model => new PendingModelWound(model, owed[model])).ToList();
         }
 
         /// <summary>

@@ -353,7 +353,9 @@ public abstract record RuleOperation
     /// <c>IOperationServices</c> member and becomes executable.
     /// </para>
     /// </summary>
-    public sealed record InflictSelfWounds(float Wounds) : RuleOperation
+    /// <para>#434: <see cref="WoundsPerDie"/> is what each natural 1 was worth (3.6 Hazardous: 1, or the weapon's
+    /// Blast(X) / Deadly(X)), so the wounds can land die by die on the models that fired.</para>
+    public sealed record InflictSelfWounds(float Wounds, float WoundsPerDie = 1f) : RuleOperation
     {
         public override string Describe() =>
             $"took {RollTags.Count(Wounds, "wound")} from its own attack";

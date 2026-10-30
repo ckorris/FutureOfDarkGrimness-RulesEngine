@@ -235,24 +235,57 @@ public abstract record Effect
     }
 
     /// <summary>
-    /// The attacking unit takes <see cref="Count"/> wounds for each of its own dice that came up an
+    /// The attacker takes <see cref="Count"/> wounds for each of its own dice that came up an
     /// unmodified <see cref="OnRollValue"/> — the punitive mirror of <see cref="Effect.AddExtraHit"/>,
-    /// reading the same hit histogram. Covers #197 Hazardous ("this weapon's unit takes one wound on
-    /// unmodified rolls of 1 to hit").
+    /// reading the same hit histogram. Covers Hazardous: #197's 3.5 "this weapon's unit takes one wound on
+    /// unmodified rolls of 1 to hit", and #434's 3.6 "on unmodified results of 1 to hit this model takes one
+    /// wound, or X wounds if this weapon has the Blast(X)/Deadly(X) rule".
     /// <para>
     /// The wounds land after the attack fully resolves and cannot be saved or ignored — see
-    /// <c>CasualtyPresentation.ApplyUnitWounds</c> for both rulings.
+    /// <c>CasualtyPresentation.ApplyUnitWounds</c> for both rulings. #434: they land on the MODELS that fired the
+    /// weapon (<c>CasualtyPresentation.ApplyCarrierWounds</c>), each die's wounds on one model with any excess lost,
+    /// and <see cref="CountFromBlastOrDeadly"/> makes a die worth the firing weapon's Blast(X) / Deadly(X) (the larger
+    /// when both; <see cref="Count"/> when neither). False (the default, what old data parses to) keeps Count.
     /// </para>
     /// </summary>
-    public sealed record SelfWoundOnUnmodifiedRoll(int OnRollValue, int Count = 1)
-        : CapabilityEffect<IHasUnmodifiedHitRolls>
+    public sealed record SelfWoundOnUnmodifiedRoll(int OnRollValue, int Count = 1, bool CountFromBlastOrDeadly = false)
+        : Effect
     {
-        protected override void ApplyCore(IHasUnmodifiedHitRolls context, List<RuleOperation> operations)
+        public override IReadOnlyCollection<Type> RequiredCapabilities => [typeof(IHasUnmodifiedHitRolls)];
+
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
+            if (ruleInvocation.Hook is not IHasUnmodifiedHitRolls context)
+            {
+                throw new InvalidOperationException(
+                    $"{nameof(SelfWoundOnUnmodifiedRoll)} requires {nameof(IHasUnmodifiedHitRolls)}, but the firing " +
+                    $"context ({ruleInvocation.Hook?.GetType().Name ?? "none"}) does not provide it.");
+            }
+
+            int perDie = CountFromBlastOrDeadly ? BlastOrDeadlyValue(ruleInvocation.Weapon) ?? Count : Count;
+
             // The special-rule view, like every other natural-N trigger; it only differs from the raw roll
             // on a fatigued melee attack's 6s (#418), so Hazardous's 1s are unaffected.
-            operations.Add(new RuleOperation.InflictSelfWounds(
-                context.SpecialRuleHitRolls.At(OnRollValue) * Count));
+            float dice = context.SpecialRuleHitRolls.At(OnRollValue);
+            operations.Add(new RuleOperation.InflictSelfWounds(dice * perDie, WoundsPerDie: perDie));
+        }
+
+        /// <summary>The firing weapon's Blast(X) / Deadly(X) value (the larger when it carries both), or null.</summary>
+        private static int? BlastOrDeadlyValue(IWeapon? weapon)
+        {
+            if (weapon == null) return null;
+            int? best = null;
+            foreach (Dispatch.ResolvedRule rule in weapon.RuleDefinitions)
+            {
+                string name = rule.Definition.Name;
+                if (!string.Equals(name, "Blast", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(name, "Deadly", StringComparison.OrdinalIgnoreCase)) continue;
+                foreach (RuleArgument argument in rule.Arguments)
+                {
+                    if (argument is RuleArgument.Int x && (best == null || x.Value > best)) best = x.Value;
+                }
+            }
+            return best;
         }
     }
 

@@ -536,6 +536,71 @@ namespace FDG.Ai.Tactician
             return move.Count == 0 ? null : move;
         }
 
+        /// <summary>What <see cref="AimActivationStartMove"/> advises for an optional triggered move.</summary>
+        public enum ETriggeredMoveAim
+        {
+            /// <summary>The planner has no say (not this activation's unit, or the activation is already planned):
+            /// the caller keeps its own policy.</summary>
+            NoClaim,
+            /// <summary>The activation's best plan stands where it is (a Hold): decline the move.</summary>
+            Stay,
+            /// <summary>Move toward <c>Goal</c>, the endpoint the activation's best plan heads for.</summary>
+            Toward,
+        }
+
+        // The options Choose Action normally offers an unrestricted unit; the pre-plan below scores candidates against
+        // these because the real menu does not exist yet at activation start. A charge the engine would not offer is
+        // already absent from the candidates (MacroActionGenerator gates on MayDeclare and reach).
+        private static readonly string[] PrePlanOptions =
+        {
+            ChooseActionStage.SHOOT_CHOICE_NAME, ChooseActionStage.MOVEMENT_CHOICE_NAME,
+            ChooseActionStage.CHARGE_CHOICE_NAME, ChooseActionStage.PASS_CHOICE_NAME,
+        };
+
+        /// <summary>
+        /// #442 (#434's activation-time reposition family - Wolfborn, Bounding, Rapid Blink, Nimble, Wave-Step - raised
+        /// as an optional triggered move at activation START, before Choose Action): where to spend it. The activation
+        /// is planned now, from where the unit stands (the search's prescribed macro when one is pending), and the free
+        /// move heads for that plan's endpoint, so the real Choose Action re-plans from a point already that much
+        /// further along; a Hold plan stays put. Every activation memo is reset afterwards - the move changes the board
+        /// the memos were computed on.
+        /// </summary>
+        public (ETriggeredMoveAim Kind, Position Goal) AimActivationStartMove(DataBinding<UnitData> unit)
+        {
+            if (_activeUnit == null || _plan != null) return (ETriggeredMoveAim.NoClaim, default);
+            if (!ReferenceEquals(unit, _activeUnit) && !unit.Reference.Equals(_activeUnit.Reference))
+                return (ETriggeredMoveAim.NoClaim, default);
+
+            MacroAction? best = _hasPrescribedAction && _prescribedMacro != null ? _prescribedMacro : null;
+            if (best == null)
+            {
+                float bestScore = float.NegativeInfinity;
+                foreach (MacroAction candidate in MacroActionGenerator.Enumerate(_evaluator, _tableState,
+                    _activeUnit, seeThroughFriendlyUnits: _seeThroughFriendlyUnits))
+                {
+                    if (ActionNameFor(candidate, PrePlanOptions) == null) continue;
+                    float score = Score(candidate);
+                    if (score > bestScore)
+                    {
+                        bestScore = score;
+                        best = candidate;
+                    }
+                }
+            }
+
+            Position here = Centroid(_activeUnit.GetValue());
+            BeginActivation(_activeUnit); // the triggered move changes the board every memo above was built on
+            if (best == null) return (ETriggeredMoveAim.NoClaim, default);
+            if (best.Intent == EMacroIntent.Hold || Distance(here, best.ProjectedCentroid) < 0.5f)
+            {
+                _decisionLog?.Invoke($"activation-start move {unit.GetValue().Name}: stay ({best.Intent})");
+                return (ETriggeredMoveAim.Stay, default);
+            }
+            _decisionLog?.Invoke($"activation-start move {unit.GetValue().Name}: toward " +
+                $"({best.ProjectedCentroid.x:F1},{best.ProjectedCentroid.z:F1}) [{best.Intent}]");
+            return (ETriggeredMoveAim.Toward, best.ProjectedCentroid);
+        }
+
         // --- casting (A5) ---------------------------------------------------------------------------
 
         /// <summary>

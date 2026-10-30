@@ -105,6 +105,81 @@ namespace FDG.Tests
             AssertEngineAppliedTheReply(pack, requester);
         }
 
+        // #442: the Tactician no longer hands the activation-start move to solo - it plans the activation from where
+        // the unit stands and spends the move toward that plan's endpoint (a Hold plan declines). A melee-only unit
+        // has nothing to hold for, so it must take the move, toward the enemy, and the engine must accept it.
+        [Test]
+        public async Task TacticianResolver_ActivationStartMove_MeleeUnit_TakesItTowardTheEnemy()
+        {
+            DataBinding<UnitData> pack = MakeUnit(_us, "Pack", 10f, 20f, Wolfborn(), melee: true);
+            DataBinding<UnitData> enemy = MakeUnit(_them, "Enemy", 30f, 20f);
+            var log = new List<string>();
+            var requester = new AiMoveRequester(TacticianResolver(pack, log));
+            float before = CentroidDistance(pack, enemy);
+
+            await RunActivationStart(pack, requester);
+
+            AssertEngineAppliedTheReply(pack, requester);
+            Assert.That(requester.Reply, Is.InstanceOf<Selected<List<ModelMoveEntry>>>(), string.Join("\n", log));
+            Assert.That(CentroidDistance(pack, enemy), Is.LessThan(before - 1f), "the free move closed on the enemy: " + string.Join("\n", log) + " end=" + Centroid(pack).x + "," + Centroid(pack).z);
+            Assert.That(log.Any(l => l.StartsWith("activation-start move Pack: toward")), Is.True, string.Join("\n", log));
+        }
+
+        [Test]
+        public async Task TacticianResolver_ActivationStartMove_WallInTheWay_IsAppliedOrDeclined()
+        {
+            DataBinding<UnitData> pack = MakeUnit(_us, "Pack", 10f, 20f, Wolfborn(), melee: true);
+            MakeUnit(_them, "Enemy", 30f, 20f);
+            _store.Create(new TerrainData(ETerrainType.Impassible, new RectangularZone(11.2f, 13f, 17f, 25f)));
+            var requester = new AiMoveRequester(TacticianResolver(pack, new List<string>()));
+
+            await RunActivationStart(pack, requester);
+
+            AssertEngineAppliedTheReply(pack, requester);
+        }
+
+        [Test]
+        public async Task TacticianResolver_ActivationStartMove_EnemyClose_IsAppliedOrDeclined()
+        {
+            DataBinding<UnitData> pack = MakeUnit(_us, "Pack", 10f, 20f, Wolfborn(), melee: true);
+            MakeUnit(_them, "Enemy", 13f, 20f);
+            var requester = new AiMoveRequester(TacticianResolver(pack, new List<string>()));
+
+            await RunActivationStart(pack, requester);
+
+            AssertEngineAppliedTheReply(pack, requester);
+        }
+
+        // Whatever the plan, the answer follows it: "stay" is a Cancel, "toward (x,z)" ends closer to (x,z).
+        [TestCase(14f)]
+        [TestCase(22f)]
+        [TestCase(40f)]
+        public async Task TacticianResolver_ActivationStartMove_Shooter_FollowsItsOwnPlan(float enemyX)
+        {
+            DataBinding<UnitData> pack = MakeUnit(_us, "Pack", 10f, 20f, Wolfborn());
+            MakeUnit(_them, "Enemy", enemyX, 20f);
+            var log = new List<string>();
+            var requester = new AiMoveRequester(TacticianResolver(pack, log));
+            Position start = Centroid(pack);
+
+            await RunActivationStart(pack, requester);
+
+            AssertEngineAppliedTheReply(pack, requester);
+            string? aim = log.FirstOrDefault(l => l.StartsWith("activation-start move Pack:"));
+            Assert.That(aim, Is.Not.Null, "the planner was asked");
+            if (aim!.Contains(": stay"))
+            {
+                Assert.That(requester.Reply, Is.InstanceOf<Cancelled<List<ModelMoveEntry>>>(), aim);
+            }
+            else if (aim.Contains(": toward (") && requester.Reply is Selected<List<ModelMoveEntry>>)
+            {
+                string[] xz = aim[(aim.IndexOf("toward (") + 8)..aim.IndexOf(')')].Split(',');
+                var goal = new Position(float.Parse(xz[0], System.Globalization.CultureInfo.InvariantCulture),
+                    float.Parse(xz[1], System.Globalization.CultureInfo.InvariantCulture));
+                Assert.That(Distance(Centroid(pack), goal), Is.LessThan(Distance(start, goal)), aim);
+            }
+        }
+
         // --- the 3.6 Tag spend (#434): "may remove ONE token from their target" per attack ---------------------------
 
         [Test]
@@ -125,6 +200,27 @@ namespace FDG.Tests
         }
 
         // --- helpers --------------------------------------------------------------------------------------------
+
+        private TacticianMovementResolver TacticianResolver(DataBinding<UnitData> unit, List<string> log)
+        {
+            var tableState = new TableState(_store);
+            var planner = new TacticianPlanner(tableState, new RuleEvaluator(new ProbabilisticDiceRoller()), log.Add);
+            planner.BeginActivation(unit); // what TacticianActivationResolver does when it picks the unit
+            return new TacticianMovementResolver(planner, tableState, new AiDefineMovementResolver(tableState, _us),
+                log.Add);
+        }
+
+        private static Position Centroid(DataBinding<UnitData> unit)
+        {
+            var models = unit.GetValue().ModelBindings.Select(m => m.GetValue().PositionBinding.GetValue()).ToList();
+            return new Position(models.Average(p => p.x), models.Average(p => p.z));
+        }
+
+        private static float Distance(Position a, Position b) =>
+            MathF.Sqrt((a.x - b.x) * (a.x - b.x) + (a.z - b.z) * (a.z - b.z));
+
+        private static float CentroidDistance(DataBinding<UnitData> a, DataBinding<UnitData> b) =>
+            Distance(Centroid(a), Centroid(b));
 
         private async Task RunActivationStart(DataBinding<UnitData> unit, IPlayerRequestByID requester)
         {
@@ -168,9 +264,11 @@ namespace FDG.Tests
         }
 
         private DataBinding<UnitData> MakeUnit(PlayerID owner, string name, float x, float z,
-            SpecialRuleDefinition? rule = null)
+            SpecialRuleDefinition? rule = null, bool melee = false)
         {
-            var weapon = new Weapon("Rifle", rangeInches: 24f, attacks: 1, armorPenetration: 0);
+            var weapon = melee
+                ? new Weapon("Claws", rangeInches: 0f, attacks: 3, armorPenetration: 1)
+                : new Weapon("Rifle", rangeInches: 24f, attacks: 1, armorPenetration: 0);
             var models = new List<DataBinding<ModelData>>();
             for (int i = 0; i < 3; i++)
             {

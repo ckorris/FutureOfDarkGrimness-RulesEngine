@@ -26,8 +26,8 @@ namespace FDG.Tests
             {
                 new HookEntry(EHookID.Lifecycle_OnCapabilityQuery, new Condition.Always(),
                     new Effect.EnableMeleeUse(), ELifetime.UntilEndOfGame),
-                new HookEntry(EHookID.Lifecycle_OnCapabilityQuery, new Condition.Always(),
-                    new Effect.EnableRangedUse(), ELifetime.UntilEndOfGame),
+                // Melee arm only (#424 D3, owner): every Assault weapon has a printed range, so a ranged arm would
+                // only restate it, and a range-0 Assault weapon would be a senseless 0" gun.
             },
             Array.Empty<ActivatedAbility>(),
             Scope: ERuleScope.Weapon,
@@ -93,9 +93,9 @@ namespace FDG.Tests
         {
             Weapon pistol = AssaultDefinitions.HeavyPistol();
 
-            Assert.That(WeaponRoleQueries.Resolve(pistol), Is.EqualTo(EWeaponRoles.Melee | EWeaponRoles.Ranged));
+            Assert.That(WeaponRoleQueries.Resolve(pistol), Is.EqualTo(EWeaponRoles.Melee));
             Assert.That(WeaponRoleQueries.GrantsMeleeUse(pistol), Is.True);
-            Assert.That(WeaponRoleQueries.GrantsRangedUse(pistol), Is.True);
+            Assert.That(WeaponRoleQueries.GrantsRangedUse(pistol), Is.False, "its shot comes from its printed range (D3)");
             Assert.That(WeaponRoleQueries.MeleeUseSource(pistol), Is.EqualTo("Assault"),
                 "the *Source form names the rule the army wrote, for UI attribution");
             Assert.That(WeaponRoleQueries.Resolve(new Weapon("Pistol", 12f, 1, 0)), Is.EqualTo(EWeaponRoles.None));
@@ -119,7 +119,7 @@ namespace FDG.Tests
             Assert.That(pistol.RolesResolved, Is.False, "a rule change invalidates the cache, like the profile key");
             Assert.That(pistol.IsMelee(), Is.True, "and the next query sees the grant");
             Assert.That(pistol.RolesResolved, Is.True);
-            Assert.That(pistol.GrantedRoles, Is.EqualTo(EWeaponRoles.Melee | EWeaponRoles.Ranged));
+            Assert.That(pistol.GrantedRoles, Is.EqualTo(EWeaponRoles.Melee));
             Assert.That(pistol.IsMelee(), Is.True, "a second query reads the cache (no re-resolution: still resolved)");
             Assert.That(pistol.RolesResolved, Is.True);
         }
@@ -194,7 +194,7 @@ namespace FDG.Tests
                 Array.Empty<ActivatedAbility>(), Scope: ERuleScope.Weapon);
             pistol.AttachRuleDefinition(new ResolvedRule("Sidearm", sidearm));
 
-            Assert.That(pistol.GrantedRoles, Is.EqualTo(EWeaponRoles.Melee | EWeaponRoles.Ranged));
+            Assert.That(pistol.GrantedRoles, Is.EqualTo(EWeaponRoles.Melee), "two melee grants, one flag");
             Assert.That(pistol.IsMelee(), Is.True);
         }
 
@@ -219,7 +219,8 @@ namespace FDG.Tests
         public void TheDefinition_RoundTripsThroughTheSupplementJson()
         {
             string json = System.Text.Json.JsonSerializer.Serialize(AssaultDefinitions.Assault, RuleJson.Options);
-            Assert.That(json, Does.Contain("\"enableMeleeUse\"").And.Contain("\"enableRangedUse\""));
+            Assert.That(json, Does.Contain("\"enableMeleeUse\"").And.Not.Contain("\"enableRangedUse\""),
+                "the shipped shape is the melee arm alone (D3)");
 
             SpecialRuleDefinition back =
                 System.Text.Json.JsonSerializer.Deserialize<SpecialRuleDefinition>(json, RuleJson.Options)!;

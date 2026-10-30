@@ -1,9 +1,11 @@
 using FDG.Data;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
+using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
 using FDG.Rules.Tokens;
 using FDG.StageResolution.Requests;
+using FDG.Stages;
 using FDG.Utilities;
 
 namespace FDG.Ai.Tactician
@@ -94,6 +96,51 @@ namespace FDG.Ai.Tactician
             IReadOnlyList<ITerrain>? terrain = null) =>
             ChargeDistanceAgainst(charger, target, evaluator, terrain)
             + GameWideConstants.MELEE_RANGE_INCHES_HORIZONTAL;
+
+        /// <summary>
+        /// #442 (#421 / #432 / #435): the chance <paramref name="unit"/> PASSES a Morale Test it would take now -
+        /// <see cref="MoraleUtilities.TakeMoraleTest(IGameContext, IUnit, MoraleUtilities.MoraleQuality, bool, float?, float?, EMoraleTestCause)"/>
+        /// priced instead of rolled: the Quality from <see cref="MoraleUtilities.ResolveMoraleQuality(ITableState, IUnit)"/>
+        /// (own, joined hero's, a Tough(9)+ Hero's 6" aura), the pre-test morale modifiers through the same
+        /// <see cref="PreMoraleTestContext"/> (Hive Bond / Hold the Line / Valiant's "+1 when shot/charged from over
+        /// 9"/6"", Banner's "+1 for a test shooting or melee triggered"), granted morale tokens (peeked, not spent),
+        /// the 2-6 clamp, then a Fearless re-roll's 4+ second chance. A Shaken unit always fails (0); a failure
+        /// a conversion rule turns into a pass (No Retreat) counts as a pass when the test's failure would Shake or
+        /// Rout (<paramref name="failureCausesShakenOrRout"/>).
+        /// </summary>
+        public static float MoralePassChance(ITableState tableState, RuleEvaluator evaluator, IUnit unit,
+            EMoraleTestCause cause, float? shotFromInches = null, float? chargedFromInches = null,
+            bool failureCausesShakenOrRout = true)
+        {
+            if (unit.Tokens.HasToken(TokenType.Shaken))
+                return failureCausesShakenOrRout && HasMoraleConversion(evaluator, unit) ? 1f : 0f;
+
+            int quality = MoraleUtilities.ResolveMoraleQuality(tableState, unit).Quality;
+            var modifiers = new RollModifierSink();
+            modifiers.ApplyFrom(evaluator.EvaluateAllNamed(
+                    new PreMoraleTestContext(unit, shotFromInches, chargedFromInches, cause), RuleParticipant.Actor(unit))
+                .Select(tagged => tagged.Op).ToList());
+            int rollNeeded = DiceUtilities.ClampSuccessRollNeeded(quality - modifiers.Net(ERollKind.Morale)
+                - GrantedRollModifiers.PeekNet(unit, ERollKind.Morale));
+            float pass = (7 - rollNeeded) / 6f;
+
+            // The read-only named query: EvaluateAll would log each op and spend one-shot grants.
+            List<RuleOperation> completeOps = evaluator.EvaluateAllNamed(new MoraleTestContext(unit),
+                    RuleParticipant.Actor(unit, models: HeroStatRules.LivingModels(unit)))
+                .Select(tagged => tagged.Op).ToList();
+            var reroll = new RerollSink();
+            reroll.ApplyFrom(completeOps);
+            if (reroll.RerollMoraleOnFailure)
+                pass += (1f - pass) * (7 - MoraleUtilities.FearlessRerollPassesOn) / 6f;
+            if (failureCausesShakenOrRout && completeOps.Any(op => op is RuleOperation.PassMoraleTest))
+                pass = 1f;
+            return pass;
+        }
+
+        private static bool HasMoraleConversion(RuleEvaluator evaluator, IUnit unit) =>
+            evaluator.EvaluateAllNamed(new MoraleTestContext(unit),
+                    RuleParticipant.Actor(unit, models: HeroStatRules.LivingModels(unit)))
+                .Any(tagged => tagged.Op is RuleOperation.PassMoraleTest);
 
         /// <summary>
         /// #442 (#425 Cumbersome, "may only use Hold or Advance actions"): whether the unit may declare a Charge at

@@ -24,6 +24,9 @@ namespace FDG.Stages
         // Fearless's second-chance die passes on a 4+ regardless of Quality (rulebook fixed threshold).
         private const int FEARLESS_REROLL_PASSES_ON = 4;
 
+        /// <summary>#442: the Fearless re-roll's threshold, for estimators that mirror <see cref="TakeMoraleTest"/>.</summary>
+        public const int FearlessRerollPassesOn = FEARLESS_REROLL_PASSES_ON;
+
         // On-screen banner colours for the two failed-morale outcomes: amber for Shaken (a warning, like
         // the Ambush-arrival / objective banners), red for a Rout (a death).
         private static readonly TextColor ShakenBannerColor = new TextColor(255, 170, 60, 255);
@@ -104,6 +107,13 @@ namespace FDG.Stages
         /// </para>
         /// </summary>
         public static MoraleQuality ResolveMoraleQuality(IGameContext gameContext, IUnit testingUnit)
+            => ResolveMoraleQuality(gameContext.TableState, testingUnit);
+
+        /// <summary>
+        /// The same resolution from the table state alone - the seam a read-only estimator (the Tactician's morale
+        /// pass chance, #442) prices through, so it reads the very Quality the test will be taken at.
+        /// </summary>
+        public static MoraleQuality ResolveMoraleQuality(ITableState tableState, IUnit testingUnit)
         {
             MoraleQuality best = MoraleQuality.Own(testingUnit.Quality);
 
@@ -116,7 +126,7 @@ namespace FDG.Stages
                 }
             }
 
-            if (BestAuraQuality(gameContext.TableState, testingUnit) is { } aura && aura.Quality < best.Quality)
+            if (BestAuraQuality(tableState, testingUnit) is { } aura && aura.Quality < best.Quality)
             {
                 best = aura;
             }

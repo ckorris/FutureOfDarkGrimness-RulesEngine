@@ -254,6 +254,28 @@ namespace FDG.Tests
 
         // --- fixtures ---------------------------------------------------------------------------
 
+        // #442 (#421): the half-strength break bonus is worth only the chance the target FAILS its morale test - of two
+        // otherwise identical mobs the volley would break, the Fearless one (a 4+ second chance) is the worse pick.
+        // The Fearless mob is listed first, so a tie (the old flat bonus) would pick it.
+        [Test]
+        public async Task Shooting_BreakBonus_PrefersTheMobLessLikelyToPassItsTest()
+        {
+            var attacker = MakeUnit(_us, 10, Rifle(), atX: 20f, atZ: 20f);
+            var stubborn = MakeUnit(_them, 6, Rifle(), atX: 32f, atZ: 14f);
+            KillAllBut(stubborn, survivors: 4);
+            stubborn.GetValue().AttachRuleDefinition(new ResolvedRule("Fearless", CoreRuleCatalog.Fearless));
+            var shaky = MakeUnit(_them, 6, Rifle(), atX: 32f, atZ: 26f);
+            KillAllBut(shaky, survivors: 4);
+
+            var resolver = new TacticianRangedAttackResolver(_evaluator,
+                new FDG.Ai.Resolvers.AiChooseRangedAttackResolver(), _tableState);
+            var reply = await resolver.Resolve(BuildRequest(attacker, stubborn, shaky));
+            var choice = ((Selected<RangedAttackChoice>)reply).Value;
+
+            Assert.That(choice.TargetUnit.Reference, Is.EqualTo(shaky.Reference),
+                "breaking a mob that passes its test 3 times in 4 is worth less than one that passes half the time");
+        }
+
         private ChooseRangedAttackRequest BuildRequest(DataBinding<UnitData> attacker,
             params DataBinding<UnitData>[] targets)
         {

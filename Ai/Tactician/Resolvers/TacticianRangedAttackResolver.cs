@@ -50,9 +50,14 @@ namespace FDG.Ai.Tactician.Resolvers
 
                     UnitData target = stats.TargetUnit.GetValue();
                     float distance = MinDistance(stats.modelsThatCanShoot, target);
+                    // #442 (#432): the hit stages and the ranged morale test measure the attack's distance unit to
+                    // unit, closest living models, base to base (DetermineHitRollStage, RegisterAttackedDefender) -
+                    // so the "shot from over 9"" arms (Stealth, Devout, Hive Bond, ...) price on the right side.
+                    float attackDistance = UnitCompareUtilities.MinDistanceBetweenUnits(
+                        request.AttackingUnit.GetValue(), target, out _, out _, includeVertical: true);
                     float wounds = CombatMath.EstimateVolley(_evaluator, request.AttackingUnit,
                         stats.TargetUnit, option.Weapon, stats.modelsThatCanShoot.Count,
-                        new AttackContext(distance, AttackerMoved: true, DefenderInCover: stats.HasCover),
+                        new AttackContext(attackDistance, AttackerMoved: true, DefenderInCover: stats.HasCover),
                         new List<string>());
 
                     float remaining = Math.Max(1f, target.RemainingWounds);
@@ -76,9 +81,17 @@ namespace FDG.Ai.Tactician.Resolvers
                         && TacticalAnalysis.MayCharge(target, _evaluator)
                         && TacticalAnalysis.MeleeThreatReach(target,
                             request.AttackingUnit.GetValue(), _evaluator, Terrain) >= distance - 1f;
+                    // #442 (#421): breaking a mob is worth the bonus only as often as it actually fails the test -
+                    // a target testing at its Tough(9)+ Hero's Quality, re-rolling with Fearless or holding with Hive
+                    // Bond's +1 is correspondingly less attractive to break.
+                    float breakBonus = breaks && wounds < remaining && _tableState != null
+                        ? 1f + (TacticianWeights.MoraleBreakBonus - 1f) * (1f - TacticalAnalysis.MoralePassChance(
+                            _tableState, _evaluator, target, Rules.Foundation.EMoraleTestCause.Shooting,
+                            shotFromInches: attackDistance))
+                        : TacticianWeights.MoraleBreakBonus;
                     float score = fractionKilled * targetValue
                         * (wounds >= remaining ? TacticianWeights.ShootingKillBonus
-                           : breaks ? TacticianWeights.MoraleBreakBonus : 1f)
+                           : breaks ? breakBonus : 1f)
                         * (threatensUs ? TacticianWeights.ShootThreatFactor : 1f);
 
                     if (score > bestScore)

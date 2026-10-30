@@ -132,7 +132,7 @@ namespace FDG.Stages
             }
 
             bool killedAny = pending.Count > 0;
-            await CasualtyPresentation.ApplyAndPresent(GameContext, pending, bearer.ID, bearer.Name);
+            await CasualtyPresentation.ApplyAndPresent(GameContext, pending, bearer);
 
             if (killedAny && wasAlive && !bearer.GetIsAlive())
             {

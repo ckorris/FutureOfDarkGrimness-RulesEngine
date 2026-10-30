@@ -14,8 +14,8 @@ namespace FDG.Tests
     // #431 Scourge (OPR 3.6): "For each unmodified result of 1 to block hits, enemies count as having taken 2 extra
     // wounds when checking who won melee, or if shooting wounds would trigger Morale Tests." Pinned end to end:
     //  - the REAL AssignWoundsStage banks 2 counted wounds per natural 1 on the struck unit, and deals none;
-    //  - the REAL DetermineMeleeWinnerStage adds them to what the striker's side dealt (Fear's polarity), and uses
-    //    them up;
+    //  - the REAL DetermineMeleeWinnerStage adds them to the struck unit's own taken total (#419: "the number of
+    //    wounds each unit took"; Fear's "enemies count as having taken" polarity), and uses them up;
     //  - the REAL ResolveRangedMoraleStage counts them as wounds taken for the half-strength morale trigger - they
     //    alone can trigger the test - and uses them up;
     //  - the end-of-activation sweep clears whatever a skipped check left behind;

@@ -57,9 +57,14 @@ namespace FDG.Stages
             // this activation"). They sit on the STRUCK units, which the sweep above never visits, and the checks
             // that consume them can be skipped (a melee that ends in a wipe-out has no result step) - so clear
             // whatever is left on every unit now.
+            //
+            // #419: the activation's wound ledger has the same scope ("wounds each unit took during this
+            // activation") and the same table-wide reach; MainUnitActionStage clears it again as the next
+            // activation starts.
             if (GameContext.TableState?.Units != null)
             {
                 CountedWounds.SweepAll(GameContext.TableState.Units.Objects);
+                WoundsTakenThisActivation.SweepAll(GameContext.TableState.Units.Objects);
             }
 
             // Activation over -- clear the spotlight target so nothing is highlighted between activations.

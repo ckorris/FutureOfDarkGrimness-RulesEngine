@@ -4,8 +4,8 @@ namespace FDG.Rules.Dispatch.Contexts
 {
     /// <summary>
     /// Fires at <see cref="EHookID.Melee_OnMeleeResolution"/>: wounds are tallied on
-    /// both sides, before morale. Trigger for Fear's "+X wounds dealt for the
-    /// winner-check."
+    /// both sides, before morale. Trigger for Fear's "enemies count as having taken
+    /// +X wounds when checking who won" (#419).
     ///
     /// Minimal for now (the two combatants); likely to grow the per-side wound counts
     /// when a rule needs to read them.

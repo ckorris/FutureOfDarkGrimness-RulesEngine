@@ -195,6 +195,12 @@ public static class TokenDefinitionCatalog
                 ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.RoundEnd(),
                 Description: "Counts as having taken extra wounds this activation (melee result and morale only)."),
 
+            // #419: the activation's wound ledger - real wounds landed on this unit this activation, read by the
+            // melee result. Swept table-wide at the start and end of every activation; RoundEnd is the backstop.
+            new(TokenType.WOUNDS_TAKEN_THIS_ACTIVATION_ID, "Wounds taken this activation", EValence.Neutral,
+                ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.RoundEnd(),
+                Description: "Wounds this unit has taken during the current activation (used by the melee result)."),
+
             new(TokenType.OFF_TABLE_FROM_FORCED_MOVE_ID, "Off table (forced move)", EValence.Neutral,
                 ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.ManualOnly()),
 

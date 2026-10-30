@@ -278,7 +278,8 @@ public abstract record Effect
     /// one <see cref="Foundation.TokenType.CountedWoundsTaken"/> magnitude on the defender
     /// (<see cref="Dispatch.CountedWounds"/>), read and removed by the two consumers the text names:
     /// <c>DetermineMeleeWinnerStage</c> (added to the struck unit's taken total, so the striker's side wins
-    /// ties it would otherwise lose - Fear(X)'s polarity) and the wound-driven morale check of a shooting attack
+    /// ties it would otherwise lose - the same "enemies count as having taken" polarity as Fear(X)) and the
+    /// wound-driven morale check of a shooting attack
     /// (<c>ResolveRangedMoraleStage</c>, and <c>ResolveStrafeMoraleStage</c> for "as if shooting" attacks),
     /// where the counted wounds are allocated virtually for the half-strength test and alone can trigger it.
     /// Defense rolls are not hit rolls, so #418's Fatigue view does not apply.
@@ -1091,8 +1092,9 @@ public abstract record Effect
     }
 
     /// <summary>
-    /// Adds <see cref="Amount"/> to the bearer's wound tally when deciding who won a
-    /// melee. Covers Fear(X) — the amount is the rule's argument.
+    /// Adds <see cref="Amount"/> to the ENEMY's taken-wounds total when deciding who won a melee (#419,
+    /// Core Rules v3.6.0 Fear(X): "enemies count as having taken +X wounds when checking who won"). Covers
+    /// Fear(X) — the amount is the rule's argument. No real wounds are dealt.
     /// </summary>
     public sealed record ExtraMeleeWoundCount(ValueSource Amount) : Effect
     {

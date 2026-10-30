@@ -144,7 +144,7 @@ namespace FDG.Stages
 
             bool wasAlive = occupant.GetIsAlive();
 
-            await CasualtyPresentation.ApplyAndPresent(gameContext, pending, occupant.ID, occupant.Name);
+            await CasualtyPresentation.ApplyAndPresent(gameContext, pending, occupant);
 
             // The spillout's own dangerous test can finish off a battered occupant. That is a destruction
             // like any other and takes the same seam: its OwnerDestroyed marks clear, and an occupant that

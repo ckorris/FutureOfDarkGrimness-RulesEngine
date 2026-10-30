@@ -187,6 +187,23 @@ namespace FDG.Stages
         public float DefenderRemainingWoundsAtStart { get; }
 
         /// <summary>
+        /// #419: the wounds the attacker had already taken THIS ACTIVATION when this melee context snapshotted
+        /// it (with <see cref="AttackerRemainingWoundsAtStart"/>) - read off the activation's wound ledger
+        /// (<see cref="Rules.Dispatch.WoundsTakenThisActivation"/>). Core Rules v3.6.0's melee result compares
+        /// "the number of wounds each unit took during this activation", so a charger that lost a model to a
+        /// Dangerous Terrain test on its charge move carries it into the comparison. 0 for a ranged action.
+        /// Swaps with the roles (<see cref="SwapCombatRoles"/>), like the remaining-wounds snapshots.
+        /// </summary>
+        public float AttackerWoundsTakenBeforeMelee { get; }
+
+        /// <summary>
+        /// #419: as <see cref="AttackerWoundsTakenBeforeMelee"/>, for the defender, snapshotted when it is set
+        /// (<see cref="SetDefender"/>, before any Impact hit) - a Breath Attack or spell that struck it earlier in
+        /// the activation counts toward the wounds it took.
+        /// </summary>
+        public float DefenderWoundsTakenBeforeMelee { get; }
+
+        /// <summary>
         /// Per-model remaining wounds captured at the start of the melee (both units), keyed by model
         /// reference. Empty for a ranged action. Lets a post-melee reflect rule (#197 P11 Retaliate /
         /// Deathstrike) measure exactly how many wounds each rule-bearing MODEL took, and which were killed,
@@ -289,6 +306,10 @@ namespace FDG.Stages
         public float AttackerRemainingWoundsAtStart { get; private set; }
 
         public float DefenderRemainingWoundsAtStart { get; private set; }
+
+        public float AttackerWoundsTakenBeforeMelee { get; private set; }
+
+        public float DefenderWoundsTakenBeforeMelee { get; private set; }
 
         public IReadOnlyDictionary<DataReference, float> ModelRemainingWoundsAtStart => _modelRemainingWoundsAtStart;
         private readonly Dictionary<DataReference, float> _modelRemainingWoundsAtStart = new();
@@ -435,8 +456,14 @@ namespace FDG.Stages
             }
 
             AttackerRemainingWoundsAtStart = attackingUnit.GetValue().RemainingWounds;
+            AttackerWoundsTakenBeforeMelee = WoundsTakenBeforeMelee(attackingUnit);
             SnapshotModelWounds(attackingUnit);
         }
+
+        // #419: the activation's wound ledger at the moment the melee snapshots this unit. Melee only - the melee
+        // result is its one reader.
+        private float WoundsTakenBeforeMelee(DataBinding<UnitData> unit) =>
+            _isMelee ? WoundsTakenThisActivation.Peek(unit.GetValue()) : 0f;
 
         public void AddResult<TResult>(TResult result)
         {
@@ -546,6 +573,7 @@ namespace FDG.Stages
         {
             DefendingUnit = defendingUnit;
             DefenderRemainingWoundsAtStart = DefendingUnit.GetValue().RemainingWounds;
+            DefenderWoundsTakenBeforeMelee = WoundsTakenBeforeMelee(defendingUnit);
             SnapshotModelWounds(defendingUnit);
         }
 
@@ -566,6 +594,8 @@ namespace FDG.Stages
             (AttackingUnit, DefendingUnit) = (DefendingUnit, AttackingUnit);
             (AttackerRemainingWoundsAtStart, DefenderRemainingWoundsAtStart) =
                 (DefenderRemainingWoundsAtStart, AttackerRemainingWoundsAtStart);
+            (AttackerWoundsTakenBeforeMelee, DefenderWoundsTakenBeforeMelee) =
+                (DefenderWoundsTakenBeforeMelee, AttackerWoundsTakenBeforeMelee);
 
             // The new attacker (the Counter unit) is striking back into the charge, not charging.
             _isCharging = false;

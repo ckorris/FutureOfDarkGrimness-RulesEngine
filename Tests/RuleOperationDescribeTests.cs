@@ -117,7 +117,7 @@ namespace FDG.Tests
                 RuleParticipant.Actor(unit, weapon: null, models: unit.Models));
 
             Assert.That(log.Lines, Has.Count.EqualTo(1));
-            Assert.That(log.Lines[0], Is.EqualTo("P1-unit's Dread added 2 to its melee wound tally."),
+            Assert.That(log.Lines[0], Is.EqualTo("P1-unit's Dread made enemies count as having taken +2 wounds in the melee result."),
                 "the whole sentence: the evaluator supplies bearer + rule + full stop around Describe().");
         }
 
@@ -153,7 +153,11 @@ namespace FDG.Tests
             yield return Case(new RuleOperation.StrikeLast(), "struck last");
             yield return Case(new RuleOperation.AllowShootAfterRush(), "could still shoot after Rushing");
             yield return Case(new RuleOperation.IgnoreEnemyMovementBlock(), "moved through enemy units");
-            yield return Case(new RuleOperation.ExtraMeleeWoundCount(1), "added 1 to its melee wound tally");
+            // #419: Fear(X) 3.6 polarity - the bonus lands on the enemy's taken total. Singular at 1.
+            yield return Case(new RuleOperation.ExtraMeleeWoundCount(1),
+                "made enemies count as having taken +1 wound in the melee result");
+            yield return Case(new RuleOperation.ExtraMeleeWoundCount(2),
+                "made enemies count as having taken +2 wounds in the melee result");
 
             // Counts agree in number with what is printed. The float-carrying ops are fractional under
             // the probabilistic roller, so agreement follows the rendered value, not the raw number.

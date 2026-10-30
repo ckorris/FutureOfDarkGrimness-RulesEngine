@@ -279,8 +279,10 @@ namespace FDG.Ai.Tactician
                     meleeContext with { IsCharging = false }, notes);
             }
 
-            // --- DetermineMeleeWinnerStage mirror: Fear(X) adds phantom wounds to its own side's dealt
-            // total for the who-won comparison only.
+            // --- DetermineMeleeWinnerStage mirror: Fear(X) makes the ENEMY count as having taken X more wounds
+            // for the who-won comparison only (#419, 3.6 wording) - the same margin as the 3.5 "+X dealt", so the
+            // estimate's arithmetic is unchanged. Not mirrored (#442): wounds a side already took earlier in the
+            // activation, which the engine's result now counts too.
             var resolution = new MeleeResolutionContext(atk, def);
             float attackerFear = SumFear(evaluator, resolution, atk);
             float defenderFear = SumFear(evaluator, resolution, def);

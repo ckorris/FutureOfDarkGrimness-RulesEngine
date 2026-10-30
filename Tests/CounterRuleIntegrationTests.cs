@@ -58,6 +58,26 @@ namespace FDG.Tests
                 "the banner tells the player the charged unit strikes first thanks to Counter.");
         }
 
+        // #419: the melee result counts "the number of wounds each unit took during this activation", so the
+        // pre-melee snapshots (the activation's wound ledger) swap with the roles as well: the charger's wound
+        // from a Dangerous Terrain test on its charge move follows it into the defender seat.
+        [Test]
+        public async Task CounterSwap_SwapsTheWoundsTakenBeforeTheMelee()
+        {
+            DataBinding<UnitData> charger = MakeUnit(modelCount: 3);
+            DataBinding<UnitData> defender = MakeUnit(modelCount: 5);
+            AttachCounter(defender);
+            WoundsTakenThisActivation.Add(charger.GetValue(), 1f);
+
+            var context = await RunStage(charger, defender);
+
+            Assert.That(context.AttackingUnit.GetValue(), Is.SameAs(defender.GetValue()), "premise: swapped");
+            Assert.That(context.AttackerWoundsTakenBeforeMelee, Is.EqualTo(0f),
+                "the Counter unit, now the attacker, took nothing earlier this activation");
+            Assert.That(context.DefenderWoundsTakenBeforeMelee, Is.EqualTo(1f),
+                "the charger's earlier wound follows it into the defender seat");
+        }
+
         [Test]
         public async Task NoCounter_KeepsNormalOrder()
         {

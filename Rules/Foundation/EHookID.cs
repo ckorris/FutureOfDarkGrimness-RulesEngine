@@ -256,7 +256,7 @@ public enum EHookID
 
     /// <summary>
     /// Wounds have been tallied on both sides, before morale checks. Trigger for
-    /// Fear's "+X wounds dealt for winner-check" effect.
+    /// Fear's "enemies count as having taken +X wounds" winner-check effect (#419).
     /// Context: attacker, defender, wounds-each.
     /// </summary>
     Melee_OnMeleeResolution = 102,

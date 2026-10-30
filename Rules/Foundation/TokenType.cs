@@ -121,6 +121,15 @@ public readonly record struct TokenType(string Id)
     // catalog's backstop.
     public const string COUNTED_WOUNDS_TAKEN_ID = "CountedWoundsTaken";
 
+    // #419 (Core Rules v3.6.0 Melee Results: "compare the number of wounds each unit took during this
+    // activation"): the REAL wounds this unit has taken so far in the current activation, whoever dealt them -
+    // the activation's wound ledger (Rules.Dispatch.WoundsTakenThisActivation). A Magnitude payload (fractional
+    // under the probabilistic roller), fed by the two wound-landing seams (ApplyWoundsStage,
+    // CasualtyPresentation.ApplyAndPresent) and read by the melee result for the wounds a combatant took BEFORE
+    // its melee began (a Dangerous Terrain test on the charge move, a Breath Attack or spell). Swept table-wide
+    // at the start and end of every activation; RoundEnd is the catalog's backstop.
+    public const string WOUNDS_TAKEN_THIS_ACTIVATION_ID = "WoundsTakenThisActivation";
+
 
     public static readonly TokenType Shaken = new(SHAKEN_ID);
     public static readonly TokenType Fatigued = new(FATIGUED_ID);
@@ -133,6 +142,7 @@ public readonly record struct TokenType(string Id)
     public static readonly TokenType RegenerativeStrengthMarker = new(REGENERATIVE_STRENGTH_MARKER_ID);
     public static readonly TokenType RegenerativeStrengthSpent = new(REGENERATIVE_STRENGTH_SPENT_ID);
     public static readonly TokenType CountedWoundsTaken = new(COUNTED_WOUNDS_TAKEN_ID);
+    public static readonly TokenType WoundsTakenThisActivation = new(WOUNDS_TAKEN_THIS_ACTIVATION_ID);
     public static readonly TokenType SpellTokens = new(SPELL_TOKENS_ID);
 
     /// <summary>

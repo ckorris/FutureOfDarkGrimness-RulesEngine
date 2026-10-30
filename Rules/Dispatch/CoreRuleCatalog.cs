@@ -644,11 +644,12 @@ public static class CoreRuleCatalog
     // Melee-resolution (DetermineMeleeWinnerStage) -------------------------------
 
     /// <summary>
-    /// Fear(X): this unit counts as dealing +X extra wounds when deciding who won a melee — it does NOT
-    /// deal real wounds. A passive rule at <see cref="EHookID.Melee_OnMeleeResolution"/> that emits
-    /// <see cref="RuleOperation.ExtraMeleeWoundCount"/> (X from the rule's argument); DetermineMeleeWinnerStage
-    /// folds each side's total into its wounds-dealt before the winner comparison, so the loser — and thus
-    /// which unit must test morale — can flip.
+    /// Fear(X), Core Rules v3.6.0: "When in melee with this model, enemies count as having taken +X wounds
+    /// when checking who won." It does NOT deal real wounds. A passive rule at
+    /// <see cref="EHookID.Melee_OnMeleeResolution"/> that emits <see cref="RuleOperation.ExtraMeleeWoundCount"/>
+    /// (X from the rule's argument); DetermineMeleeWinnerStage adds each side's X to the OPPONENT's
+    /// wounds-taken total before the comparison (#419; numerically the 3.5 "+X dealt"), so the loser — and
+    /// thus which unit must test morale — can flip.
     /// </summary>
     public static SpecialRuleDefinition Fear { get; } = new SpecialRuleDefinition("Fear",
         new[]
@@ -660,7 +661,7 @@ public static class CoreRuleCatalog
         },
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Positive,
-        Description: "Counts as dealing extra wounds when deciding who won a melee (does not deal real wounds).");
+        Description: "When in melee with this model, enemies count as having taken +X wounds when checking who won.");
 
     // Morale (RollForMoraleStage) ------------------------------------------------
 

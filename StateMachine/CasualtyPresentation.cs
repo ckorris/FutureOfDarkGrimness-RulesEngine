@@ -38,9 +38,13 @@ namespace FDG.Stages
         /// dead are skipped entirely (no wound, no beat). Mirrors <c>ApplyWoundsStage</c>'s #232 casualty
         /// cascade: every casualty except the last overlaps the next, so a multi-kill batch reads as
         /// rapid fire rather than a queue. No-op when nothing is pending.
+        ///
+        /// <para>#419: what lands is recorded on <paramref name="unit"/>'s activation wound ledger
+        /// (<see cref="Rules.Dispatch.WoundsTakenThisActivation"/>) - a Dangerous Terrain test on the charge
+        /// move is a wound the charger "took during this activation" for the melee result.</para>
         /// </summary>
         public static async Task ApplyAndPresent(IGameContext gameContext,
-            IReadOnlyList<PendingModelWound> pending, UnitID unit, string unitName)
+            IReadOnlyList<PendingModelWound> pending, IUnit unit)
         {
             // The last entry that will actually emit a beat - everything before it overlaps (#232).
             int lastCasualtyIndex = -1;
@@ -58,6 +62,7 @@ namespace FDG.Stages
                 if (entry.Wounds <= 0f || !entry.Model.GetIsAlive()) continue;
 
                 entry.Model.DealWounds(entry.Wounds);
+                Rules.Dispatch.WoundsTakenThisActivation.Add(unit, entry.Wounds);
 
                 bool overlap = i != lastCasualtyIndex;
 
@@ -66,7 +71,7 @@ namespace FDG.Stages
                 if (entry.Model.GetIsDead())
                 {
                     await gameContext.Presenter.Present(
-                        new ModelDiedBeat(entry.Model.ID, unit, unitName, entry.Model.Position, overlap));
+                        new ModelDiedBeat(entry.Model.ID, unit.ID, unit.Name, entry.Model.Position, overlap));
                 }
                 else
                 {
@@ -105,7 +110,7 @@ namespace FDG.Stages
             if (wounds <= 0f) return;
 
             bool wasAlive = unit.GetIsAlive();
-            await ApplyAndPresent(gameContext, PlanUnitWounds(unit, wounds), unit.ID, unit.Name);
+            await ApplyAndPresent(gameContext, PlanUnitWounds(unit, wounds), unit);
 
             // Self-inflicted, but a destruction like any other: OwnerDestroyed marks on other units have
             // to clear and a wrecked Transport has to spill its cargo. Killer-less, so no attacker is

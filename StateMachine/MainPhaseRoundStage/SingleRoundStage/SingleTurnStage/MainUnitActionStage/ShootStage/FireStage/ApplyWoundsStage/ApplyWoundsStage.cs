@@ -1,5 +1,6 @@
 using FDG.Presentation;
 using FDG.Presentation.Beats;
+using FDG.Rules.Dispatch;
 using FDG.Utilities;
 
 namespace FDG.Stages
@@ -71,6 +72,11 @@ namespace FDG.Stages
                     await GameContext.Presenter.Present(new ModelWoundedBeat(model.ID, model.Position, overlap));
                 }
             }
+
+            // #419: every attacker-caused wound lands here, so this is where the activation's wound ledger learns
+            // what the defender took (read by the melee result: "the number of wounds each unit took during this
+            // activation").
+            WoundsTakenThisActivation.Add(defendingUnit, totalWoundsApplied);
 
             if(metaData.DefendingUnit.GetIsAlive())
             {

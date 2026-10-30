@@ -1,5 +1,6 @@
 
 using System.Collections.Generic;
+using FDG.Rules.Dispatch;
 
 namespace FDG.Stages
 {
@@ -29,6 +30,12 @@ namespace FDG.Stages
             // Guarded like the rolling snapshot so minimal-store unit tests (no GameProgressData) are unaffected.
             if (context.ActivatedUnit != null && GameContext.GameDataStore.IsTypeAssigned<GameProgressData>())
                 GameProgressUtilities.SetActivatingUnit(GameContext.GameDataStore, context.ActivatedUnit);
+
+            // #419: a new activation starts with no unit having taken any wounds "during this activation" -
+            // the melee result's scope. Cleared table-wide here (and again by ReconcileEndOfActivationStage) so
+            // wounds taken between activations - round start/end effects, deployment - never count.
+            if (GameContext.TableState?.Units != null)
+                WoundsTakenThisActivation.SweepAll(GameContext.TableState.Units.Objects);
 
             await base.Enter(context);
         }

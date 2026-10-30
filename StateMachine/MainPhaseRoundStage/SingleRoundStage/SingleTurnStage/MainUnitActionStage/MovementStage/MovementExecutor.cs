@@ -207,8 +207,7 @@ namespace FDG.Stages
 
             bool wasAlive = unit.GetIsAlive();
 
-            await CasualtyPresentation.ApplyAndPresent(gameContext, result.PendingWounds,
-                unit.ID, unit.Name);
+            await CasualtyPresentation.ApplyAndPresent(gameContext, result.PendingWounds, unit);
 
             // Dangerous terrain can finish a unit off, and that death is a destruction like any other:
             // the dead unit's OwnerDestroyed marks on OTHER units have to clear, and if it was a Transport

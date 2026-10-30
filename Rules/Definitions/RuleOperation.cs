@@ -812,12 +812,14 @@ public abstract record RuleOperation
     }
 
     /// <summary>
-    /// Add <see cref="Amount"/> to the bearer's melee-won wound tally. Resolution of
-    /// <see cref="Effect.ExtraMeleeWoundCount"/> (Fear).
+    /// Add <see cref="Amount"/> to the bearer's ENEMY's taken-wounds total for the melee result (#419: 3.6
+    /// Fear(X), "enemies count as having taken +X wounds when checking who won"). Resolution of
+    /// <see cref="Effect.ExtraMeleeWoundCount"/> (Fear); folded by <c>DetermineMeleeWinnerStage</c>.
     /// </summary>
     public sealed record ExtraMeleeWoundCount(int Amount) : RuleOperation
     {
-        public override string Describe() => $"added {Amount} to its melee wound tally";
+        public override string Describe() =>
+            $"made enemies count as having taken +{Amount} wound{(Amount == 1 ? "" : "s")} in the melee result";
     }
 
     /// <summary>

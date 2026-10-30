@@ -55,8 +55,8 @@ namespace FDG.Ai.Tactician.Resolvers
                     // so the "shot from over 9"" arms (Stealth, Devout, Hive Bond, ...) price on the right side.
                     float attackDistance = UnitCompareUtilities.MinDistanceBetweenUnits(
                         request.AttackingUnit.GetValue(), target, out _, out _, includeVertical: true);
-                    float wounds = CombatMath.EstimateVolley(_evaluator, request.AttackingUnit,
-                        stats.TargetUnit, option.Weapon, stats.modelsThatCanShoot.Count,
+                    (float wounds, float counted) = CombatMath.EstimateVolleyWithCounted(_evaluator,
+                        request.AttackingUnit, stats.TargetUnit, option.Weapon, stats.modelsThatCanShoot.Count,
                         new AttackContext(attackDistance, AttackerMoved: true, DefenderInCover: stats.HasCover),
                         new List<string>());
 
@@ -66,7 +66,9 @@ namespace FDG.Ai.Tactician.Resolvers
                     // worth extra beyond its wounds - half-strength morale tests rout whole mobs
                     // (the engine's own mechanic), so breaking a horde beats shaving it.
                     int living = target.Models.Count(m => m.GetIsAlive());
-                    float kills = CombatMath.ExpectedKillsFrom(target, wounds);
+                    // #442 (#431 Scourge): the half-strength morale check allocates counted wounds virtually, so
+                    // they can push the mob over the line (and make the test due) without being dealt.
+                    float kills = CombatMath.ExpectedKillsFrom(target, wounds + counted);
                     bool breaks = living * 2 > target.Models.Count
                         && (living - kills) * 2f <= target.Models.Count;
                     // A5-6: a loaded transport is worth boat + payload (destroying it spills the

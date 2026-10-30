@@ -43,12 +43,16 @@ namespace FDG.Ai.Tactician
         float ChargeOriginInches = 0f);
 
     /// <summary>Expected outcome of one unit's whole attack (all weapon batches) against a defender.</summary>
+    /// <param name="ExpectedCountedWounds">#442 (#431 Scourge): wounds the defender only COUNTS as having taken - for
+    /// who won a melee and for whether a shooting attack's wounds trigger a Morale Test - folded from the same
+    /// save-complete operations <c>AssignWoundsStage</c> banks (<c>CountedWounds</c>). Never dealt.</param>
     public sealed record AttackEstimate(
         float ExpectedWounds,
         float ExpectedWoundsUncapped,
         float ExpectedKills,
         bool DestroysUnit,
-        IReadOnlyList<string> Notes)
+        IReadOnlyList<string> Notes,
+        float ExpectedCountedWounds = 0f)
     {
         public static readonly AttackEstimate Zero =
             new(0f, 0f, 0f, false, Array.Empty<string>());
@@ -59,17 +63,30 @@ namespace FDG.Ai.Tactician
     /// return strikes, with Counter's strike-first swap, fatigue, and Fear's who-won contribution.
     /// Wounds margin is attacker-perspective: positive means the attacker wins the resolution check.
     /// </summary>
+    /// <param name="AttackerWoundsTakenBefore">#442 (#419): wounds the attacker already took earlier in THIS activation
+    /// (<c>WoundsTakenThisActivation</c> - a Dangerous Terrain test, a Breath Attack, a spell), which the 3.6 melee
+    /// result counts too. 0 when nothing happened before the estimate.</param>
+    /// <param name="DefenderWoundsTakenBefore">The same ledger, read off the defender.</param>
     public sealed record MeleeEstimate(
         AttackEstimate AttackerAttack,
         AttackEstimate DefenderReturn,
         bool DefenderStrikesFirst,
         float AttackerFearBonus,
         float DefenderFearBonus,
-        IReadOnlyList<string> Notes)
+        IReadOnlyList<string> Notes,
+        float AttackerWoundsTakenBefore = 0f,
+        float DefenderWoundsTakenBefore = 0f)
     {
+        /// <summary>
+        /// DetermineMeleeWinnerStage's comparison, attacker-perspective (positive = the defender took more and loses):
+        /// each side's taken total is the wounds dealt to it, the wounds it only counts as taken (#431 Scourge), what it
+        /// took earlier in the activation (#419) and the enemy's Fear (#419 3.6 wording).
+        /// </summary>
         public float ExpectedWoundsMargin =>
-            AttackerAttack.ExpectedWounds + AttackerFearBonus
-            - (DefenderReturn.ExpectedWounds + DefenderFearBonus);
+            AttackerAttack.ExpectedWounds + AttackerAttack.ExpectedCountedWounds + DefenderWoundsTakenBefore
+                + AttackerFearBonus
+            - (DefenderReturn.ExpectedWounds + DefenderReturn.ExpectedCountedWounds + AttackerWoundsTakenBefore
+                + DefenderFearBonus);
     }
 
     /// <summary>
@@ -114,6 +131,7 @@ namespace FDG.Ai.Tactician
             {
             Weapon? carrier = HypotheticalCarrier(hypotheticalAttackerRule);
             var notes = new List<string>();
+            var tally = new Tally();
             float total = 0f;
             // #191 search perf pass 5: one volley context per estimate, not one per weapon batch.
             AttackContext volleyContext = context.IsMelee || context.IsCharging
@@ -141,12 +159,14 @@ namespace FDG.Ai.Tactician
                 }
                 if (sight <= 0f) continue;
 
+                float countedBefore = tally.Counted;
                 float volley = EstimateVolleyCore(evaluator, attacker, defender, weapon, count,
-                    volleyContext, notes, carrier);
+                    volleyContext, notes, carrier, tally);
+                if (sight < 1f) tally.Counted = countedBefore + sight * (tally.Counted - countedBefore);
                 total += sight < 1f ? sight * volley : volley;
             }
 
-            return Finish(total, defender, notes);
+            return Finish(total, defender, notes, tally.Counted);
         }
             finally { global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.Combat, __probe); }
         }
@@ -248,6 +268,8 @@ namespace FDG.Ai.Tactician
             // joins with its living models, as in the stage (ChargerParticipant), so Impact sums per model -
             // a joined hero's own Impact included - through the same effect the stage runs.
             float impactWounds = 0f;
+            var attackerTally = new Tally();
+            var defenderTally = new Tally();
             // #191 search perf pass 5: the defender's melee participants once (two dispatches read them).
             RuleParticipant[] defenderMelee = DetermineStrikeOrderStage.SubjectWithMeleeWeapons(def);
             var contactParticipants = new RuleParticipant[defenderMelee.Length + 1];
@@ -266,18 +288,24 @@ namespace FDG.Ai.Tactician
                     new Weapon("Impact", rangeInches: 0f, attacks: 0,
                         armorPenetration: impact.ArmorPenetration),
                     SingleGroup(impactHits), apReduction: 0, wholeAttackSaveModifier: 0,
-                    coverBonus: 0, isMelee: true, notes);
+                    coverBonus: 0, isMelee: true, notes, tally: attackerTally);
             }
 
             // --- DetermineStrikeOrderStage mirror: a Counter defender with a usable melee weapon takes
             // the first swing, and the charge is spent - nobody counts as charging from here on. A Fatigued
-            // (or Shaken) defender's Counter fails its own condition in this evaluation (#422).
+            // (or Shaken) defender's Counter fails its own condition in this evaluation (#422). #442 (#431): the
+            // charger joins with its melee weapons as in the stage, so an Unwieldy charger (StrikeLast - weapon-scoped
+            // in 3.6, or the unit-scoped grant) swaps the order the same way.
+            RuleParticipant[] chargerMelee = DetermineStrikeOrderStage.ActorWithMeleeWeapons(atk);
+            var strikeOrderParticipants = new RuleParticipant[chargerMelee.Length + defenderMelee.Length];
+            Array.Copy(chargerMelee, strikeOrderParticipants, chargerMelee.Length);
+            Array.Copy(defenderMelee, 0, strikeOrderParticipants, chargerMelee.Length, defenderMelee.Length);
             IReadOnlyList<RuleOperation> counterOps = Ops(evaluator.EvaluateAllNamed(
-                new CounterTriggerContext(atk, def), defenderMelee));
+                new CounterTriggerContext(atk, def), strikeOrderParticipants));
             bool anyStrikeFirst = false;
             for (int i = 0; i < counterOps.Count && !anyStrikeFirst; i++)
             {
-                anyStrikeFirst = counterOps[i] is RuleOperation.StrikeFirst;
+                anyStrikeFirst = counterOps[i] is RuleOperation.StrikeFirst or RuleOperation.StrikeLast;
             }
             bool defenderStrikesFirst = anyStrikeFirst && def.GetMeleeWeapons().Count > 0;
 
@@ -291,33 +319,37 @@ namespace FDG.Ai.Tactician
             if (defenderStrikesFirst)
             {
                 defenderSwings = SwingAllBatches(evaluator, defender, attacker,
-                    WeaponBatches(def, melee: true), meleeContext with { IsCharging = false }, notes);
+                    WeaponBatches(def, melee: true), meleeContext with { IsCharging = false }, notes,
+                    tally: defenderTally);
                 float attackerCasualties = defenderSwings;
                 attackerSwings = SwingAllBatches(evaluator, attacker, defender,
-                    SurvivorWeaponBatches(atk, attackerCasualties), meleeContext, notes, carrier);
+                    SurvivorWeaponBatches(atk, attackerCasualties), meleeContext, notes, carrier, attackerTally);
             }
             else
             {
                 attackerSwings = SwingAllBatches(evaluator, attacker, defender,
-                    WeaponBatches(atk, melee: true), meleeContext, notes, carrier);
+                    WeaponBatches(atk, melee: true), meleeContext, notes, carrier, attackerTally);
                 defenderSwings = SwingAllBatches(evaluator, defender, attacker,
                     SurvivorWeaponBatches(def, impactWounds + attackerSwings),
-                    meleeContext with { IsCharging = false }, notes);
+                    meleeContext with { IsCharging = false }, notes, tally: defenderTally);
             }
 
             // --- DetermineMeleeWinnerStage mirror: Fear(X) makes the ENEMY count as having taken X more wounds
-            // for the who-won comparison only (#419, 3.6 wording) - the same margin as the 3.5 "+X dealt", so the
-            // estimate's arithmetic is unchanged. Not mirrored (#442): wounds a side already took earlier in the
-            // activation, which the engine's result now counts too.
+            // for the who-won comparison only (#419, 3.6 wording) - the same margin as the 3.5 "+X dealt". #442: the
+            // wounds each side already took earlier in the activation (#419's ledger) and the wounds it only counts
+            // as taken (#431 Scourge) ride the estimate too, so ExpectedWoundsMargin is the engine's comparison.
             var resolution = new MeleeResolutionContext(atk, def);
             float attackerFear = SumFear(evaluator, resolution, atk);
             float defenderFear = SumFear(evaluator, resolution, def);
 
-            AttackEstimate attackerEstimate = Finish(impactWounds + attackerSwings, defender, notes);
-            AttackEstimate defenderEstimate = Finish(defenderSwings, attacker, Array.Empty<string>());
+            AttackEstimate attackerEstimate = Finish(impactWounds + attackerSwings, defender, notes,
+                attackerTally.Counted);
+            AttackEstimate defenderEstimate = Finish(defenderSwings, attacker, Array.Empty<string>(),
+                defenderTally.Counted);
 
             return new MeleeEstimate(attackerEstimate, defenderEstimate, defenderStrikesFirst,
-                attackerFear, defenderFear, notes);
+                attackerFear, defenderFear, notes,
+                WoundsTakenThisActivation.Peek(atk), WoundsTakenThisActivation.Peek(def));
         }
             finally { global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.Combat, __probe); }
         }
@@ -334,9 +366,31 @@ namespace FDG.Ai.Tactician
             => EstimateVolleyCore(evaluator, attacker, defender, weapon, weaponCount, context, notes,
                 HypotheticalCarrier(hypotheticalAttackerRule));
 
+        /// <summary>
+        /// #442 (#431 Scourge): <see cref="EstimateVolley"/> plus the wounds the defender only COUNTS as taken - the
+        /// figure the shooting morale check allocates virtually (<c>MoraleUtilities.WoundsLeftUnitAtHalfStrength</c>).
+        /// </summary>
+        public static (float Wounds, float CountedWounds) EstimateVolleyWithCounted(RuleEvaluator evaluator,
+            DataBinding<UnitData> attacker, DataBinding<UnitData> defender,
+            Weapon weapon, int weaponCount, AttackContext context, List<string> notes)
+        {
+            var tally = new Tally();
+            float wounds = EstimateVolleyCore(evaluator, attacker, defender, weapon, weaponCount, context, notes,
+                carrier: null, tally);
+            return (wounds, tally.Counted);
+        }
+
+        // #442: wounds an attack only makes its target COUNT as taken (#431 Scourge), summed across the volleys and
+        // save passes of one estimate - the attack-wide figure the engine banks in CountedWounds.
+        private sealed class Tally
+        {
+            public float Counted;
+        }
+
         private static float EstimateVolleyCore(RuleEvaluator evaluator,
             DataBinding<UnitData> attacker, DataBinding<UnitData> defender,
-            Weapon weapon, int weaponCount, AttackContext context, List<string> notes, Weapon? carrier)
+            Weapon weapon, int weaponCount, AttackContext context, List<string> notes, Weapon? carrier,
+            Tally? tally = null)
         {
             UnitData atk = attacker.GetValue();
             UnitData def = defender.GetValue();
@@ -453,7 +507,7 @@ namespace FDG.Ai.Tactician
             var __saveProbe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
             float wounds = ResolveSaves(evaluator, atk, def, weapon, groups, apReduction,
                 saveNet, coverBonus, context.IsMelee, notes, bonusAttacks, defenderModels, carrier,
-                context.DistanceInches, chargeOrigin);
+                context.DistanceInches, chargeOrigin, tally: tally);
             global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.VolleySave, __saveProbe);
 
             // --- ResolveBonusMeleeAttacksStage mirror (#376 Bloodthirsty): the follow-up batch earned
@@ -471,7 +525,8 @@ namespace FDG.Ai.Tactician
                     wounds += ResolveSaves(evaluator, atk, def, weapon,
                         new List<SuccessfulHitInfo> { SingleGroupInfo(bonusHits) }, apReduction,
                         saveNet, coverBonus, context.IsMelee, notes, defenderModels: defenderModels,
-                        carrier: carrier, distanceInches: context.DistanceInches, chargeOriginInches: chargeOrigin);
+                        carrier: carrier, distanceInches: context.DistanceInches, chargeOriginInches: chargeOrigin,
+                        tally: tally);
                 }
             }
             return wounds;
@@ -484,7 +539,7 @@ namespace FDG.Ai.Tactician
             Weapon weapon, List<SuccessfulHitInfo> groups, int apReduction, int wholeAttackSaveModifier,
             int coverBonus, bool isMelee, List<string> notes, BonusAttackSink? bonusAttackSink = null,
             IReadOnlyList<IModel>? defenderModels = null, Weapon? carrier = null,
-            float distanceInches = 0f, float chargeOriginInches = 0f, bool isSpell = false)
+            float distanceInches = 0f, float chargeOriginInches = 0f, bool isSpell = false, Tally? tally = null)
         {
             int baseDefense = HeroStatRules.GetSaveDefense(def);
             int ap = Math.Max(0, weapon.ArmorPenetration - apReduction);
@@ -534,6 +589,11 @@ namespace FDG.Ai.Tactician
             if (saveCompleteOps.Count > 0)
             {
                 bonusAttackSink?.ApplyFrom(saveCompleteOps);
+
+                // #442 (#431 Scourge): AssignWoundsStage banks these on the defender; nothing is dealt.
+                if (tally != null)
+                    foreach (RuleOperation op in saveCompleteOps)
+                        if (op is RuleOperation.AddCountedWoundsTaken counted) tally.Counted += counted.Count;
 
                 var reroll = new RerollSink();
                 reroll.ApplyFrom(saveCompleteOps);
@@ -675,11 +735,12 @@ namespace FDG.Ai.Tactician
         private static float SwingAllBatches(RuleEvaluator evaluator,
             DataBinding<UnitData> attacker, DataBinding<UnitData> defender,
             List<(Weapon Weapon, int Count)> batches, AttackContext context, List<string> notes,
-            Weapon? carrier = null)
+            Weapon? carrier = null, Tally? tally = null)
         {
             float total = 0f;
             foreach ((Weapon weapon, int count) in batches)
-                total += EstimateVolleyCore(evaluator, attacker, defender, weapon, count, context, notes, carrier);
+                total += EstimateVolleyCore(evaluator, attacker, defender, weapon, count, context, notes, carrier,
+                    tally);
             return total;
         }
 
@@ -717,12 +778,12 @@ namespace FDG.Ai.Tactician
             => ExpectedKills(defender, Math.Min(wounds, defender.RemainingWounds), out _);
 
         private static AttackEstimate Finish(float totalWounds, DataBinding<UnitData> defender,
-            IReadOnlyList<string> notes)
+            IReadOnlyList<string> notes, float countedWounds = 0f)
         {
             float remaining = defender.GetValue().RemainingWounds;
             float capped = Math.Min(totalWounds, remaining);
             float kills = ExpectedKills(defender.GetValue(), capped, out bool destroys);
-            return new AttackEstimate(capped, totalWounds, kills, destroys, notes);
+            return new AttackEstimate(capped, totalWounds, kills, destroys, notes, countedWounds);
         }
 
         private static RuleParticipant ActorWithBatch(UnitData attacker, Weapon weapon) =>

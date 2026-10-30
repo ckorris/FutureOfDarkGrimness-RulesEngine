@@ -801,6 +801,82 @@ namespace FDG.Tests
             Assert.That(estimate.ExpectedWounds, Is.EqualTo(5f / 6f).Within(0.01f));
         }
 
+        // --- #442: the melee result's 3.6 terms and the strike order ----------------------------------------------
+
+        // #431 Scourge: "for each unmodified result of 1 to block hits, enemies count as having taken 2 extra wounds"
+        // - banked on the defender by AssignWoundsStage; the estimate's counted wounds must equal the bank.
+        [Test]
+        public async Task Scourge_CountedWounds_MatchTheEnginesBank()
+        {
+            var weapon = Rifle(attacks: 2);
+            weapon.AttachRuleDefinition(new ResolvedRule("Scourge", WeaponRules36Definitions.Scourge));
+            var attacker = MakeUnit(5, weapon, atX: 0f);
+            var defender = MakeUnit(10, null, defense: 4, atX: 10f);
+            float distance = Distance(attacker, defender);
+
+            float engineWounds = await EngineVolleyWounds(attacker, defender, weapon, 5);
+            float engineCounted = CountedWounds.Peek(defender.GetValue());
+            (float wounds, float counted) = CombatMath.EstimateVolleyWithCounted(_ctx.RuleEvaluator, attacker,
+                defender, weapon, 5, new AttackContext(distance), new List<string>());
+
+            Assert.That(engineCounted, Is.GreaterThan(0f), "scene check: Scourge banked something");
+            Assert.That(counted, Is.EqualTo(engineCounted).Within(Math.Max(0.05f, 0.02f * engineCounted)));
+            Assert.That(wounds, Is.EqualTo(engineWounds).Within(Math.Max(0.05f, 0.02f * engineWounds)));
+        }
+
+        [Test]
+        public void EstimateMelee_Margin_CountsScourge_AndWoundsTakenEarlierInTheActivation()
+        {
+            var scourgeBlade = Blade(attacks: 3);
+            scourgeBlade.AttachRuleDefinition(new ResolvedRule("Scourge", WeaponRules36Definitions.Scourge));
+            var attacker = MakeUnit(3, scourgeBlade, atX: 0f);
+            var defender = MakeUnit(5, Blade(), atX: 1f);
+
+            MeleeEstimate fresh = CombatMath.EstimateMelee(_ctx.RuleEvaluator, attacker, defender);
+            Assert.That(fresh.AttackerAttack.ExpectedCountedWounds, Is.GreaterThan(0f));
+            Assert.That(fresh.ExpectedWoundsMargin, Is.EqualTo(fresh.AttackerAttack.ExpectedWounds
+                + fresh.AttackerAttack.ExpectedCountedWounds - fresh.DefenderReturn.ExpectedWounds).Within(0.0001f));
+
+            // #419: the defender already took 2 wounds this activation (a Breath Attack, say) - they count for the result.
+            WoundsTakenThisActivation.Add(defender.GetValue(), 2f);
+            MeleeEstimate afterBreath = CombatMath.EstimateMelee(_ctx.RuleEvaluator, attacker, defender);
+            Assert.That(afterBreath.ExpectedWoundsMargin, Is.EqualTo(fresh.ExpectedWoundsMargin + 2f).Within(0.0001f));
+        }
+
+        // #431: OPR 3.6 prints Unwieldy ("strikes last when charging") on the WEAPON; the strike-order mirror now
+        // fans the charger out with its melee weapons, as DetermineStrikeOrderStage does.
+        [Test]
+        public void EstimateMelee_UnwieldyChargerWeapon_StrikesLast()
+        {
+            var axe = Blade(attacks: 3);
+            axe.AttachRuleDefinition(new ResolvedRule("Unwieldy", WeaponRules36Definitions.Unwieldy));
+            var attacker = MakeUnit(3, axe, atX: 0f);
+            var defender = MakeUnit(3, Blade(), atX: 1f);
+            var unarmed = MakeUnit(3, null, atX: 1f);
+
+            Assert.That(CombatMath.EstimateMelee(_ctx.RuleEvaluator, attacker, defender).DefenderStrikesFirst, Is.True);
+            Assert.That(CombatMath.EstimateMelee(_ctx.RuleEvaluator, attacker, unarmed).DefenderStrikesFirst, Is.False,
+                "a defender that cannot swing is not put ahead of the charger (the stage's guard)");
+        }
+
+        // #435: Great Sergeant's AP(+2) rides the champion's weapon copy like Sergeant's AP(+1), so CombatMath prices
+        // it through the batch's own rules - pinned against the stages.
+        [Test]
+        public async Task GreatSergeant_ChampionCopy_MatchesEngine()
+        {
+            var copy = Rifle(attacks: 2);
+            copy.AttachRuleDefinition(new ResolvedRule("Great Sergeant", AofSweep36Definitions.GreatSergeant()));
+            var champion = MakeUnit(1, copy, atX: 0f);
+            var defender = MakeUnit(5, null, defense: 3, atX: 10f);
+
+            await AssertVolleyPinned(champion, defender, copy, weaponCount: 1);
+            float plain = CombatMath.EstimateVolley(_ctx.RuleEvaluator, champion, defender, Rifle(attacks: 2), 1,
+                new AttackContext(Distance(champion, defender)), new List<string>());
+            float sergeant = CombatMath.EstimateVolley(_ctx.RuleEvaluator, champion, defender, copy, 1,
+                new AttackContext(Distance(champion, defender)), new List<string>());
+            Assert.That(sergeant, Is.GreaterThan(plain + 0.01f), "AP(+2) into Defense 3");
+        }
+
         // --- Harness --------------------------------------------------------------------------------
 
         /// <summary>

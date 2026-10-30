@@ -878,7 +878,7 @@ namespace FDG.Network.Connection.Lobby
             // #450 D5: pick the game's seed now if the lobby left it random, so the AI players below derive
             // their streams from the same seed the dice use (FDGServer would pick one too, but only after the
             // bots exist). A launch-local copy: the lobby's own setting stays "random" for the next game.
-            GameSettings launchSettings = FDGServer.WithConcreteSeed(_gameSettings);
+            GameSettings launchSettings = _gameSettings.WithConcreteSeed();
 
             //Make a player controller for each player.
             PlayerSlot[] playerSlots = new PlayerSlot[_playerInfosFull.Count];

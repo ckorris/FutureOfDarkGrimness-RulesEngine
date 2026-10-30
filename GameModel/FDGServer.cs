@@ -94,7 +94,7 @@ namespace FDG.GameModel
             // #450 D5: every game runs under a concrete seed, so its replay can always say which one. Done
             // before anything reads the settings, so the seed the dice use is the one the progress record
             // (and so every save) carries.
-            gameSettings = WithConcreteSeed(gameSettings);
+            gameSettings = gameSettings.WithConcreteSeed();
 
             _gameDataStore = gameDataStore;
             _messageBusHost = messageBusHost;
@@ -185,7 +185,7 @@ namespace FDG.GameModel
                 : progress.Settings;
             // #450 D5: a save from before every game was seeded resumes under a concrete seed too; written
             // back with the rest, so the next save carries it.
-            settings = WithConcreteSeed(settings);
+            settings = settings.WithConcreteSeed();
             progress.Settings = settings;
             // #450: keep the game's identity across the resume; a pre-#450 save or a freshly compiled
             // scenario has none yet, so this resume is where it is minted. Never for a simulation: it is a
@@ -304,13 +304,6 @@ namespace FDG.GameModel
             RuleResolver ruleResolver = GameBootstrap.BuildRuleResolver(playerSlots);
             _ruleResolver = ruleResolver; // #101: shared in-game for granted-rule projection (auras / buffs)
             return ruleResolver;
-        }
-
-        /// <summary>#450 D5: <paramref name="settings"/> with a seed picked for it when it has none.</summary>
-        internal static GameSettings WithConcreteSeed(GameSettings settings)
-        {
-            settings.DiceSeed ??= Random.Shared.Next();
-            return settings;
         }
 
         /// <summary>

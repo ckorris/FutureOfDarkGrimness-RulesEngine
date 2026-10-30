@@ -306,6 +306,18 @@ namespace FDG.Tests
                 "every rolling snapshot after the resume keeps it");
         }
 
+        [Test]
+        public void WithConcreteSeed_KeepsAGivenSeed_AndPicksOneOtherwise()
+        {
+            GameSettings seeded = GameSettings.GetDefault();
+            seeded.DiceSeed = 17;
+            GameSettings random = GameSettings.GetDefault();
+
+            Assert.That(seeded.WithConcreteSeed().DiceSeed, Is.EqualTo(17));
+            Assert.That(random.WithConcreteSeed().DiceSeed, Is.Not.Null);
+            Assert.That(random.DiceSeed, Is.Null, "a copy: the lobby's own setting stays random for the next game");
+        }
+
         // --- Wire --------------------------------------------------------------------------------------
 
         [Test]

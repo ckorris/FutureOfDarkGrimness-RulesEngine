@@ -133,6 +133,19 @@ namespace FDG
             return merged;
         }
 
+        /// <summary>
+        /// #450 D5: these settings with a <see cref="DiceSeed"/> picked for them when they have none, so every
+        /// game runs - and its replay says it ran - under a concrete seed. <c>FDGServer</c> applies it on both
+        /// constructors; a launch path that builds AI players first applies it before them, so the bots derive
+        /// their streams from the same seed the dice use.
+        /// </summary>
+        public GameSettings WithConcreteSeed()
+        {
+            GameSettings seeded = this;
+            seeded.DiceSeed ??= Random.Shared.Next();
+            return seeded;
+        }
+
         public static GameSettings GetDefault()
         {
             return new GameSettings()

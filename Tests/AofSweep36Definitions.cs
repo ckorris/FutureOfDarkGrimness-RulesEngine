@@ -28,9 +28,6 @@ namespace FDG.Tests
             "If you do, this model moves -6\" when using Advance, and -6\" when using Rush/Charge until the end of that " +
             "activation.";
 
-        /// <summary>The once-per-activation "used" marker the engine stamps when a cost is paid
-        /// (<c>RuleEvaluator.UsedMarker</c>, cleared at activation end) - Ethereal's "if you do".</summary>
-        public static readonly TokenType EtherealUsed = new("AbilityUsed:Ethereal");
 
         private static SpecialRuleDefinition Unit(string name, string description, params HookEntry[] passive) =>
             new(name, passive, System.Array.Empty<ActivatedAbility>(), ERuleScope.Unit,
@@ -70,8 +67,8 @@ namespace FDG.Tests
 
         /// <summary>Ethereal (3.6: the -6" applies only "if you do" teleport, until the end of that activation; 3.5 moved
         /// -6" always). The teleport is the catalog Teleport's ability (TeleportStage routes on <see cref="Effect.Teleport"/>);
-        /// each move penalty gates on the ability's own used marker, which the stage stamps only when the placement is
-        /// accepted and which clears at activation end.</summary>
+        /// each move penalty gates on <see cref="TokenType.TeleportedThisActivation"/>, which the stage stamps only when a
+        /// model actually moved and which clears at activation end.</summary>
         public static SpecialRuleDefinition Ethereal() => new("Ethereal",
             new[] { EtherealPenalty(EActionType.Advance), EtherealPenalty(EActionType.Rush), EtherealPenalty(EActionType.Charge) },
             new[]
@@ -83,7 +80,8 @@ namespace FDG.Tests
             ERuleScope.Unit, Valence: EValence.Positive, Description: EtherealText);
 
         private static HookEntry EtherealPenalty(EActionType action) => new(EHookID.Movement_OnMoveActionDeclared,
-            new Condition.And(new Condition.ActionTypeIs(action), new Condition.TokenPresent(EtherealUsed)),
+            new Condition.And(new Condition.ActionTypeIs(action),
+                new Condition.TokenPresent(TokenType.TeleportedThisActivation)),
             new Effect.MovementBonus(action, -6f), ELifetime.ThisActivation);
 
         private static SpecialRuleDefinition Buff(string name, string granted, string description) => new(name,

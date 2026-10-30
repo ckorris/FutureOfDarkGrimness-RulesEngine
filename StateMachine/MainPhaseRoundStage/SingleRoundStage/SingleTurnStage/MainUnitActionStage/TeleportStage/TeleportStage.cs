@@ -3,6 +3,8 @@ using System.Linq;
 using FDG.Data;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
+using FDG.Rules.Foundation;
+using FDG.Rules.Tokens;
 using FDG.StageResolution;
 using FDG.StageResolution.Requests;
 using FDG.Utilities;
@@ -102,6 +104,13 @@ namespace FDG.Stages
 
                 model.SetPosition(placement.Position);
                 if (placement.Facing.HasValue) model.SetFacing(placement.Facing.Value);
+            }
+
+            // #435: a placement that moved a model is the teleport rules key on (3.6 Ethereal's "If you do, this model
+            // moves -6\" ... until the end of that activation"); standing still is not "you do".
+            if (anyMoved)
+            {
+                unit.Tokens.AddToken(TokenDefinitionCatalog.Create(TokenType.TeleportedThisActivation));
             }
 
             GameContext.Log(anyMoved

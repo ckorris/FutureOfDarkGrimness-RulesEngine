@@ -221,6 +221,12 @@ public static class TokenDefinitionCatalog
                 ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.RoundEnd(),
                 Description: "Has taken its Dangerous Terrain Test this activation - it does not test again until its next one."),
 
+            // #435: a teleport actually moved this unit's models this activation (Ethereal's "if you do"). Stamped by
+            // TeleportStage; the activated unit's flag, so the end-of-activation sweep clears it.
+            new(TokenType.TELEPORTED_THIS_ACTIVATION_ID, "Teleported", EValence.Neutral,
+                ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.ActivationEnd(),
+                Description: "This unit teleported this activation."),
+
             new(TokenType.OFF_TABLE_FROM_FORCED_MOVE_ID, "Off table (forced move)", EValence.Neutral,
                 ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.ManualOnly()),
 

@@ -148,6 +148,13 @@ public readonly record struct TokenType(string Id)
     // and end of every activation, like the wound ledger above; RoundEnd is the catalog's backstop.
     public const string DANGEROUS_TERRAIN_TESTED_THIS_ACTIVATION_ID = "DangerousTerrainTestedThisActivation";
 
+    // #435 (OPR 3.6 AoF Ethereal: "you may place this model anywhere fully within 6" of its position. If you do, this
+    // model moves -6" ... until the end of that activation"): this unit's models were actually placed somewhere else by
+    // a teleport this activation. Stamped by TeleportStage only when at least one model moved - an accepted placement
+    // that leaves every model where it stood (the CLI / AI default) is not "you do". The activated unit's own flag,
+    // so the end-of-activation sweep clears it (ActivationEnd).
+    public const string TELEPORTED_THIS_ACTIVATION_ID = "TeleportedThisActivation";
+
 
     public static readonly TokenType Shaken = new(SHAKEN_ID);
     public static readonly TokenType Fatigued = new(FATIGUED_ID);
@@ -163,6 +170,7 @@ public readonly record struct TokenType(string Id)
     public static readonly TokenType CountedWoundsTaken = new(COUNTED_WOUNDS_TAKEN_ID);
     public static readonly TokenType WoundsTakenThisActivation = new(WOUNDS_TAKEN_THIS_ACTIVATION_ID);
     public static readonly TokenType DangerousTerrainTestedThisActivation = new(DANGEROUS_TERRAIN_TESTED_THIS_ACTIVATION_ID);
+    public static readonly TokenType TeleportedThisActivation = new(TELEPORTED_THIS_ACTIVATION_ID);
     public static readonly TokenType SpellTokens = new(SPELL_TOKENS_ID);
 
     /// <summary>

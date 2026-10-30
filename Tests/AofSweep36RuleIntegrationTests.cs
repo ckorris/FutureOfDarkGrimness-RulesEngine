@@ -69,9 +69,24 @@ namespace FDG.Tests
             await Teleport(ctx, unit);
 
             Assert.That(NetMove(ctx, unit, action), Is.EqualTo(-6f), "'if you do, this model moves -6\"'");
-            Token used = unit.GetValue().Tokens.GetAllTokens(AofSweep36Definitions.EtherealUsed).Single();
-            Assert.That(used.ClearTrigger, Is.InstanceOf<TokenClearTrigger.ActivationEnd>(),
+            Token teleported = unit.GetValue().Tokens.GetAllTokens(TokenType.TeleportedThisActivation).Single();
+            Assert.That(teleported.ClearTrigger, Is.InstanceOf<TokenClearTrigger.ActivationEnd>(),
                 "'until the end of that activation'");
+        }
+
+        [Test]
+        public async Task Ethereal_AnAcceptedPlacementThatStandsStill_CostsNoMovement()
+        {
+            // The CLI / AI default answer to the placement is "stay put": the once-per-activation cost is paid (so the
+            // offer does not loop), but no model was placed elsewhere - not "you do".
+            var ctx = new TriggeredMoveTestContext(_store, new CannedPlaceRequester(new Position(10f, 10f)));
+            DataBinding<UnitData> unit = EtherealUnit();
+
+            await Teleport(ctx, unit);
+
+            Assert.That(unit.GetValue().Tokens.HasToken(new TokenType("AbilityUsed:Ethereal")), Is.True, "cost paid");
+            Assert.That(unit.GetValue().Tokens.HasToken(TokenType.TeleportedThisActivation), Is.False);
+            Assert.That(NetMove(ctx, unit, EActionType.Advance), Is.EqualTo(0f));
         }
 
         [Test]

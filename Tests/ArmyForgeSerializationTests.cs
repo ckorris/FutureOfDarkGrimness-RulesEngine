@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using FDG.Rules.Definitions;
 using FDG.Rules.Serialization;
@@ -380,6 +382,50 @@ public class ArmyForgeSerializationTests
         Assert.That(solve.Units[0].IsCombinedPair, Is.True);
         Assert.That(solve.Selections!.Units, Has.Count.EqualTo(2), "a pair solves to two list entries");
         Assert.That(solve.Selections.Units[1].CombinedWithId, Is.EqualTo(solve.Selections.Units[0].Id));
+    }
+
+    // #440: a new edition renamed the weapon, so no pick-set reproduces the saved loadout exactly and the exact
+    // search gives up - but the same roster unit, with the pick the caller's score rates closest, is still the answer.
+    [Test]
+    public void SolveNearest_PicksTheHighestScoringPickSet_WhenNoExactMatchExists()
+    {
+        BookFile book = MakeBook();
+        var target = new UnitFileEntry
+        {
+            Name = "Warriors", ModelCount = 5, PointCost = 70,
+            Weapons =
+            {
+                new WeaponFileEntry { Name = "Rifle", Quantity = 4, RangeInches = 24, Attacks = 1 },
+                new WeaponFileEntry { Name = "Heavy Rifle Mk I", Quantity = 1, RangeInches = 36, Attacks = 1 }, // old name
+            },
+        };
+        var plain = new ArmyListFile { Faction = "Demo" };
+        plain.Units.Add(target);
+        Assume.That(SelectionSolver.Solve(book, plain).Complete, Is.False, "the profile no longer exists exactly");
+
+        // Score: one point per weapon whose profile range the target also carries.
+        double Score(UnitFileEntry u) => u.Weapons.Count(w => target.Weapons.Any(t => t.RangeInches == w.RangeInches));
+        UnitSolve nearest = SelectionSolver.SolveNearest(book, target, book.Units.Where(u => u.Name == "Warriors").ToList(), Score);
+
+        Assert.That(nearest.Solved, Is.True, nearest.Failure);
+        Assert.That(nearest.Selection.Single().Choices.Single().OptionId, Is.EqualTo("heavy-rifle"));
+    }
+
+    [Test]
+    public void SolveNearest_TriesTheCombinedReading_WhenNoSingleCopyReachesTheSize()
+    {
+        BookFile book = MakeBook();
+        var target = new UnitFileEntry
+        {
+            Name = "Warriors", Id = "w", ModelCount = 10, PointCost = 130,
+            Weapons = { new WeaponFileEntry { Name = "Old Rifle", Quantity = 10, RangeInches = 24, Attacks = 1 } },
+        };
+
+        double Score(UnitFileEntry u) => -Math.Abs(u.ModelCount - target.ModelCount);
+        UnitSolve nearest = SelectionSolver.SolveNearest(book, target, book.Units.Where(u => u.Name == "Warriors").ToList(), Score);
+
+        Assert.That(nearest.IsCombinedPair, Is.True, "ten models from a five-model unit with no add-models section is a pair");
+        Assert.That(nearest.Selection[1].CombinedWithId, Is.EqualTo("w"));
     }
 
     [Test]

@@ -89,7 +89,83 @@ namespace FDG.ArmyBuilding
             public int Budget;
             public BuilderUnit? Best;
             public int BestDelta = int.MaxValue;
-            public bool Exact => Best is not null && BestDelta == 0;
+
+            /// <summary>#440: when set, the search is a NEAREST fit - every leaf is a candidate, ranked by this
+            /// score (higher is better, price closeness breaks ties) - instead of an exact loadout match.</summary>
+            public Func<UnitFileEntry, double>? Score;
+            public double BestScore = double.NegativeInfinity;
+            public UnitFileEntry? BestCompiled;
+
+            public bool Exact => Score is null && Best is not null && BestDelta == 0;
+        }
+
+        /// <summary>
+        /// #440 - the closest pick-set rather than an exact one: the unit to place no longer exists in this exact
+        /// shape (a new edition renamed or re-statted its weapons, or moved an option into the base loadout), so
+        /// the exact search in <see cref="Solve"/> finds nothing, but the same roster unit is still the right
+        /// unit. Walks the same option space under the same budget, compiles every leaf through the real
+        /// compiler, and keeps the one <paramref name="score"/> rates highest (ties: the price closest to the
+        /// target's). The two-copy combined reading (#107) is also tried when no single copy reaches the
+        /// target's size. The judgement of "close" is the caller's - this only searches.
+        /// </summary>
+        /// <param name="candidates">The roster units the target may be (normally the same-name unit).</param>
+        public static UnitSolve SolveNearest(BookFile book, UnitFileEntry target, IReadOnlyList<RosterUnit> candidates,
+            Func<UnitFileEntry, double> score, int combinationCap = DefaultCombinationCap)
+        {
+            if (book is null) throw new ArgumentNullException(nameof(book));
+            if (target is null) throw new ArgumentNullException(nameof(target));
+            if (score is null) throw new ArgumentNullException(nameof(score));
+            if (candidates.Count == 0)
+                return new UnitSolve { UnitName = target.Name, Failure = $"no candidate unit in book '{book.Name}'" };
+
+            var single = new Search { Budget = combinationCap, Score = score };
+            foreach (RosterUnit roster in candidates)
+                Descend(book, roster, target, 0, new List<UpgradeChoice>(), single);
+
+            Search? pair = null;
+            if (single.BestCompiled is null || single.BestCompiled.ModelCount != target.ModelCount)
+            {
+                pair = new Search { Budget = combinationCap, Score = score };
+                foreach (RosterUnit roster in candidates)
+                    DescendPair(book, roster, target, 0, new List<UpgradeChoice>(), pair);
+            }
+
+            if (pair?.Best is not null && pair.BestScore > single.BestScore + ScoreEpsilon)
+            {
+                BuilderUnit second = Clone(pair.Best);
+                second.Id = (target.Id ?? target.Name) + "-combined";
+                second.CombinedWithId = target.Id;
+                return Solved(target, pair, new List<BuilderUnit> { pair.Best, second });
+            }
+
+            return single.Best is not null
+                ? Solved(target, single, new List<BuilderUnit> { single.Best })
+                : new UnitSolve { UnitName = target.Name, Failure = "no pick-set compiled" };
+        }
+
+        private const double ScoreEpsilon = 1e-9;
+
+        /// <summary>Whether a compiled leaf beats the search's best so far; records its score and price delta
+        /// when it does. Exact mode: loadout must match, closer price wins. Nearest mode: higher score wins.</summary>
+        private static bool Accept(Search search, UnitFileEntry compiled, UnitFileEntry target)
+        {
+            int delta = compiled.PointCost - target.PointCost;
+            if (search.Score is null)
+            {
+                if (!Matches(compiled, target)) return false;
+                if (Math.Abs(delta) >= Math.Abs(search.BestDelta)) return false;
+            }
+            else
+            {
+                double score = search.Score(compiled);
+                bool better = score > search.BestScore + ScoreEpsilon
+                    || (Math.Abs(score - search.BestScore) <= ScoreEpsilon && Math.Abs(delta) < Math.Abs(search.BestDelta));
+                if (!better) return false;
+                search.BestScore = score;
+            }
+            search.BestDelta = delta;
+            search.BestCompiled = compiled;
+            return true;
         }
 
         private static UnitSolve SolveUnit(BookFile book, UnitFileEntry entry, int combinationCap)
@@ -181,12 +257,8 @@ namespace FDG.ArmyBuilding
                     }).ToList(),
                 };
                 (UnitFileEntry compiled, _) = ListCompiler.CompileUnitDetailed(book, candidate);
-                if (!Matches(compiled, target)) return;
-
-                int delta = compiled.PointCost - target.PointCost;
-                if (Math.Abs(delta) >= Math.Abs(search.BestDelta)) return;
+                if (!Accept(search, compiled, target)) return;
                 search.Best = candidate;
-                search.BestDelta = delta;
                 return;
             }
 
@@ -228,13 +300,9 @@ namespace FDG.ArmyBuilding
                 var pair = new BuilderList { BookName = book.Name, Units = { first, second } };
                 BuiltArmyFile compiled = ListCompiler.Compile(book, pair);
                 if (compiled.Units.Count != 1) return; // the pair did not merge - not a valid combine here
-                if (!Matches(compiled.Units[0], target)) return;
-
-                int delta = compiled.Units[0].PointCost - target.PointCost;
-                if (Math.Abs(delta) >= Math.Abs(search.BestDelta)) return;
+                if (!Accept(search, compiled.Units[0], target)) return;
                 first.Id = null;
                 search.Best = first;
-                search.BestDelta = delta;
                 return;
             }
 

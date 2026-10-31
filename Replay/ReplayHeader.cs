@@ -61,7 +61,8 @@ namespace FDG.Replay
 
         public ERandomnessType RandomnessType { get; set; }
 
-        public GameSettings Settings { get; set; }
+        /// <summary>The game's settings. Null only in a client recording whose host sent no header (#451).</summary>
+        public GameSettings? Settings { get; set; }
 
         public List<ReplaySlot> Slots { get; set; } = new List<ReplaySlot>();
 

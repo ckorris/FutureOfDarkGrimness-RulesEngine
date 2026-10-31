@@ -110,8 +110,8 @@ namespace FDG.Tests
             Assert.That(read.GameId, Is.EqualTo(original.GameId));
             Assert.That(read.Seed, Is.EqualTo(4242));
             Assert.That(read.RandomnessType, Is.EqualTo(ERandomnessType.Realistic));
-            Assert.That(read.Settings.DiceSeed, Is.EqualTo(4242));
-            Assert.That(read.Settings.ArmyPoints, Is.EqualTo(2000));
+            Assert.That(read.Settings!.Value.DiceSeed, Is.EqualTo(4242));
+            Assert.That(read.Settings!.Value.ArmyPoints, Is.EqualTo(2000));
             Assert.That(read.RecordedBy, Is.EqualTo(EReplayRecordedBy.Host));
             Assert.That(read.RecordedByPlayerId, Is.EqualTo(PlayerA));
             Assert.That(read.StartedUtc, Is.EqualTo(original.StartedUtc));

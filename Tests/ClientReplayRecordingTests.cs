@@ -1,16 +1,282 @@
+using FDG.Ai;
 using FDG.Data;
+using FDG.EngineInterface;
+using FDG.Network.Connection.Lobby;
 using FDG.Network.Messages;
 using FDG.Network.Messages.StageRequestMessages;
+using FDG.Players;
+using FDG.Presentation;
+using FDG.Replay;
+using FDG.SaveLoad;
 using FDG.StageResolution;
 using NUnit.Framework;
+using static FDG.Tests.TestArmies;
 
 namespace FDG.Tests
 {
-    // #451: a remote client's own replay recording. Pins structure against the host's recording of the same game,
-    // never content (plan rule 8: no golden files).
+    // #451: a remote client's own replay recording, checked against the host's recording of the same game. A real
+    // host lobby and client lobby over the in-process loopback transport (LoopbackNetwork), each side's decisions
+    // answered by the solo-rules AI, the whole state machine in between. Pins structure and state equalities, never
+    // content (plan rule 8: no golden files).
     [TestFixture]
     public class ClientReplayRecordingTests
     {
+        private static readonly TimeSpan GameTimeout = TimeSpan.FromSeconds(120);
+
+        private sealed class NetworkedGame
+        {
+            public LobbyViewModel_Host HostVm = null!;
+            public LobbyViewModel_Client ClientVm = null!;
+            public PlayerID HostPlayer;
+            public PlayerID ClientPlayer;
+
+            /// <summary>The host's live store when the game completed - what a full playback must reach.</summary>
+            public string HostFinalSave = "";
+            public ReplayDocument Host = null!;
+            public ReplayDocument Client = null!;
+        }
+
+        private static async Task<LobbyViewModel_Client> Join(LoopbackNetworkHost net, string name)
+        {
+            var clientVm = new LobbyViewModel_Client(name, net.Connect(name), "");
+            Task<string?> joined = clientVm.JoinResultTask;
+            Assert.That(await Task.WhenAny(joined, Task.Delay(TimeSpan.FromSeconds(5))), Is.SameAs(joined), "join handshake");
+            Assert.That(await joined, Is.Null, "the client must be accepted");
+            return clientVm;
+        }
+
+        /// <summary>Wires both front ends to the AI, launches through <paramref name="launch"/>, and waits for the
+        /// game to end on both sides.</summary>
+        private static async Task<NetworkedGame> Play(NetworkedGame game, Func<LobbyViewModel_Host, bool> launch)
+        {
+            var hostEnded = new TaskCompletionSource();
+            var clientEnded = new TaskCompletionSource();
+            game.HostVm.OnLaunched += local => local.AssignInterfaces(null, null,
+                AiResolverRegistryFactory.BuildSoloRules(local.TableState, game.HostPlayer, slotID: 0), null, null);
+            game.ClientVm.OnLaunched += remote => remote.AssignInterfaces(null, null,
+                AiResolverRegistryFactory.BuildSoloRules(remote.TableState, game.ClientPlayer, slotID: 1), null, null);
+            game.HostVm.OnGameCompleted += _ =>
+            {
+                game.HostFinalSave = game.HostVm.SaveGameToJson()!;
+                hostEnded.TrySetResult();
+            };
+            game.ClientVm.OnGameEnded += _ => clientEnded.TrySetResult();
+
+            Assert.That(launch(game.HostVm), Is.True, "launch");
+            Task both = Task.WhenAll(hostEnded.Task, clientEnded.Task);
+            Assert.That(await Task.WhenAny(both, Task.Delay(GameTimeout)), Is.SameAs(both), "the networked game must end on both sides");
+
+            game.Host = Read(game.HostVm.Replay!);
+            game.Client = Read(game.ClientVm.Replay!);
+            return game;
+        }
+
+        private static async Task<NetworkedGame> PlayFreshGame()
+        {
+            var net = new LoopbackNetworkHost();
+            var game = new NetworkedGame { HostVm = new LobbyViewModel_Host("Host", "The Table", "", net) };
+            game.HostVm.PresentationClockFactory = () => new InstantPresentationClock();
+            game.ClientVm = await Join(net, "Client");
+            game.HostPlayer = game.HostVm.PlayerInfos.Single(p => p.PlayerType == EPlayerType.Local).PlayerID;
+            game.ClientPlayer = game.HostVm.PlayerInfos.Single(p => p.PlayerType == EPlayerType.Network).PlayerID;
+            game.HostVm.UpdateArmyListFile(game.HostPlayer, MakeShooterArmy());
+            game.ClientVm.UpdateArmyListFile(game.ClientPlayer, MakeDefenderArmy());
+
+            return await Play(game, host => host.TryLaunchGame(out string? reason) || Fail(reason));
+        }
+
+        private static bool Fail(string? reason)
+        {
+            Assert.Fail(reason);
+            return false;
+        }
+
+        private static ReplayDocument Read(IReplaySource replay)
+        {
+            using var stream = new MemoryStream(replay.ExportGzip());
+            return ReplayReader.ReadGzip(stream);
+        }
+
+        private static List<MarkerEvent> Markers(ReplayDocument document) =>
+            document.Events.OfType<MarkerEvent>().Select(m => m with { Seq = 0, T = 0 }).ToList();
+
+        private static string FinalSave(ReplayDocument document)
+        {
+            var player = new ReplayPlayer(new ReplayTimeline(document));
+            player.SeekToEnd();
+            return GameSaveSerializer.Save(player.Store);
+        }
+
+        [Test]
+        [CancelAfter(180_000)]
+        public async Task NetworkedGame_TheClientsRecording_MatchesTheHosts()
+        {
+            NetworkedGame game = await PlayFreshGame();
+            ReplayDocument host = game.Host, client = game.Client;
+
+            // Header: the host's identity, this client's point of view.
+            Assert.That(client.Header.RecordedBy, Is.EqualTo(EReplayRecordedBy.Client));
+            Assert.That(client.Header.RecordedByPlayerId, Is.EqualTo(game.ClientPlayer));
+            Assert.That(client.Header.GameId, Is.EqualTo(host.Header.GameId).And.Not.EqualTo(Guid.Empty));
+            Assert.That(client.Header.Seed, Is.EqualTo(host.Header.Seed).And.Not.Null);
+            Assert.That(client.Header.Slots.Select(s => (s.PlayerId, s.Controller)), Is.EqualTo(new[]
+            {
+                (game.HostPlayer, EReplayController.Remote), (game.ClientPlayer, EReplayController.Human),
+            }));
+
+            // The same markers, less the host's GameStart (sent during the host's launch, before this client had a
+            // game to record it in - its join snapshot stands in for it).
+            Assert.That(Markers(host)[0].Marker, Is.EqualTo(EReplayMarker.GameStart));
+            Assert.That(Markers(client), Is.EqualTo(Markers(host).Skip(1)));
+            Assert.That(Markers(client).Last().Marker, Is.EqualTo(EReplayMarker.GameEnded));
+
+            // Every decision of every player, each closed.
+            var hostTasks = host.Events.OfType<RequestEvent>().Select(r => r.TaskId).ToList();
+            var clientTasks = client.Events.OfType<RequestEvent>().Select(r => r.TaskId).ToList();
+            Assert.That(clientTasks, Is.EquivalentTo(hostTasks));
+            Assert.That(clientTasks, Is.Unique);
+            Assert.That(client.Events.OfType<ReplyEvent>().Select(r => r.TaskId), Is.EquivalentTo(host.Events.OfType<ReplyEvent>().Select(r => r.TaskId)));
+            Assert.That(clientTasks.Distinct().Count(), Is.GreaterThan(10), "precondition: a game with decisions on both sides");
+            Assert.That(new ReplayTimeline(client).Steps.Count, Is.EqualTo(new ReplayTimeline(host).Steps.Count));
+
+            // What the players saw and read: every beat, every log line (Debug ones included), in the same order.
+            Assert.That(client.Events.OfType<BeatEvent>().Select(b => b.BeatJson), Is.EqualTo(host.Events.OfType<BeatEvent>().Select(b => b.BeatJson)));
+            Assert.That(client.Events.OfType<LogEvent>().Select(l => (l.Line, l.Debug)), Is.EqualTo(host.Events.OfType<LogEvent>().Select(l => (l.Line, l.Debug))));
+            Assert.That(client.Events.OfType<BeatEvent>().Count(), Is.GreaterThan(0));
+
+            // Snapshots: the join, then one per round, numbered and taken like the host's - the same states.
+            List<SnapshotEvent> hostSnapshots = host.Events.OfType<SnapshotEvent>().ToList();
+            List<SnapshotEvent> clientSnapshots = client.Events.OfType<SnapshotEvent>().ToList();
+            int rounds = Markers(host).Count(m => m.Marker == EReplayMarker.RoundStart);
+            Assert.That(rounds, Is.GreaterThan(0));
+            Assert.That(clientSnapshots, Has.Count.EqualTo(rounds + 1));
+            Assert.That(clientSnapshots.Select(s => s.Index), Is.EqualTo(hostSnapshots.Select(s => s.Index)));
+            for (int i = 0; i < clientSnapshots.Count; i++)
+            {
+                Assert.That(clientSnapshots[i].SaveJson, Is.EqualTo(hostSnapshots[i].SaveJson), $"snapshot {i}");
+            }
+
+            // Played back, the client's recording ends where the host's game did.
+            Assert.That(FinalSave(client), Is.EqualTo(game.HostFinalSave));
+            ReplayVerification verification = ReplayVerifier.Verify(new ReplayTimeline(client));
+            Assert.That(verification.Passed, Is.True, string.Join("\n", verification.Failures.Select(f => f.Message)));
+
+            Assert.That(game.ClientVm.Replay!.IsRecording, Is.False, "GameEnded closes the client's recording");
+            game.ClientVm.Dispose();
+            game.HostVm.Dispose();
+            Assert.DoesNotThrow(() => game.ClientVm.Replay.ExportGzip(), "what was recorded stays exportable");
+        }
+
+        // A client that joins a game already in progress - a resumed save it rejoins (#187) - records from its join
+        // snapshot: the resumed state, round 2 of a compiled scenario, with the game ID the host minted for it.
+        [Test]
+        [CancelAfter(180_000)]
+        public async Task ResumedGame_ARejoiningClient_RecordsFromItsJoinSnapshot()
+        {
+            GameDataStore compiled = ScenarioCompiler.Compile(MakeRejoinScenario(), MakeRejoinArmies());
+            GameDataStore loaded = GameSaveSerializer.Load(GameSaveSerializer.Save(compiled));
+            PlayerID[] savedPlayers = loaded.GetAllValues<PlayerSlotInfo>().OrderBy(s => s.SlotID).Select(s => s.PlayerID).ToArray();
+
+            var net = new LoopbackNetworkHost();
+            var game = new NetworkedGame { HostVm = new LobbyViewModel_Host("Host", "Recovered Game", "", net, loaded) };
+            game.HostVm.PresentationClockFactory = () => new InstantPresentationClock();
+            game.ClientVm = await Join(net, "Client");
+            game.HostPlayer = game.HostVm.PlayerInfos.Single(p => p.PlayerType == EPlayerType.Local).PlayerID;
+            game.ClientPlayer = game.HostVm.PlayerInfos.Single(p => p.PlayerType == EPlayerType.Network).PlayerID;
+            Assert.That(new[] { game.HostPlayer, game.ClientPlayer }, Is.EqualTo(savedPlayers), "precondition: both sides took their saved slots");
+
+            await Play(game, host => host.TryResumeGame(out string? reason) || Fail(reason));
+            ReplayDocument host = game.Host, client = game.Client;
+
+            Assert.That(client.Events[0], Is.InstanceOf<SnapshotEvent>(), "the recording starts with the join snapshot");
+            Assert.That(((SnapshotEvent)client.Events[0]).Index, Is.EqualTo(0));
+            Assert.That(((SnapshotEvent)client.Events[0]).SaveJson, Is.EqualTo(host.Events.OfType<SnapshotEvent>().First().SaveJson),
+                "joined mid-game, the client's first snapshot is the resumed state the host's starts from");
+            Assert.That(client.Header.GameId, Is.EqualTo(host.Header.GameId).And.Not.EqualTo(Guid.Empty));
+            Assert.That(Markers(host)[0], Is.EqualTo(new MarkerEvent(EReplayMarker.GameStart) { Round = 2 }));
+            Assert.That(Markers(client), Is.EqualTo(Markers(host).Skip(1)));
+            Assert.That(FinalSave(client), Is.EqualTo(game.HostFinalSave));
+            Assert.That(ReplayVerifier.Verify(new ReplayTimeline(client)).Passed, Is.True);
+
+            game.ClientVm.Dispose();
+            game.HostVm.Dispose();
+        }
+
+        // The bookkeeping a real game rarely or never exercises, as a scripted message sequence: a request arrives
+        // once however it is learnt, a duplicate notice is ignored, an error closes a request, a snapshot cue before
+        // the join has nothing to save, and the host's GameEnded closes the recording.
+        [Test]
+        public void ScriptedMessages_EachDecisionOnce_ErrorsClose_GameEndedStops()
+        {
+            var bus = new InProcessBus();
+            GameDataStore store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var me = new PlayerID(Guid.NewGuid());
+            var them = new PlayerID(Guid.NewGuid());
+            var recorder = new ClientReplayRecorder(bus, store, me, hostHeader: null);
+            TaskID mine = new TaskID(Guid.NewGuid()), theirs = new TaskID(Guid.NewGuid()), failed = new TaskID(Guid.NewGuid());
+            StageTaskNotifyResolvedMessage Notice(TaskID task, PlayerID player, string? reply, string? error) =>
+                new StageTaskNotifyResolvedMessage(task, player, "Req", "Rep", "Notice name", "{\"r\":1}", reply, error);
+
+            bus.SendCommandToAllAsync(ReplayMarkerMessage.ForSnapshot(0)); // before the join: nothing to save yet
+            recorder.OnFullStateApplied();
+            bus.SendCommandToAllAsync(new StageTaskNotifyAwaitingMessage(mine, new PlayerSlotInfo(me, 1, 1, "Me", true), "Deploy"));
+            bus.SendCommandToAllAsync(new StageTaskRequestMessage(me, mine, "Req", "Rep", "{\"r\":1}"));
+            bus.SendCommandToAllAsync(Notice(mine, me, "\"a\"", null));
+            bus.SendCommandToAllAsync(Notice(mine, me, "\"a\"", null)); // a duplicate notice
+            bus.SendCommandToAllAsync(Notice(theirs, them, "\"b\"", null));
+            bus.SendCommandToAllAsync(Notice(failed, them, null, "Player disconnected."));
+            bus.SendCommandToAllAsync(ReplayMarkerMessage.For(new MarkerEvent(EReplayMarker.GameEnded) { Outcome = "Win" }));
+            bus.SendCommandToAllAsync(Notice(new TaskID(Guid.NewGuid()), them, "\"late\"", null)); // after the end
+
+            Assert.That(recorder.IsRecording, Is.False, "GameEnded closes the recording");
+            List<ReplayEvent> events = Read(recorder).Events.ToList();
+            Assert.That(events.Select(e => e.Kind), Is.EqualTo(new[]
+            {
+                "Snapshot", "Request", "Reply", "Request", "Reply", "Request", "RequestError", "Marker",
+            }));
+            Assert.That(events.OfType<RequestEvent>().Select(r => (r.TaskId, r.DisplayName)), Is.EqualTo(new[]
+            {
+                (mine, "Deploy"), (theirs, "Notice name"), (failed, "Notice name"),
+            }), "an own request takes the awaiting notice's name; the others the resolved notice's");
+            Assert.That(events.OfType<RequestErrorEvent>().Single().Message, Is.EqualTo("Player disconnected."));
+            Assert.That(recorder.Header!.GameId, Is.EqualTo(Guid.Empty), "no host header: no game ID");
+            Assert.That(recorder.Header.Settings, Is.Null);
+        }
+
+        private static ArmyListFile[] MakeRejoinArmies() =>
+            Enumerable.Range(0, 2).Select(i => new ArmyListFile
+            {
+                Name = $"Army {i}",
+                Units = new()
+                {
+                    new UnitFileEntry
+                    {
+                        Name = "Troops", ModelCount = 3, Quality = 4, Defense = 4,
+                        Weapons = new() { new WeaponFileEntry { Name = "Rifle", RangeInches = 24, Attacks = 1 } },
+                    },
+                },
+            }).ToArray();
+
+        private static ScenarioFile MakeRejoinScenario() => new ScenarioFile
+        {
+            Name = "Rejoin and record",
+            Round = 2,
+            ActivePlayer = 0,
+            Settings = new ScenarioSettings { Randomness = "Realistic", DiceSeed = 4510 },
+            Players = Enumerable.Range(0, 2).Select(i => new ScenarioPlayer
+            {
+                Army = $"army{i}.fdgarmy",
+                Units = new()
+                {
+                    new ScenarioUnit
+                    {
+                        Unit = "Troops",
+                        Models = new() { new[] { 20f + i * 10, 20f }, new[] { 21f + i * 10, 20f }, new[] { 22f + i * 10, 20f } },
+                    },
+                },
+            }).ToList(),
+        };
+
         // --- Wire --------------------------------------------------------------------------------------
 
         [Test]

@@ -39,8 +39,12 @@ namespace FDG.GameModel
 
         public IReadOnlyList<PlayerID> LocalPlayerIDs => new[] { _thisPlayerID };
 
-        /// <summary>#450: clients do not record yet - #451 adds the client recorder.</summary>
-        public Replay.IReplaySource? Replay => null;
+        /// <summary>#451: this client's own recording of the game, from construction on.</summary>
+        public Replay.IReplaySource? Replay => _replay;
+
+        internal Replay.ClientReplayRecorder ReplayRecorder => _replay;
+
+        private readonly Replay.ClientReplayRecorder _replay;
 
 
         private IReadWriteableGameDataStore _gameDataStore;
@@ -55,7 +59,10 @@ namespace FDG.GameModel
         private OutstandingTaskLister _outstandingTaskLister;
 
 
-        public FDGGame_AsClient(IReadWriteableGameDataStore gameDataStore, IMessageBusClient messageBusClient, PlayerID thisPlayerID)
+        /// <param name="hostReplayHeader">The host's replay header from the launch message (#451), for this
+        /// client's recording; null when the host sent none.</param>
+        public FDGGame_AsClient(IReadWriteableGameDataStore gameDataStore, IMessageBusClient messageBusClient, PlayerID thisPlayerID,
+            Replay.ReplayHeader? hostReplayHeader = null)
         {
             _gameDataStore = gameDataStore;
             _messageBusClient = messageBusClient;
@@ -65,6 +72,12 @@ namespace FDG.GameModel
             TableState = new TableState(_gameDataStore);
 
             _dataUpdateReceiver = new GameDataUpdateReceiver(_gameDataStore, messageBusClient);
+
+            // #451: record from before the catch-up is even asked for, so nothing the host sends is missed. Its
+            // request handler registers ahead of AssignInterfaces' resolver, so an own request is recorded before
+            // its answer can come back.
+            _replay = new Replay.ClientReplayRecorder(messageBusClient, _gameDataStore, thisPlayerID, hostReplayHeader);
+            _dataUpdateReceiver.OnFullStateApplied += _replay.OnFullStateApplied;
             _dataUpdateReceiver.RequestAllCurrentData();
 
             // #280 preview sharing: publish via the host relay; receive everyone else's.

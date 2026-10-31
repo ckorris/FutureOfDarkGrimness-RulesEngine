@@ -154,6 +154,31 @@ namespace FDG.Replay
                 }
             }
 
+            RecordSnapshot(store, index);
+            return index;
+        }
+
+        /// <summary>
+        /// #451: a snapshot under an index someone else counted - a client takes one at each of the host's
+        /// snapshot cues, under the host's index, so both recordings number a round's snapshot alike. Later
+        /// <see cref="Snapshot(GameDataStore)"/> calls count on from it.
+        /// </summary>
+        internal void Snapshot(GameDataStore store, int index)
+        {
+            lock (_lock)
+            {
+                _nextSnapshotIndex = Math.Max(_nextSnapshotIndex, index + 1);
+                if (_recording == false)
+                {
+                    return;
+                }
+            }
+
+            RecordSnapshot(store, index);
+        }
+
+        private void RecordSnapshot(GameDataStore store, int index)
+        {
             string saveJson;
             try
             {
@@ -162,11 +187,10 @@ namespace FDG.Replay
             catch (Exception exception)
             {
                 Fail("snapshot", exception);
-                return index;
+                return;
             }
 
             Append(() => new SnapshotEvent(index, saveJson), "snapshot");
-            return index;
         }
 
         // --- Requests (IRequestObserver) ----------------------------------------------------------------
@@ -207,6 +231,10 @@ namespace FDG.Replay
 
             Append(() => new BeatEvent(beatJson), "beat");
         }
+
+        /// <summary>#451: a beat already serialized the way <see cref="OnBeat"/> would (the client re-serializes
+        /// the one it was sent with the same wire settings).</summary>
+        internal void RecordBeatJson(string beatJson) => Append(() => new BeatEvent(beatJson), "beat");
 
         // --- Log and markers ----------------------------------------------------------------------------
 
@@ -353,7 +381,7 @@ namespace FDG.Replay
             _approxSize += ApproxLineOverhead;
         }
 
-        private void Fail(string what, Exception exception)
+        internal void Fail(string what, Exception exception)
         {
             lock (_lock)
             {

@@ -205,8 +205,8 @@ namespace FDG.Network.Connection.Lobby
             _messageBusClient.RegisterForMessageEvent<LobbyGameSettingsUpdate>(OnGameSettingsUpdateReceived);
             _messageBusClient.RegisterForMessageEvent<GameEndedMessage>(OnGameEndedMessageReceived);
             // #450: the host broadcasts replay markers from launch on (the first ones before the launch message
-            // itself). Registered so the type is known and not logged as version skew; #451's client recorder
-            // is what will actually consume them.
+            // itself). Registered so the type is known and not logged as version skew; the launched game's
+            // recorder (#451) is what consumes them.
             _messageBusClient.RegisterForMessageEvent<ReplayMarkerMessage>(OnReplayMarkerReceived);
             _messageBusClient.RegisterForMessageEvent<LobbyJoinRejectedMessage>(OnJoinRejectedReceived);
 
@@ -286,6 +286,7 @@ namespace FDG.Network.Connection.Lobby
             _messageBusClient.DeregisterForMessageEvent<GameEndedMessage>(OnGameEndedMessageReceived);
             _messageBusClient.DeregisterForMessageEvent<ReplayMarkerMessage>(OnReplayMarkerReceived);
             _messageBusClient.DeregisterForMessageEvent<LobbyJoinRejectedMessage>(OnJoinRejectedReceived);
+            _replay?.Dispose(); //#451: stops the recording; what it holds stays exportable.
             _messageBusClient.Dispose(); //Detaches the bus from the network client's receive event.
 
             //Unhook BEFORE disconnecting: a deliberate teardown must not surface as "connection to the
@@ -421,7 +422,9 @@ namespace FDG.Network.Connection.Lobby
                 throw new InvalidOperationException("Tried to launch game without a PlayerID being assigned.");
             }
 
-            FDGGame_AsClient fdgGame = new FDGGame_AsClient(_gameDataStore, _messageBusClient, _thisPlayerID.Value);
+            FDGGame_AsClient fdgGame = new FDGGame_AsClient(_gameDataStore, _messageBusClient, _thisPlayerID.Value,
+                launchGameMessage.Replay);
+            _replay = fdgGame.ReplayRecorder;
 
             // #412: only a well-formed ID is passed on; anything else (an older host, a garbled frame)
             // reads as "no ID", which the front end handles by sending its game_join without one.
@@ -429,8 +432,14 @@ namespace FDG.Network.Connection.Lobby
             OnLaunched?.Invoke(fdgGame);
         }
 
-        // #450: no client-side recording yet (#451).
+        // #450: markers arrive from the host's launch on, the first ones ahead of the launch message - before this
+        // client has a game to record them. The launched game's own recorder takes them from then on (#451).
         private void OnReplayMarkerReceived(ReplayMarkerMessage _) { }
+
+        private volatile Replay.ClientReplayRecorder? _replay;
+
+        /// <summary>#451: the launched game's recording, from launch on; null before launch.</summary>
+        public Replay.IReplaySource? Replay => _replay;
 
         private void OnGameEndedMessageReceived(GameEndedMessage gameEndedMessage)
         {

@@ -13,5 +13,12 @@ namespace FDG.Network.Messages
         /// an older client ignores it (Newtonsoft skips unknown members), so no protocol bump.
         /// </summary>
         public string? GameId { get; set; }
+
+        /// <summary>
+        /// #451: the host's replay header, so each client's own recording knows the game's persistent ID, seed,
+        /// settings and slots from its first event (in a new game the synced store only gets them at the first
+        /// activation). Null when the host is not recording - its recording failed to start.
+        /// </summary>
+        public Replay.ReplayHeader? Replay { get; set; }
     }
 }

@@ -182,6 +182,10 @@ namespace FDG.Network.Connection.Lobby
 
         public Replay.IReplaySource? Replay => _replay;
 
+        /// <summary>Test seam (#451): the clock both launch paths pace presentation beats with. Networked game tests
+        /// swap in an instant clock; the real-time default makes a two-unit game take most of a minute.</summary>
+        internal Func<IPresentationClock> PresentationClockFactory { get; set; } = () => new RealtimePresentationClock();
+
         public string? LaunchedGameId => _launchedGameId;
 
         public EAiProfile? GetAiProfile(PlayerID playerId) =>
@@ -780,7 +784,7 @@ namespace FDG.Network.Connection.Lobby
             _replay = replay;
             gameModel?.AttachReplay(replay);
             FDGServer server = new FDGServer(_gameDataStore, _messageBus, playerSlots,
-                new RealtimePresentationClock(), _gameSettings, replay: replay);
+                PresentationClockFactory(), _gameSettings, replay: replay);
             server.OnGameEnded += HandleServerGameEnded;
             server.OnGameCompleted += HandleServerGameCompleted;
 
@@ -790,7 +794,7 @@ namespace FDG.Network.Connection.Lobby
                 OnLaunched?.Invoke(gameModel);
             }
 
-            await _messageBus.SendCommandToAllAsync(new LaunchGameMessage { GameId = _launchedGameId });
+            await _messageBus.SendCommandToAllAsync(new LaunchGameMessage { GameId = _launchedGameId, Replay = replay.Header });
         }
 
         // Fired by FDGServer when the game finishes (engine thread). Forward to this host's own front
@@ -940,7 +944,7 @@ namespace FDG.Network.Connection.Lobby
             _replay = replay;
             gameModel?.AttachReplay(replay);
             FDGServer server = new FDGServer(_gameDataStore, _messageBus, launchSettings, playerSlots,
-                new RealtimePresentationClock(), replay);
+                PresentationClockFactory(), replay);
             server.OnGameEnded += HandleServerGameEnded;
             server.OnGameCompleted += HandleServerGameCompleted;
 
@@ -950,7 +954,8 @@ namespace FDG.Network.Connection.Lobby
                 OnLaunched?.Invoke(gameModel);
             }
 
-            LaunchGameMessage launchGameMessage = new LaunchGameMessage { GameId = _launchedGameId };
+            // #451: the replay header rides along so each client's recording knows the game from its first event.
+            LaunchGameMessage launchGameMessage = new LaunchGameMessage { GameId = _launchedGameId, Replay = replay.Header };
             await _messageBus.SendCommandToAllAsync(launchGameMessage);
         }
         

@@ -18,6 +18,13 @@ namespace FDG.Network.Synchronization
 
         private IMessageBusClient _messageBusClient;
 
+        /// <summary>
+        /// #451: the join-time catch-up has been applied - the store is now a whole copy of the host's, which
+        /// the client's replay recorder saves as its first snapshot. Raised on the bus dispatch thread, after
+        /// the rebuild, so a handler sees the finished store whatever order the bus's handlers run in.
+        /// </summary>
+        public event Action? OnFullStateApplied;
+
         public GameDataUpdateReceiver(IReadWriteableGameDataStore gameDataStore, IMessageBusClient messageBusClient)
         {
             _gameDataStore = gameDataStore;
@@ -63,6 +70,7 @@ namespace FDG.Network.Synchronization
             // single pass instead threw IsNotAssigned on the first forward reference and left the client
             // store empty, which then failed the first deploy SelectionRequest<UnitData>.
             StoreReplay.Rebuild(_gameDataStore, allDataMessage.AllData);
+            OnFullStateApplied?.Invoke();
         }
     }
 }

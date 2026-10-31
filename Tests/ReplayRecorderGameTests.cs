@@ -99,7 +99,7 @@ namespace FDG.Tests
             ReplayHeader header = game.Document.Header;
             Assert.That(header.Seed, Is.Not.Null, "D5: an unseeded launch still records the seed it ran under");
             Assert.That(header.Seed, Is.EqualTo(progress.Settings.DiceSeed), "the replay's seed is the save's seed");
-            Assert.That(header.Settings.DiceSeed, Is.EqualTo(header.Seed));
+            Assert.That(header.Settings!.Value.DiceSeed, Is.EqualTo(header.Seed));
             Assert.That(header.GameId, Is.Not.EqualTo(Guid.Empty));
             Assert.That(header.GameId, Is.EqualTo(progress.GameId).And.EqualTo(game.Server.GameId));
             Assert.That(header.RecordedBy, Is.EqualTo(EReplayRecordedBy.Host));

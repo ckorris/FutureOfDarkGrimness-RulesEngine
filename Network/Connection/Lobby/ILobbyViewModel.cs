@@ -235,8 +235,8 @@ namespace FDG.Network.Connection.Lobby
         /// an unknown ID, or on a client (the synced roster carries the player type but not the profile).</summary>
         EAiProfile? GetAiProfile(PlayerID playerId) => null;
 
-        /// <summary>#450: the launched game's replay - the host's recorder from launch on; null before launch,
-        /// and on a client until #451 (client recording).</summary>
+        /// <summary>#450: the launched game's replay - the host's recorder, or a client's own (#451), from launch
+        /// on; null before launch.</summary>
         Replay.IReplaySource? Replay => null;
     }
 }

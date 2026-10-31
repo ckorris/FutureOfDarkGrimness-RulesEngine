@@ -28,6 +28,31 @@ namespace FDG.Tests
             Assert.That(ForceOrgValidator.Validate(army), Is.Empty);
         }
 
+        // #441 F1: the lobby measures the caps against ITS points limit, not the army's own, and the points-limit
+        // line (the Pts cell's and launch gate's business) stays out of that report.
+        [Test]
+        public void CompositionWarnings_ReadTheCapsAgainstTheGivenBasis_AndSkipThePointsLine()
+        {
+            ArmyListFile army = Army(300,
+                Unit("Warriors", 100),
+                Unit("Captain", 100, hero: true),
+                Unit("Lieutenant", 100, hero: true),
+                Unit("Sergeant", 100, hero: true));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(ForceOrgValidator.Validate(army), Has.Some.Contains("Over points limit: 400 / 300"));
+                Assert.That(ForceOrgValidator.CompositionWarnings(army, 1000),
+                    Is.EqualTo(new[] { "Too many Heroes: 3 (max 2 at 1000 pts; 1 per 500)." }),
+                    "the three heroes break the 1000-pt cap, the points line is the lobby's Pts cell's");
+                Assert.That(ForceOrgValidator.CompositionWarnings(army, 2000), Is.Empty,
+                    "at a 2000-pt game four heroes are allowed - the lobby's limit is the basis");
+                Assert.That(ForceOrgValidator.CompositionWarnings(army, 0),
+                    Is.EqualTo(ForceOrgValidator.Validate(army).Skip(1)),
+                    "no basis falls back to the army's own limit - Validate's lines after the points one");
+            });
+        }
+
         [Test]
         public void EmptyArmy_NoWarnings()
         {

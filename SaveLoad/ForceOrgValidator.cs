@@ -26,14 +26,29 @@ namespace FDG.SaveLoad
         public static IReadOnlyList<string> Validate(ArmyListFile army)
         {
             List<string> warnings = new List<string>();
-            ForceOrgLimits limits = ForceOrgLimits.For(army.GameSystem);
-            int basis = ForcePointsBasis(army);
 
             // Cost cap - total points must not exceed the army's limit.
             if (army.TotalPoints > army.PointsLimit)
             {
                 warnings.Add($"Over points limit: {army.TotalPoints} / {army.PointsLimit} pts.");
             }
+
+            warnings.AddRange(CompositionWarnings(army, ForcePointsBasis(army)));
+            return warnings;
+        }
+
+        /// <summary>
+        /// #441 F1: the composition caps alone (Hero / copies / unit size / unit count / models-or-Tough / Unique
+        /// Hero / no non-Hero units), measured against <paramref name="pointsBasis"/> rather than the army's own
+        /// limit - the lobby reads them against ITS points limit, the size of game actually being agreed. The
+        /// points-limit line is left out: the lobby's Pts cell and launch gate already say that. A non-positive
+        /// basis falls back to <see cref="ForcePointsBasis"/>. Same strings as <see cref="Validate"/>, same order.
+        /// </summary>
+        public static IReadOnlyList<string> CompositionWarnings(ArmyListFile army, int pointsBasis)
+        {
+            List<string> warnings = new List<string>();
+            ForceOrgLimits limits = ForceOrgLimits.For(army.GameSystem);
+            int basis = pointsBasis > 0 ? pointsBasis : ForcePointsBasis(army);
 
             // Hero cap - 1 Hero per 500 pts (AoF: 375). A Unique Hero counts as a Hero (IsHero).
             int heroCount = army.Units.Count(IsHero);

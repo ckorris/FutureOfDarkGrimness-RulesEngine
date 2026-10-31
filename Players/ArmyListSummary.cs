@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 
 namespace FDG.Players
 {
@@ -5,7 +7,11 @@ namespace FDG.Players
     /// game-system slug (#378) - null means Grimdark Future (pre-#378 files and summaries), letting the
     /// lobby warn when two players bring armies from different systems. <paramref name="RulesVersion"/> (#440)
     /// is the ruleset stamp of the book a Forge-built army embeds ("OPR v3.5.3"), null for a hand-authored list;
-    /// it rides the roster so every machine can show the legacy-army notice (LegacyArmyNotice).</summary>
+    /// it rides the roster so every machine can show the legacy-army notice (LegacyArmyNotice).
+    /// <paramref name="ForceOrgWarnings"/> (#441 F1) is the host's advisory force-org cap report for the army at the
+    /// lobby's points limit (SaveLoad.ForceOrgValidator.CompositionWarnings), empty when the army is within every cap
+    /// and null on a summary that never computed one (an unassigned slot, a pre-#441 host); it rides the roster
+    /// so a client sees the same amber line the host does. Advice only - never a launch blocker.</summary>
     public record ArmyListSummary(bool IsAssigned, string ArmyName, string FactionName, int PointCost,
-        string? GameSystem = null, string? RulesVersion = null);
+        string? GameSystem = null, string? RulesVersion = null, IReadOnlyList<string>? ForceOrgWarnings = null);
 }

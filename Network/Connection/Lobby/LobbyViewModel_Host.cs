@@ -521,7 +521,9 @@ namespace FDG.Network.Connection.Lobby
                 ArmyListSummary? summary = fullInfo.ArmyListFile != null
                     ? new ArmyListSummary(true, fullInfo.ArmyListFile.Name, fullInfo.ArmyListFile.Faction,
                     fullInfo.ArmyListFile.TotalPoints, fullInfo.ArmyListFile.GameSystem,
-                    ArmyBuilding.LegacyArmyNotice.RulesVersionOf(fullInfo.ArmyListFile))
+                    ArmyBuilding.LegacyArmyNotice.RulesVersionOf(fullInfo.ArmyListFile),
+                    // #441 F1: the caps read against the LOBBY's points limit, the size of game being agreed.
+                    SaveLoad.ForceOrgValidator.CompositionWarnings(fullInfo.ArmyListFile, ArmyPoints))
                     : new ArmyListSummary(false, "N/A", "N/A", 0);
                 infoSummaries.Add(new LobbyPlayerInfoSummary(fullInfo.PlayerName, summary, fullInfo.TeamNumber, fullInfo.PlayerType,
                     fullInfo.ConnectionID, fullInfo.PlayerID, fullInfo.ColorIndex));
@@ -952,6 +954,8 @@ namespace FDG.Network.Connection.Lobby
                 _settings_ArmyPoints.OnNext(armyPoints);
                 _gameSettings.ArmyPoints = armyPoints;
                 _messageBus.SendCommandToAllAsync(new LobbyGameSettingsUpdate(_gameSettings));
+                // #441 F1: the roster's force-org warnings are measured against this limit, so re-sync them.
+                UpdateInfoSummariesFromFullList();
 
             }
             else

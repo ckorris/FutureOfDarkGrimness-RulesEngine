@@ -33,7 +33,23 @@ namespace FDG.Calculator
     /// </summary>
     public sealed record SaveBucket(int SaveNeeded, float Hits, string Label);
 
-    /// <summary>One weapon profile's contribution: the numbers the stages produced for that batch.</summary>
+    /// <summary>
+    /// #423 / #441 F4: the defender's Parry step on one volley - the dice it rolled (its pool capped at the hits),
+    /// the hits those dice ignored, and the hits that had landed before it. Structured so the front end can show it
+    /// as a rule chip with the numbers in a hover; <see cref="Describe"/> is the sentence the volley note used to carry.
+    /// </summary>
+    public sealed record ParrySummary(float DiceRolled, float HitsIgnored, float HitsBefore)
+    {
+        /// <summary>The chip's label - the rule's name, as the hit and save chips name theirs.</summary>
+        public const string ChipLabel = "Parry";
+
+        /// <summary>"4 dice ignored 0.67 of 4 hits before the saves."</summary>
+        public string Describe() =>
+            $"{DiceRolled:0.##} dice ignored {HitsIgnored:0.##} of {HitsBefore:0.##} hits before the saves.";
+    }
+
+    /// <summary>One weapon profile's contribution: the numbers the stages produced for that batch.
+    /// <paramref name="Parry"/> is the defender's Parry step (#423), null when no Parry die was rolled.</summary>
     public sealed record VolleyReport(
         IWeapon Weapon,
         int Copies,
@@ -46,7 +62,8 @@ namespace FDG.Calculator
         IReadOnlyList<SaveBucket> Saves,
         IReadOnlyList<string> SaveTags,
         float ExpectedWounds,
-        IReadOnlyList<string> Notes);
+        IReadOnlyList<string> Notes,
+        ParrySummary? Parry = null);
 
     /// <summary>
     /// The result of one attacker-attacks-defender simulation. <see cref="ExpectedWounds"/> is what the

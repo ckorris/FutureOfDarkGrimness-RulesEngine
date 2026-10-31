@@ -236,15 +236,13 @@ namespace FDG.Calculator
             metadata.QueryForResult(out DetermineSaveRollNeededResults saveNeeded);
 
             // #423: the hits that LANDED - the Parry step has already taken its ignored hits out of the groups, so the
-            // save buckets below carry fewer; the note says how many and why.
+            // save buckets below carry fewer; the ParrySummary says how many and why (#441 F4: a chip, not a note).
             float hitsAfterParry = toHit.SuccessfulHitList?.Sum(hit => hit.HitCount) ?? 0f;
             metadata.QueryForResult(out ParryResults parry);
             float expectedHits = hitsAfterParry + (parry?.HitsIgnored ?? 0f);
-            if (parry != null && parry.DiceRolled > 0f)
-            {
-                volleyNotes.Add($"Parry: {parry.DiceRolled:0.##} dice ignored {parry.HitsIgnored:0.##} of " +
-                    $"{expectedHits:0.##} hits before the saves.");
-            }
+            ParrySummary? parrySummary = parry != null && parry.DiceRolled > 0f
+                ? new ParrySummary(parry.DiceRolled, parry.HitsIgnored, expectedHits)
+                : null;
 
             List<SaveBucket> buckets = (saveNeeded.PendingSaveRollsList ?? new List<PendingSaveRolls>())
                 .Select(pending => new SaveBucket(pending.SaveNeeded, pending.HitCount,
@@ -260,7 +258,7 @@ namespace FDG.Calculator
                 hitRoll.ThresholdTags ?? (IReadOnlyList<string>)Array.Empty<string>(),
                 expectedHits, buckets,
                 saveNeeded.ThresholdTags ?? (IReadOnlyList<string>)Array.Empty<string>(),
-                dealt, volleyNotes);
+                dealt, volleyNotes, parrySummary);
         }
 
         /// <summary>

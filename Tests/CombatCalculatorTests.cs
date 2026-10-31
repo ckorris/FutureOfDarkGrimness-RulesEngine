@@ -337,7 +337,8 @@ namespace FDG.Tests
         }
 
         // #423: the calculator runs the real ParryHitsStage, so a Parry defender's hit-ignore roll prices itself - the
-        // hits that landed stay on the row, the save buckets carry what was left after Parry, and a note says why.
+        // hits that landed stay on the row, the save buckets carry what was left after Parry, and the volley's
+        // ParrySummary says why (#441 F4: shown as a "Parry" chip whose hover carries the numbers, not as a note).
         [Test]
         public void AParryDefender_IgnoresHitsBeforeTheSaves_AndTheRowSaysSo()
         {
@@ -353,7 +354,9 @@ namespace FDG.Tests
                 Assert.That(volley.Saves.Sum(bucket => bucket.Hits), Is.EqualTo(4f - 4f / 6f).Within(Tolerance),
                     "5 x Parry(1) capped at the 4 hits: 4 dice, 2/3 of a hit ignored before the saves");
                 Assert.That(report.ExpectedWounds, Is.EqualTo((4f - 4f / 6f) / 2f).Within(Tolerance), "half of the rest saved");
-                Assert.That(volley.Notes, Does.Contain("Parry: 4 dice ignored 0.67 of 4 hits before the saves."));
+                Assert.That(volley.Parry, Is.Not.Null);
+                Assert.That(volley.Parry!.Describe(), Is.EqualTo("4 dice ignored 0.67 of 4 hits before the saves."));
+                Assert.That(volley.Notes.Any(n => n.StartsWith("Parry")), Is.False, "#441 F4: a chip, not a note");
             });
         }
 
@@ -370,22 +373,22 @@ namespace FDG.Tests
             Assert.That(report.Volleys, Has.Count.EqualTo(2));
             Assert.Multiple(() =>
             {
-                Assert.That(report.Volleys[0].Notes, Does.Contain("Parry: 2 dice ignored 0.33 of 2 hits before the saves."),
+                Assert.That(report.Volleys[0].Parry?.Describe(), Is.EqualTo("2 dice ignored 0.33 of 2 hits before the saves."),
                     "the first profile's 2 hits take 2 of the 3 dice");
-                Assert.That(report.Volleys[1].Notes, Does.Contain("Parry: 1 die ignored 0.17 of 2 hits before the saves.")
-                    .Or.Contain("Parry: 1 dice ignored 0.17 of 2 hits before the saves."),
+                Assert.That(report.Volleys[1].Parry?.Describe(), Is.EqualTo("1 dice ignored 0.17 of 2 hits before the saves."),
                     "the second profile gets the one die left, not a fresh pool");
             });
         }
 
         [Test]
-        public void ANonParryDefender_GetsNoParryNote()
+        public void ANonParryDefender_GetsNoParrySummary()
         {
             CombatReport report = CombatCalculator.Run(
                 Army(Unit("Swords", 4, 4, 4, Blade(4))),
                 Army(Unit("Targets", 5, 4, 4)),
                 new CombatSituation(Mode: ECombatMode.Melee));
 
+            Assert.That(report.Volleys.Single().Parry, Is.Null);
             Assert.That(report.Volleys.Single().Notes.Any(n => n.StartsWith("Parry")), Is.False);
         }
 

@@ -89,13 +89,18 @@ namespace FDG.Stages
         /// purse means the caller's own bookkeeping is wrong rather than the player's; taking less is the
         /// non-destructive failure. Re-reads the loans at spend time, so two casters drawing on one pool in
         /// the same cast see each other's spending.</para>
+        ///
+        /// <para>#439: <paramref name="reserveOwn"/> own tokens are left untouched (drawn from the lenders instead) -
+        /// a drain spell's target "may not spend those spell tokens" it is about to lose (CastSpellStage).</para>
         /// </summary>
         public static IReadOnlyList<Loan> Spend(ITableState tableState, RuleEvaluator evaluator,
-            IUnit caster, int amount)
+            IUnit caster, int amount, int reserveOwn = 0)
         {
             if (amount <= 0) return System.Array.Empty<Loan>();
 
-            int fromOwn = System.Math.Min(amount, caster.Tokens.GetTokenCount(TokenType.SpellTokens));
+            int ownSpendable = System.Math.Max(0,
+                caster.Tokens.GetTokenCount(TokenType.SpellTokens) - System.Math.Max(0, reserveOwn));
+            int fromOwn = System.Math.Min(amount, ownSpendable);
             if (fromOwn > 0)
             {
                 caster.Tokens.RemoveTokens(TokenType.SpellTokens, fromOwn);

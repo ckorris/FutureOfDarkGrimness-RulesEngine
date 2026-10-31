@@ -120,7 +120,8 @@ namespace FDG.Tests
             }
         }
 
-        // --- #377 range-extension marks: "friendly units get +6\" range when shooting against it once" ---
+        // --- #377 range-extension marks: "friendly units get +6\" range when shooting against it once" (#439: the mark
+        // names Increased Shooting Range, the rule "+6\" range on their weapons when shooting" stands for) ---
 
         [Test]
         public void RangeMark_OnDefender_ExtendsRangeAgainstIt_WithoutSpendingTheMark()
@@ -133,7 +134,7 @@ namespace FDG.Tests
 
             marked.GetValue().Tokens.AddToken(new Token(TokenType.Mark, 1,
                 new TokenClearTrigger.ManualOnly(),
-                Payload: new TokenPayload.RuleGrant("+6\" range when shooting",
+                Payload: new TokenPayload.RuleGrant("Increased Shooting Range",
                     ELifetime.ThisAttack)));
 
             Assert.That(RangeRuleQueries.EffectiveRange(attacker.GetValue(), weapon, marked.GetValue(), ev),
@@ -157,7 +158,7 @@ namespace FDG.Tests
 
             enemy.GetValue().Tokens.AddToken(new Token(TokenType.Mark, 1,
                 new TokenClearTrigger.ManualOnly(),
-                Payload: new TokenPayload.RuleGrant("+6\" range when shooting",
+                Payload: new TokenPayload.RuleGrant("Increased Shooting Range",
                     ELifetime.ThisAttack)));
 
             Assert.That(ChooseRangedAttackStage.HasAnyFireableTarget(attacker, _ctx), Is.True,

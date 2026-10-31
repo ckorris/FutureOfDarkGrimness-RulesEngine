@@ -39,7 +39,7 @@ public static class CoreRuleCatalog
         Courage, UnstoppableInMelee, ShredInMelee, BaneInMelee, RendingInMelee,
         BaneInMeleeAura, RendingInMeleeAura, ShredInMeleeAura, UnstoppableInMeleeAura,
         HitBonusInMelee, HitBonusWhenShooting, ApBonusInMelee, ApBonusWhenShooting,
-        BaneWhenAttacking, ShredWhenAttacking, Slayer, RangeBonusWhenShooting,
+        BaneWhenAttacking, ShredWhenAttacking, Slayer,
         Protected, Shielded, Fortified,
         ProtectedAura, ShieldedAura, FortifiedAura,
         Strider, Flying, Aircraft, Teleport, TeleportAura, DelayedAction,
@@ -1162,20 +1162,6 @@ public static class CoreRuleCatalog
         Valence: EValence.Positive,
         Description: "When using Hold actions and shooting, or when charging, this model's weapons get AP(+2) if " +
             "most models in the target have Tough(3) or higher.");
-
-    /// <summary> "+6\" range when shooting": <see cref="IncreasedShootingRange"/>'s effect under the spell phrase (range checks only exist for shooting, so the qualifier is inherent). </summary>
-    public static SpecialRuleDefinition RangeBonusWhenShooting { get; } =
-        new SpecialRuleDefinition("+6\" range when shooting",
-            new[]
-            {
-                new HookEntry(EHookID.Shooting_OnRangeCheck,
-                    new Condition.Always(),
-                    new Effect.RangeModifier(Delta: +6),
-                    ELifetime.ThisActivation),
-            },
-            Array.Empty<ActivatedAbility>(),
-            Valence: EValence.Positive,
-            Description: "This unit's ranged weapons get +6\" range.");
 
     // Defensive wound-ignore + AP corpus rules (reuse IgnoreWoundOnRoll / save-modifier primitives) ------
 

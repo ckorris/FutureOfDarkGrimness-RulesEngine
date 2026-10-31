@@ -635,7 +635,9 @@ public class OprBookImporterTests
         Assert.That(((Effect.AddRule)corrode.Effect).RuleName, Is.EqualTo("Corrode Weapons Effect"));
         SpecialRuleDefinition corrodeRule = book.RuleDefinitions.Single(d => d.Name == "Corrode Weapons Effect");
         Assert.That(((Effect.ReduceArmorPenetration)corrodeRule.Passive[0].Effect).Amount, Is.EqualTo(1));
-        Assert.That(corrodeRule.Passive[0].Condition, Is.InstanceOf<Condition.Not>());
+        // #439: shooting only, and never the bearer's own spell hits ("on its weapons", 3.6).
+        Assert.That(corrodeRule.Passive[0].Condition,
+            Is.EqualTo(new Condition.And(new Condition.Not(new Condition.IsMelee()), new Condition.IsNotSpell())));
 
         // Morale-test-then: the #034 conditional family, both corpus consequences.
         SpellDefinition fury = book.Spells.Single(s => s.Name == "Terrifying Fury");
@@ -652,6 +654,145 @@ public class OprBookImporterTests
                 "Shock Speed Effect", "Deceleration Rune Effect", "Corrode Weapons Effect",
                 "Aura of Pestilence Effect", "Cursed Stride Effect",
             }));
+    }
+
+    // #439 - the OPR 3.6.0 spell grammar, verbatim from the 2026-10-30 snapshots (one spell per new phrasing): the
+    // weapon-scoped grant suffix on grants and marks, the +6" range grant/mark, the 3.6 Corrode Weapons, the
+    // spell-token drain, the once-per-round morale move, 3.6 damage-rule names, a mark with its verb dropped, and the
+    // truncated Combat Possession.
+    private const string Spells36Json = """
+    {
+      "name": "Spells36Grammar", "versionString": "3.6.0", "units": [], "upgradePackages": [],
+      "spells": [
+        { "name": "Blessed Ammo", "threshold": 3,
+          "effect": "Pick up to three friendly units within 18\", which get Shred on its weapons when shooting once (next time the effect would apply)." },
+        { "name": "Elemental Form", "threshold": 3,
+          "effect": "Pick up to three friendly units within 18\", which get AP(+1) on its weapons in melee once (next time the effect would apply)." },
+        { "name": "Creator of Illusions", "threshold": 1,
+          "effect": "Pick one enemy unit within 18\" in line of sight, which gets Unwieldy on its weapons in melee once (next time the effect would apply)." },
+        { "name": "Toxin Mist", "threshold": 1,
+          "effect": "Pick one enemy unit within 18\" in line of sight, which friendly units gets Bane on their weapons when attacking against once (next time the effect would apply)." },
+        { "name": "Head Bang", "threshold": 2,
+          "effect": "Pick up to two enemy units within 18\" in line of sight, which friendly units gets Rending on their weapons in melee against once (next time the effect would apply)." },
+        { "name": "Coordinated Aggression", "threshold": 2,
+          "effect": "Pick up to two enemy units within 18\" in line of sight, which friendly units gets AP(1) on their weapons when shooting against once (next time the effect would apply)." },
+        { "name": "Triangulation Bots", "threshold": 1,
+          "effect": "Pick one enemy unit within 18\" in line of sight, which friendly units gets Indirect on their weapons against once (next time the effect would apply)." },
+        { "name": "Ancestral Guidance", "threshold": 2,
+          "effect": "Pick up to two enemy units within 18\" in line of sight, which friendly units Indirect on their weapons against once (next time the effect would apply)." },
+        { "name": "Battle Rune ", "threshold": 2,
+          "effect": "Pick up to two friendly units within 12\", which get +6\" range on its weapons when shooting once (next time the effect would apply)." },
+        { "name": "Eternal Guidance", "threshold": 2,
+          "effect": "Pick up to two enemy units within 18\" in line of sight, which friendly units get +6\" range on their weapons when shooting against once (next time the effect would apply)." },
+        { "name": "Corrode Weapons", "threshold": 2,
+          "effect": "Pick up to two enemy units within 18\" in line of sight, which loses AP(1) on its weapons when shooting once (next time the effect would apply)." },
+        { "name": "Burn the Heretic", "threshold": 1,
+          "effect": "Pick one enemy unit within 18\" in line of sight, which loses 2 spell tokens. Note that the target may not spend those spell tokens to prevent this effect." },
+        { "name": "Seductive Invocation", "threshold": 1,
+          "effect": "Pick one enemy unit within 18\" in line of sight, which must take a Morale Test. If failed you may move it by up to 6\" in a straight line in any direction. Units may only be moved once per round in this way." },
+        { "name": "Cerebral Trauma", "threshold": 3,
+          "effect": "Pick one enemy unit within 24\" in line of sight, which takes 6 hits with AP(1) and Smash." },
+        { "name": "Shattering Curse", "threshold": 2,
+          "effect": "Pick one enemy unit within 18\" in line of sight, which takes 4 hits with Fracture. Roll as many dice as hits to see if \"on rolls of 6\" effects trigger." },
+        { "name": "Headtaker Strike", "threshold": 2,
+          "effect": "Pick up to two enemy units within 6\", which take 4 hits with AP(2) each." },
+        { "name": "Asphyxiating Fog", "threshold": 1,
+          "effect": "Pick one friendly unit within 12\", which gets Counter in Melee once (next time the effect would apply)." },
+        { "name": "Lust Boon", "threshold": 2,
+          "effect": "Pick up to two friendly units within 12\", which get Enhanced Lustbound once (next time the effect would apply)." },
+        { "name": "Combat Possession", "threshold": 2,
+          "effect": "Pick up to two friendly units within 12\", which" }
+      ]
+    }
+    """;
+
+    [Test]
+    public void Import36_SpellGrammar_EveryNewPhrasingParses_ToCanonicalNames()
+    {
+        var warnings = new List<string>();
+        BookFile book = OprBookImporter.Import(Spells36Json, "TestSource", "CC-BY-SA 4.0", warnings.Add);
+
+        // Everything but the truncated source text parses; that one warns as a SOURCE defect, not a parser gap.
+        Assert.That(book.Spells, Has.Count.EqualTo(18));
+        Assert.That(warnings, Has.Count.EqualTo(1));
+        Assert.That(warnings[0], Does.Contain("Combat Possession").And.Contain(OprBookImporter.TruncatedSpellWarning));
+        Assert.That(warnings[0], Does.Not.Contain(OprBookImporter.UnrecognizedSpellWarning));
+
+        Effect EffectOf(string name) => book.Spells.Single(s => s.Name == name).Effect;
+        string Granted(string name) => ((Effect.AddRule)EffectOf(name)).RuleName;
+        string Marked(string name) => ((Effect.MarkTarget)EffectOf(name)).RuleName;
+
+        // The weapon-scope suffix folds onto the catalog's grant names - the ones auras and units grant.
+        Assert.That(Granted("Blessed Ammo"), Is.EqualTo("Shred when shooting"));
+        Assert.That(Granted("Elemental Form"), Is.EqualTo("AP(+1) in melee"));
+        Assert.That(Granted("Creator of Illusions"), Is.EqualTo("Unwieldy in melee"));
+        Assert.That(Marked("Toxin Mist"), Is.EqualTo("Bane when attacking"));
+        Assert.That(Marked("Head Bang"), Is.EqualTo("Rending in melee"));
+        Assert.That(Marked("Coordinated Aggression"), Is.EqualTo("AP(1) when shooting"));
+        Assert.That(Marked("Triangulation Bots"), Is.EqualTo("Indirect"), "bare 'on their weapons' is the rule itself");
+        Assert.That(Marked("Ancestral Guidance"), Is.EqualTo("Indirect"), "the source dropped the verb - still a mark");
+        Assert.That(book.Spells.Single(s => s.Name == "Ancestral Guidance").Target.MaxCount, Is.EqualTo(2));
+
+        // "+6\" range on its weapons when shooting" is Increased Shooting Range, as a grant and as a mark.
+        Assert.That(Granted("Battle Rune"), Is.EqualTo("Increased Shooting Range"));
+        Assert.That(Marked("Eternal Guidance"), Is.EqualTo("Increased Shooting Range"));
+
+        // Phrases without the suffix are unchanged ("once (next time the effect would apply)" -> NextTrigger).
+        Assert.That(Granted("Asphyxiating Fog"), Is.EqualTo("Counter in Melee"));
+        Assert.That(Granted("Lust Boon"), Is.EqualTo("Enhanced Lustbound"));
+        Assert.That(((Effect.AddRule)EffectOf("Lust Boon")).Scope, Is.EqualTo(ELifetime.NextTrigger));
+
+        // 3.6 Corrode Weapons: the synthesized AP-loss rule, still shooting-only and not on its own spells.
+        Assert.That(Granted("Corrode Weapons"), Is.EqualTo("Corrode Weapons Effect"));
+        SpecialRuleDefinition corrode = book.RuleDefinitions.Single(d => d.Name == "Corrode Weapons Effect");
+        Assert.That(((Effect.ReduceArmorPenetration)corrode.Passive[0].Effect).Amount, Is.EqualTo(1));
+
+        // The spell-token drain: ConsumeToken(SpellTokens, 2) on one enemy unit in line of sight.
+        SpellDefinition burn = book.Spells.Single(s => s.Name == "Burn the Heretic");
+        Assert.That(burn.Effect, Is.EqualTo(new Effect.ConsumeToken(TokenType.SpellTokens, 2)));
+        Assert.That((burn.Target.TargetAffinity, burn.Target.RequireLineOfSight), Is.EqualTo((ETargetAffinity.Foe, true)));
+
+        // The once-per-round move keys on the spell's own name.
+        var invocation = (Effect.TriggeredMove)((Effect.MoraleTestThen)EffectOf("Seductive Invocation")).OnFailure;
+        Assert.That((invocation.MaxInches, invocation.IsOptional, invocation.OncePerRoundKey),
+            Is.EqualTo((6f, true, "Seductive Invocation")));
+
+        // 3.6 damage-rule names ride WithRules; AP folds; the roll-dice sentence and "each" change nothing.
+        Assert.That(EffectOf("Cerebral Trauma"), Is.EqualTo(new Effect.DealHits(6, new[] { "Smash" }, 1))
+            .Using<Effect>((a, b) => a is Effect.DealHits x && b is Effect.DealHits y && x.Count == y.Count
+                && x.ArmorPenetration == y.ArmorPenetration && x.WithRules.SequenceEqual(y.WithRules)));
+        var curse = (Effect.DealHits)EffectOf("Shattering Curse");
+        Assert.That((curse.Count, curse.ArmorPenetration, string.Join("|", curse.WithRules)), Is.EqualTo((4, 0, "Fracture")));
+        var headtaker = (Effect.DealHits)EffectOf("Headtaker Strike");
+        Assert.That((headtaker.Count, headtaker.ArmorPenetration, headtaker.WithRules.Count), Is.EqualTo((4, 2, 0)));
+        Assert.That(book.Spells.Single(s => s.Name == "Headtaker Strike").Target.MaxCount, Is.EqualTo(2));
+    }
+
+    [TestCase("Shred on its weapons when shooting", "Shred when shooting")]
+    [TestCase("Unstoppable on their weapons when shooting", "Unstoppable when shooting")]
+    [TestCase("Rending on their weapons in melee", "Rending in melee")]
+    [TestCase("Shred on their weapons when attacking", "Shred when attacking")]
+    [TestCase("Surge on their weapons", "Surge")]
+    [TestCase("+6\" range on its weapons when shooting", "Increased Shooting Range")]
+    [TestCase("+3\" range on its weapons when shooting", "+3\" range when shooting")]
+    [TestCase("Bane when Shooting", "Bane when Shooting")]
+    [TestCase("Enhanced Wolfborn", "Enhanced Wolfborn")]
+    [TestCase("Counter in Melee", "Counter in Melee")]
+    public void CanonicalGrantName_FoldsTheWeaponScopeSuffix(string phrase, string expected)
+    {
+        Assert.That(OprBookImporter.CanonicalGrantName(phrase), Is.EqualTo(expected));
+    }
+
+    [TestCase("Pick up to two friendly units within 12\", which", true)]
+    [TestCase("Pick one enemy unit within 18\" in line of sight, which ", true)]
+    [TestCase("Something entirely unlike the corpus shapes.", false)]
+    [TestCase("Pick one enemy unit within 18\", which dances.", false)]
+    public void DescribeSkippedSpell_TellsATruncatedSourceFromAParserGap(string text, bool truncated)
+    {
+        string warning = OprBookImporter.DescribeSkippedSpell("X", text);
+        Assert.That(warning, Does.Contain(truncated
+            ? OprBookImporter.TruncatedSpellWarning
+            : OprBookImporter.UnrecognizedSpellWarning));
     }
 
     // OPR "select" is the pick bound per section ("Upgrade with one/any/up to two:"), distinct from

@@ -5,11 +5,12 @@ using NUnit.Framework;
 
 namespace FDG.Tests
 {
-    // #377 — the "redundant qualifier" phrase rules ("Bane when attacking", "Shred when attacking",
-    // "+6\" range when shooting") are cataloged as exact behavioral clones of their base rules: Bane and
-    // Shred only ever apply when attacking, and range checks only exist for shooting, so the qualifier
-    // adds no gate (the #375 C9 "Counter in Melee" reading). These pins keep the clones from drifting -
-    // if the base rule's entries change, the phrase rule must follow or consciously diverge here.
+    // #377 — the "redundant qualifier" phrase rules ("Bane when attacking", "Shred when attacking") are cataloged as
+    // exact behavioral clones of their base rules: Bane and Shred only ever apply when attacking, so the qualifier
+    // adds no gate (the #375 C9 "Counter in Melee" reading). #439: the third, "+6\" range when shooting", is gone -
+    // the 3.6 parser grants Increased Shooting Range itself, so nothing reached the clone any more. These pins keep
+    // the clones from drifting - if the base rule's entries change, the phrase rule must follow or consciously
+    // diverge here.
     [TestFixture]
     public class SpellPhraseCloneTests
     {
@@ -20,7 +21,6 @@ namespace FDG.Tests
         {
             (CoreRuleCatalog.BaneWhenAttacking, CoreRuleCatalog.Bane, true),
             (CoreRuleCatalog.ShredWhenAttacking, CoreRuleCatalog.Shred, true),
-            (CoreRuleCatalog.RangeBonusWhenShooting, CoreRuleCatalog.IncreasedShootingRange, false),
         };
 
         [Test]

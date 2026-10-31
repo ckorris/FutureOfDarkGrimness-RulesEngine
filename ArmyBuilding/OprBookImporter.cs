@@ -127,7 +127,7 @@ namespace FDG.ArmyBuilding
                 SpellDefinition? parsed = TryParseSpell(spell, out SpecialRuleDefinition? synthesized);
                 if (parsed is null)
                 {
-                    warn?.Invoke($"Spell '{spell.Name}' skipped: unrecognized effect text \"{spell.Effect}\".");
+                    warn?.Invoke(DescribeSkippedSpell(spell));
                     continue;
                 }
 
@@ -182,7 +182,7 @@ namespace FDG.ArmyBuilding
                 SpellDefinition? parsed = TryParseSpell(spell, out SpecialRuleDefinition? synthesized);
                 if (parsed is null)
                 {
-                    warn?.Invoke($"Spell '{spell.Name}' skipped: unrecognized effect text \"{spell.Effect}\".");
+                    warn?.Invoke(DescribeSkippedSpell(spell));
                     continue;
                 }
 
@@ -538,7 +538,18 @@ namespace FDG.ArmyBuilding
         //   "…which must take a morale test. If failed, it becomes fatigued."      → Effect.MoraleTestThen(ApplyFatigue)
         //   "…must take a morale test. If failed you may move it by up to 6\"…"    → Effect.MoraleTestThen(TriggeredMove)
         //   "…which moves +2\" when using Advance actions and +4\" when using      → AddRule of a SYNTHESIZED
-        //    Rush/Charge actions once…" / "…which loses AP(1) when shooting once…"   book-embedded rule (below)
+        //    Rush/Charge actions once…" / "…which loses AP(1) on its weapons        book-embedded rule (below)
+        //    when shooting once…"
+        //   "…which loses 2 spell tokens. Note that the target may not spend…"     → Effect.ConsumeToken(SpellTokens)
+        //
+        // #439 (OPR 3.6.0): grants and marks are worded "gets X ON ITS/THEIR WEAPONS when shooting / in melee / when
+        // attacking" (or bare "on their weapons"). The suffix is a scope, not part of the rule's name:
+        // CanonicalGrantName folds it onto the catalog's grant names ("X when shooting", "X in melee", "X when
+        // attacking", bare "X"), and "+6\" range on its weapons when shooting" onto Increased Shooting Range - the
+        // names the auras, the supplement's Buff/Mark abilities and the units already grant. Damage spells name 3.6
+        // weapon rules (Smash, Fracture, Pierce, Purge, ...) in their "with" clause; those ride WithRules unchanged,
+        // and "Roll as many dice as hits to see if \"on rolls of 6\" effects trigger" needs no flag (the spell
+        // pipeline always rolls its hits as dice for the on-6 fold - SyntheticHitResolution).
         // A "model" target maps to TargetSelector.SingleModel (the "unit of [1]" wording). AP folds into
         // DealHits.ArmorPenetration like weapon import; other rule names ride WithRules and resolve at army
         // load with the usual skip-unknown tolerance. Anything that doesn't match is SKIPPED with a warning —
@@ -575,6 +586,42 @@ namespace FDG.ArmyBuilding
             "which takes? (?<hits>\\d+) hits?(?: with (?<rules>[^.]+))?",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+        // #439: the OPR 3.6 weapon-scoped grant suffix - "Shred on its weapons when shooting", "Rending on their weapons
+        // in melee", "Bane on their weapons when attacking", "Indirect on their weapons". Anchored at both ends: it
+        // reads the whole captured grant phrase.
+        private static readonly Regex WeaponScopedGrant = new(
+            "^(?<rule>.+?) on (?:its|their) weapons(?: (?<kind>when shooting|in melee|when attacking))?$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static readonly Regex RangeBonusGrant = new(
+            "^\\+(?<inches>\\d+)\" range$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        /// <summary>#439 - the rule NAME a spell's grant or mark phrase stands for. OPR 3.6 writes the scope into the
+        /// phrase ("gets Shred on its weapons when shooting"); the catalog names the same rules without it ("Shred
+        /// when shooting", "Rending in melee", "Bane when attacking", bare "Indirect" / "Surge" for "on their weapons"),
+        /// and "+6\" range on its weapons when shooting" is Increased Shooting Range (the supplement's Buff / Mark grant
+        /// it under that name too). Phrases without the suffix come back unchanged. Internal for the importer tests.
+        /// </summary>
+        internal static string CanonicalGrantName(string phrase)
+        {
+            string trimmed = (phrase ?? string.Empty).Trim();
+            Match scoped = WeaponScopedGrant.Match(trimmed);
+            if (!scoped.Success) return trimmed;
+
+            string rule = scoped.Groups["rule"].Value.Trim();
+            string kind = scoped.Groups["kind"].Success ? scoped.Groups["kind"].Value.ToLowerInvariant() : string.Empty;
+            if (kind == "when shooting" && RangeBonusGrant.Match(rule) is { Success: true } range)
+            {
+                // Increased Shooting Range is the +6" member; another bonus keeps its phrase name, which resolves
+                // nowhere and so fails BookSpellCoverageTests loudly instead of granting the wrong number.
+                return range.Groups["inches"].Value == "6"
+                    ? "Increased Shooting Range"
+                    : $"+{range.Groups["inches"].Value}\" range when shooting";
+            }
+
+            return kind.Length == 0 ? rule : $"{rule} {kind}";
+        }
+
         private static readonly Regex GrantShape = new(
             "which gets? (?<rule>.+?) once",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -594,8 +641,10 @@ namespace FDG.ArmyBuilding
 
         // "...which friendly units get X against once" — the mark family (#034): the rule lands on friendlies
         // ATTACKING the picked target, i.e. Effect.MarkTarget.
+        // #439: the verb is optional - AoF Dragon Empire's Ancestral Guidance reads "which friendly units Indirect on
+        // their weapons against once" in the 3.6.0 source (the "get" dropped); the mark is the only reading.
         private static readonly Regex MarkShape = new(
-            "which friendly units gets? (?<rule>.+?) against",
+            "which friendly units (?:gets? )?(?<rule>.+?) against",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         // "...which moves +2\" when using Advance actions and +4\" when using Rush/Charge actions once" —
@@ -604,10 +653,24 @@ namespace FDG.ArmyBuilding
             "which moves? (?<adv>[+-]?\\d+)\" when using Advance actions and (?<rc>[+-]?\\d+)\" when using Rush/Charge actions once",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-        // "...which loses AP(1) when shooting once" — Corrode Weapons. Synthesizes an attacker-side
-        // ReduceArmorPenetration rule (same floored-at-AP(0) primitive Fortified uses defender-side).
+        // "...which loses AP(1) on its weapons when shooting once" — Corrode Weapons (3.5 wrote it without "on its
+        // weapons"; #439 accepts both). Synthesizes an attacker-side ReduceArmorPenetration rule (same
+        // floored-at-AP(0) primitive Fortified uses defender-side).
         private static readonly Regex ApLossShape = new(
-            "which loses AP\\((?<ap>\\d+)\\) when shooting once",
+            "which loses AP\\((?<ap>\\d+)\\)(?: on (?:its|their) weapons)? when shooting once",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        // #439: "...which loses 2 spell tokens. Note that the target may not spend those spell tokens to prevent this
+        // effect." — OPR 3.6 Shifting Form / Burn the Heretic / Aether-Cloud Rune. Effect.ConsumeToken(SpellTokens) on
+        // the target (Spell Drain's primitive); the note is enforced by CastSpellStage's cast-assist collection.
+        private static readonly Regex SpellTokenLossShape = new(
+            "which loses? (?<count>\\d+) spell tokens?",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        // #439: "Units may only be moved once per round in this way." after a morale-test move (Deep Hypnosis,
+        // Seductive Invocation) - the limit Mind Control carries since #434.
+        private static readonly Regex OncePerRoundMoveClause = new(
+            "units may only be moved once per round in this way",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         // "...which counts as being in Dangerous/Difficult Terrain once" — Cursed Stride / Aura of
@@ -682,7 +745,15 @@ namespace FDG.ArmyBuilding
             {
                 return new SpellDefinition(spellName, spell.Threshold ?? 1,
                     new TargetSelector(range, 1, maxCount, affinity, RequireLineOfSight: lineOfSight),
-                    new Effect.MarkTarget(mark.Groups["rule"].Value.Trim()));
+                    new Effect.MarkTarget(CanonicalGrantName(mark.Groups["rule"].Value)));
+            }
+
+            Match tokenLoss = SpellTokenLossShape.Match(text);
+            if (tokenLoss.Success)
+            {
+                return new SpellDefinition(spellName, spell.Threshold ?? 1,
+                    new TargetSelector(range, 1, maxCount, affinity, RequireLineOfSight: lineOfSight),
+                    new Effect.ConsumeToken(TokenType.SpellTokens, int.Parse(tokenLoss.Groups["count"].Value)));
             }
 
             Match move = MoveShape.Match(text);
@@ -715,10 +786,14 @@ namespace FDG.ArmyBuilding
             if (moraleTest.Success)
             {
                 string tail = moraleTest.Groups["tail"].Value;
+                // #439: "Units may only be moved once per round in this way" keys the move by the spell's own name
+                // (D entry in WorkItems/439: the limit is per ability, not shared with the Mind Control rule).
+                string? oncePerRoundKey = OncePerRoundMoveClause.IsMatch(text) ? spellName : null;
                 Effect? onFailure =
                     MoraleFatigueTail.IsMatch(tail) ? new Effect.ApplyFatigue()
                     : MoraleMoveTail.Match(tail) is { Success: true } moveTail
-                        ? new Effect.TriggeredMove(int.Parse(moveTail.Groups["inches"].Value), IsOptional: true)
+                        ? new Effect.TriggeredMove(int.Parse(moveTail.Groups["inches"].Value), IsOptional: true,
+                            OncePerRoundKey: oncePerRoundKey)
                         : null;
                 if (onFailure is null) return null; // unknown consequence — skip whole spell, never half-wrong
 
@@ -750,11 +825,36 @@ namespace FDG.ArmyBuilding
 
                 return new SpellDefinition(spellName, spell.Threshold ?? 1,
                     new TargetSelector(range, 1, maxCount, affinity, RequireLineOfSight: lineOfSight),
-                    new Effect.AddRule(granted, ELifetime.NextTrigger));
+                    new Effect.AddRule(CanonicalGrantName(granted), ELifetime.NextTrigger));
             }
 
             return null;
         }
+
+        // #439: the target clause with nothing after it - AoF Shadow Stalkers' Combat Possession reads only "Pick up to
+        // two friendly units within 12\", which" in the 3.6.0 source (its generation block has no effect either).
+        private static readonly Regex TruncatedSpellText = new(
+            "^pick [^,]+,\\s*which\\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        /// <summary>#439 - the import warning for a spell <see cref="TryParseSpell"/> could not read. Two kinds, kept
+        /// apart because they mean different things: a source text that stops after its target clause (an OPR data
+        /// defect - nothing to parse) vs. an effect the grammar does not know (a parser gap - scripts/bake-books.sh fails
+        /// the bake on it, so it can never ship as a silently missing spell).</summary>
+        internal static string DescribeSkippedSpell(string? name, string? effect)
+        {
+            string text = (effect ?? string.Empty).Trim();
+            return TruncatedSpellText.IsMatch(text)
+                ? $"Spell '{name}' skipped: {TruncatedSpellWarning} \"{effect}\"."
+                : $"Spell '{name}' skipped: {UnrecognizedSpellWarning} \"{effect}\".";
+        }
+
+        private static string DescribeSkippedSpell(OprSpell spell) => DescribeSkippedSpell(spell.Name, spell.Effect);
+
+        /// <summary>#439 - the warning phrase for a spell effect the grammar does not recognise (the bake fails on it).</summary>
+        public const string UnrecognizedSpellWarning = "unrecognized effect text";
+
+        /// <summary>#439 - the warning phrase for an OPR source spell whose text ends after its target clause.</summary>
+        public const string TruncatedSpellWarning = "the OPR source text is truncated after its target clause";
 
         /// <summary>The grant-family spell wrapper for a synthesized rule: the spell grants
         /// "&lt;Spell&gt; Effect" once (NextTrigger), like any other grant spell. If the synthesized
@@ -823,8 +923,10 @@ namespace FDG.ArmyBuilding
                     // Attacker-side AP reduction on the shooter's own weapon, floored at AP(0) by the save
                     // stage (the same primitive Fortified applies defender-side). Not(IsMelee) keeps it to
                     // shooting, per the spell text.
+                    // #439: "on its weapons" (OPR 3.6) - the bearer's own spell hits are not its weapons, so they keep
+                    // their AP (the #434 IsNotSpell gate the catalog's "when shooting" grants carry).
                     new HookEntry(EHookID.Shooting_OnHitRollComplete,
-                        new Condition.Not(new Condition.IsMelee()),
+                        new Condition.And(new Condition.Not(new Condition.IsMelee()), new Condition.IsNotSpell()),
                         new Effect.ReduceArmorPenetration(apLoss),
                         ELifetime.ThisAttack),
                 },

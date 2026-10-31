@@ -198,7 +198,7 @@ namespace FDG.Stages
             //    Casters add +1 each, enemy Casters subtract 1 each. Their tokens are spent regardless of the
             //    cast's outcome (like the cast cost above). Boost + assists shift the success threshold.
             CastAssistResult assistResult = await CollectCastAssist(context.ActivatingUnit, player, chosen.Name,
-                SpellText.Describe(chosen.Definition));
+                SpellText.Describe(chosen.Definition), DrainReservation(chosen.Effect, targets));
             int assist = assistResult.Net;
 
             // #197 P6 — granted cast-roll modifiers (Casting Debuff / Casting Buff): a signed delta the
@@ -268,7 +268,10 @@ namespace FDG.Stages
             if (chosen.Effect is Effect.DealHits dealHits)
             {
                 // Synthetic spell weapon: the spell's AP + its pre-resolved weapon rules (shared across targets).
-                Weapon spellWeapon = new Weapon(chosen.Name, rangeInches: 0f, attacks: 0,
+                // #439 (#431 hand-off, OWNER REVIEW D entry): its range is the spell's range, so OPR 3.6's "when
+                // attacking units over half of this weapon's range away" (Smash, Pierce) reads the spell's reach -
+                // a range-0 weapon made that facet unreachable on the seventeen 3.6 spells that name them.
+                Weapon spellWeapon = new Weapon(chosen.Name, rangeInches: chosen.Target.RangeInches, attacks: 0,
                     armorPenetration: dealHits.ArmorPenetration);
                 foreach (ResolvedRule rule in chosen.WeaponRules)
                 {
@@ -694,7 +697,8 @@ namespace FDG.Stages
         // whether or not the cast then succeeds, matching the cast cost. Returns a zero net when no one
         // assists, so a game with no nearby Casters sees no prompts and no behaviour change.
         private async Task<CastAssistResult> CollectCastAssist(DataBinding<UnitData> casterBinding,
-            PlayerID casterPlayer, string spellName, string spellDescription)
+            PlayerID casterPlayer, string spellName, string spellDescription,
+            Func<IUnit, int>? reservedOwnTokens = null)
         {
             string casterName = casterBinding.GetValue().Name;
             int net = 0;
@@ -707,8 +711,10 @@ namespace FDG.Stages
 
                 // Re-read per assister rather than reusing FindEligibleAssisters' snapshot: an earlier
                 // assister this round may have drained the accumulator they share.
+                // #439: a drain spell's target may not hinder with the tokens it is about to lose.
+                int reserved = reservedOwnTokens?.Invoke(assister) ?? 0;
                 int available = SpellPurse.Available(GameContext.TableState, GameContext.RuleEvaluator,
-                    assister);
+                    assister) - reserved;
                 if (available <= 0) continue;
 
                 int spent = await AskAssistCount(unitBinding, casterBinding, friendly, available, spellName,
@@ -716,7 +722,7 @@ namespace FDG.Stages
                 if (spent <= 0) continue;
 
                 IReadOnlyList<SpellPurse.Loan> loans = SpellPurse.Spend(GameContext.TableState,
-                    GameContext.RuleEvaluator, assister, spent);
+                    GameContext.RuleEvaluator, assister, spent, reserveOwn: reserved);
                 net += friendly ? spent : -spent;
 
                 // #274 — record the spender for the batched visual played just before the roll.
@@ -748,6 +754,27 @@ namespace FDG.Stages
                     friendly ? AssistBannerColor : HinderBannerColor, EBannerTier.Toast);
             }
             return new CastAssistResult(net, boostTokens, hinderTokens, boostSources, hinderSources);
+        }
+
+        /// <summary>
+        /// #439 - OPR 3.6 Shifting Form / Burn the Heretic / Aether-Cloud Rune: "which loses 2 spell tokens. Note that
+        /// the target may not spend those spell tokens to prevent this effect." The cast-assist window is where a
+        /// target could spend them (hindering the roll), so each picked target keeps back as many of its OWN tokens
+        /// as the spell would take (lent pools are not its tokens and stay spendable). Null for every other spell.
+        /// Internal for the tests.
+        /// </summary>
+        internal static Func<IUnit, int>? DrainReservation(Effect effect,
+            IReadOnlyList<DataBinding<UnitData>> targets)
+        {
+            if (effect is not Effect.ConsumeToken { TType: var type, Count: > 0 } drain
+                || type != TokenType.SpellTokens)
+            {
+                return null;
+            }
+
+            return unit => targets.Any(t => ReferenceEquals(t.GetValue(), unit))
+                ? Math.Min(drain.Count, unit.Tokens.GetTokenCount(TokenType.SpellTokens))
+                : 0;
         }
 
         // Living, on-battlefield Caster units (other than the caster) that hold at least one spell token and

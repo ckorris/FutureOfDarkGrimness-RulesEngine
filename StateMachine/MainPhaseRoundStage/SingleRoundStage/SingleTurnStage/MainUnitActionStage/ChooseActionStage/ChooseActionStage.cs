@@ -238,7 +238,12 @@ namespace FDG.Stages
 
             void Describe(AbilityOffer describedOffer)
             {
-                string? text = describedOffer.Definition?.Description;
+                // #441 F7: the hover text, not the bare description - an Enhanced rule whose text never names its
+                // base gets the "Base rule: X." line here too, as on every other rule-hover surface.
+                string? text = describedOffer.Definition == null
+                    || string.IsNullOrWhiteSpace(describedOffer.Definition.Description)
+                    ? null
+                    : EnhancedRuleGate.HoverDescription(describedOffer.Definition, GameContext.RuleEvaluator.RuleResolver);
                 if (string.IsNullOrWhiteSpace(text))
                 {
                     return;
@@ -562,7 +567,7 @@ namespace FDG.Stages
 
                 string? text = string.IsNullOrWhiteSpace(resolved.Definition.Description)
                     ? null
-                    : resolved.Definition.Description;
+                    : EnhancedRuleGate.HoverDescription(resolved.Definition, resolver);
                 rules.Add(new StringSelectionRequest.OptionRule(name, text));
             }
 

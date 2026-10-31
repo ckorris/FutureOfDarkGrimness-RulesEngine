@@ -131,5 +131,27 @@ namespace FDG.Tests
             Assert.That(EnhancedRuleAudit.BaseRuleNames(resolver, "Enhanced Oddly Named"), Is.EqualTo(new[] { "Lustbound", "Parry" }));
             Assert.That(EnhancedRuleAudit.BaseRuleNames(resolver, "Enhanced Missing"), Is.Empty);
         }
+
+        /// <summary>#441 F7: the Watchborn shape - Enhanced Watchborn gates on the helpers Watchborn's activation
+        /// pick grants its own unit for the activation, and the unit carries Watchborn, not the helpers.</summary>
+        [Test]
+        public void AGateOnAnActivationHelper_IsSatisfiedByTheRuleThatGrantsIt()
+        {
+            ArmyListFile army = Army(Unit("Watch Brothers", "Watchborn", "Enhanced Watchborn"), Unit("Orphans", "Enhanced Watchborn"));
+            List<ActivatedAbility> picks = new List<ActivatedAbility>();
+            foreach (string helper in new[] { "Watchborn (Piercing)", "Watchborn (Precision)" })
+            {
+                picks.Add(new ActivatedAbility(EHookID.Activation_OnActivationStart, new Cost.OncePerActivation(),
+                    new TargetSelector(0f, 1, 1, ETargetAffinity.Self, false),
+                    new Effect.AddRule(helper, ELifetime.ThisActivation), new Condition.Always(), helper));
+                army.RuleDefinitions.Add(Base(helper));
+            }
+            army.RuleDefinitions.Add(new SpecialRuleDefinition("Watchborn", new List<HookEntry>(), picks, Description: "Pick one."));
+            army.RuleDefinitions.Add(Enhanced("Enhanced Watchborn",
+                new Condition.Or(new Condition.UnitHasRule("Watchborn (Piercing)"), new Condition.UnitHasRule("Watchborn (Precision)"))));
+
+            Assert.That(EnhancedRuleAudit.Audit(army),
+                Is.EqualTo(new[] { "Orphans: Enhanced Watchborn does nothing without Watchborn" }));
+        }
     }
 }

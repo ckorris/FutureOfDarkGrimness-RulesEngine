@@ -16,10 +16,12 @@ namespace FDG.SaveLoad
     /// sibling of <see cref="ArmyRuleAudit"/>, never a launch blocker and not a #168 drop (the rule DOES attach).
     ///
     /// <para>The base rule is read off the Enhanced rule's own definition - the same gate the evaluator reads -
-    /// never parsed from its name: an Enhanced rule that resolves to a definition with no bearer-rule gate (an aura
-    /// that grants the Enhanced rule to others) depends on nothing and says nothing, and one that does not resolve
-    /// at all is <see cref="ArmyRuleAudit"/>'s business. Gates under a <see cref="Condition.Not"/> are not
-    /// dependencies. "Carries X" is what <see cref="Condition.UnitHasRule.Holds"/> would see at game time: the unit's
+    /// never parsed from its name (<see cref="EnhancedRuleGate"/>): an Enhanced rule that resolves to a definition
+    /// with no bearer-rule gate (an aura that grants the Enhanced rule to others) depends on nothing and says
+    /// nothing, and one that does not resolve at all is <see cref="ArmyRuleAudit"/>'s business. Gates under a
+    /// <see cref="Condition.Not"/> are not dependencies; a gate on a one-activation helper ("Watchborn (Piercing)")
+    /// is a dependency on the rule whose activation pick grants it (Watchborn), which is what the unit carries
+    /// (#441 F7). "Carries X" is what <see cref="Condition.UnitHasRule.Holds"/> would see at game time: the unit's
     /// own rules, its weapons' rules, its #407 model grants, and the rules of a Hero joined to it (or of the unit a
     /// Hero joins) - a joined Hero is one of the unit's models. Aura-granted rules cannot be seen from a list and
     /// may produce a false advisory; acceptable for an advisory pane.</para>
@@ -27,7 +29,7 @@ namespace FDG.SaveLoad
     public static class EnhancedRuleAudit
     {
         /// <summary>The 3.6 family's naming: every member is "Enhanced " + its base (plus an Aura/Buff suffix).</summary>
-        public const string Prefix = "Enhanced ";
+        public const string Prefix = EnhancedRuleGate.Prefix;
 
         /// <summary>One advisory line per (unit, Enhanced rule) whose base rule the unit does not carry, in list
         /// order: "Warriors: Enhanced Lustbound does nothing without Lustbound". Empty for a clean list.</summary>
@@ -76,10 +78,10 @@ namespace FDG.SaveLoad
         }
 
         /// <summary>
-        /// The rules an Enhanced rule's definition gates on the bearer carrying (<see cref="Condition.UnitHasRule"/>
-        /// and <see cref="Condition.WeaponHasRule"/> anywhere in its passive entries' conditions or its activated
-        /// abilities' availability, not under a <see cref="Condition.Not"/>, and not the rule itself), in first-seen
-        /// order. Empty when the name does not resolve or the definition has no such gate.
+        /// The base rules of an Enhanced rule, read off its definition's gate (<see cref="EnhancedRuleGate.BaseRuleNames(SpecialRuleDefinition, IRuleResolver)"/>:
+        /// <see cref="Condition.UnitHasRule"/> / <see cref="Condition.WeaponHasRule"/> through And/Or, not under Not,
+        /// not the rule itself; a one-activation helper folded to the rule whose activation pick grants it), in
+        /// first-seen order. Empty when the name does not resolve or the definition has no such gate.
         /// </summary>
         public static IReadOnlyList<string> BaseRuleNames(IRuleResolver resolver, string enhancedName)
         {
@@ -88,45 +90,9 @@ namespace FDG.SaveLoad
                 return Array.Empty<string>();
             }
 
-            List<string> names = new List<string>();
-            foreach (HookEntry entry in resolved.Definition.Passive)
-            {
-                Collect(entry.Condition, names);
-            }
-
-            foreach (ActivatedAbility ability in resolved.Definition.Activated)
-            {
-                Collect(ability.AvailableWhen, names);
-            }
-
-            return names
-                .Where(n => !string.Equals(n, resolved.Definition.Name, StringComparison.OrdinalIgnoreCase)
-                    && !string.Equals(n, enhancedName, StringComparison.OrdinalIgnoreCase))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
+            return EnhancedRuleGate.BaseRuleNames(resolved.Definition, resolver)
+                .Where(n => !string.Equals(n, enhancedName, StringComparison.OrdinalIgnoreCase))
                 .ToList();
-        }
-
-        private static void Collect(Condition condition, List<string> names)
-        {
-            switch (condition)
-            {
-                case Condition.UnitHasRule unitHas:
-                    names.Add(unitHas.RuleName);
-                    break;
-                case Condition.WeaponHasRule weaponHas:
-                    names.Add(weaponHas.RuleName);
-                    break;
-                case Condition.And and:
-                    Collect(and.Left, names);
-                    Collect(and.Right, names);
-                    break;
-                case Condition.Or or:
-                    Collect(or.Left, names);
-                    Collect(or.Right, names);
-                    break;
-                case Condition.Not:
-                    break; // a negative gate is not a dependency
-            }
         }
 
         /// <summary>Every rule name the unit itself carries, at every level UnitHasRule.Holds reads: unit rules,

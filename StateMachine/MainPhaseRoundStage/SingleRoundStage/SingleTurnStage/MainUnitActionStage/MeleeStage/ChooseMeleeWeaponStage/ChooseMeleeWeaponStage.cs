@@ -207,7 +207,7 @@ namespace FDG.Stages
                 BuildRuleDescriptions(validOptions),
                 secondaryActions: secondaryActions.Count > 0 ? secondaryActions : null,
                 displayName: "Choosing a Melee Weapon",
-                optionRules: BuildOptionRules(weaponByLabel));
+                optionRules: BuildOptionRules(weaponByLabel, GameContext.RuleEvaluator.RuleResolver));
 
             string chosenWeaponStatsName = await GameContext.PlayerRequester
                 .RequestDecision<StringSelectionRequest, string>(request);
@@ -365,7 +365,7 @@ namespace FDG.Stages
         /// Returns null when no option has a rule at all.</para>
         /// </summary>
         private static Dictionary<string, List<StringSelectionRequest.OptionRule>>? BuildOptionRules(
-            Dictionary<string, Weapon> weaponByLabel)
+            Dictionary<string, Weapon> weaponByLabel, IRuleResolver? resolver)
         {
             Dictionary<string, List<StringSelectionRequest.OptionRule>> optionRules =
                 new Dictionary<string, List<StringSelectionRequest.OptionRule>>(StringComparer.Ordinal);
@@ -381,7 +381,7 @@ namespace FDG.Stages
                 {
                     string? description = string.IsNullOrWhiteSpace(rule.Definition.Description)
                         ? null
-                        : rule.Definition.Description;
+                        : EnhancedRuleGate.HoverDescription(rule.Definition, resolver);   // #441 F7
                     rules.Add(new StringSelectionRequest.OptionRule(rule.RequestedName, description));
                 }
 

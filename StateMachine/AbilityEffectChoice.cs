@@ -133,7 +133,7 @@ namespace FDG.Stages
             return resolver != null
                 && resolver.TryResolve(addRule.RuleName, out ResolvedRule resolved)
                 && !string.IsNullOrWhiteSpace(resolved.Definition.Description)
-                    ? resolved.Definition.Description
+                    ? EnhancedRuleGate.HoverDescription(resolved.Definition, resolver)
                     : addRule.RuleName;
         }
     }

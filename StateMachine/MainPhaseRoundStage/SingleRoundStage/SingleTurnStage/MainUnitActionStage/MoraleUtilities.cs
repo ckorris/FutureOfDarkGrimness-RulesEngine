@@ -204,7 +204,7 @@ namespace FDG.Stages
         {
             int baseRollNeeded = quality.Quality;
 
-            // A Shaken unit always fails its morale tests (GF v3.5.1) — no die is rolled. This is what
+            // A Shaken unit always fails its morale tests (GF Core Rules v3.6.0, as in v3.5.1) — no die is rolled. This is what
             // escalates a Shaken unit that loses a later melee at half strength into a Rout, and keeps an
             // already-Shaken unit Shaken on any other failed test. Checked before the roll so a lucky die
             // can't rescue it.
@@ -394,7 +394,7 @@ namespace FDG.Stages
         /// Whether a wound-driven morale test is due: the unit took wounds (its remaining wounds dropped
         /// below <paramref name="remainingWoundsBefore"/>, the baseline captured when the action began)
         /// and it now sits at half strength or less. The rule tests at the end of ANY activation whose
-        /// wounds leave the unit at half or less (GF v3.5.1) — including a unit that was already below
+        /// wounds leave the unit at half or less (GF Core Rules v3.6.0, as in v3.5.1) — including a unit that was already below
         /// half before this activation's wounds (#254; an earlier crossing-only check skipped those).
         /// <para>
         /// #431: <paramref name="countedWounds"/> are wounds the unit only COUNTS as having taken (OPR 3.6
@@ -442,7 +442,7 @@ namespace FDG.Stages
         /// <summary>
         /// Resolve a wound-driven morale test (shooting): if the unit took wounds and is now at half
         /// strength or less, it tests, and a failure makes it Shaken. A failed non-melee
-        /// morale test never Routs — Rout is a melee-only result (GF v3.5.1: the general morale rule says
+        /// morale test never Routs — Rout is a melee-only result (GF Core Rules v3.6.0, as in v3.5.1: the general morale rule says
         /// a failed test makes a unit Shaken; only the melee-results rule routs a loser at half strength).
         /// Returns null if no test was taken (above half, unwounded, or destroyed outright), true if
         /// passed, false if failed and Shaken. Logging is left to the caller, which knows the wound source.

@@ -472,7 +472,7 @@ public static class CoreRuleCatalog
     /// The rule does NOT ignore line of sight or cover (#314). It carried
     /// <see cref="RuleOperation.IgnoreLineOfSight"/> / <see cref="RuleOperation.IgnoreCover"/> hooks from
     /// 2026-06-11 to 2026-08-02, copied off Indirect's clause by the #042 checklist's per-rule mapping row;
-    /// the v3.5.1 rule text grants neither, and the LoS hook let snipers shoot through Blocking terrain.
+    /// the rule text grants neither (v3.5.1, and v3.6.0's reworded Takedown), and the LoS hook let snipers shoot through Blocking terrain.
     /// Indirect keeps both — its own text does grant them.
     ///
     /// "Takedown attacks must be resolved before other weapons" is the ordering facet, realized as a

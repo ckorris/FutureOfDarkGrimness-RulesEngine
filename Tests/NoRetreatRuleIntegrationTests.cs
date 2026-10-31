@@ -171,8 +171,8 @@ namespace FDG.Tests
         [Test]
         public async Task AnAlreadyShakenUnitWithoutTheRule_StillAutomaticallyFails()
         {
-            // The guard on the short-circuit this slice reached into: GF v3.5.1's "a Shaken unit always
-            // fails its morale tests" must be untouched for everyone else.
+            // The guard on the short-circuit this slice reached into: GF Core Rules v3.6.0's Shaken "always
+            // fails Morale Tests" (unchanged from v3.5.1) must be untouched for everyone else.
             var ctx = Context(face: 6);
             DataBinding<UnitData> unit = MakeUnit(modelCount: 3, withRule: 0);
             Shake(unit);

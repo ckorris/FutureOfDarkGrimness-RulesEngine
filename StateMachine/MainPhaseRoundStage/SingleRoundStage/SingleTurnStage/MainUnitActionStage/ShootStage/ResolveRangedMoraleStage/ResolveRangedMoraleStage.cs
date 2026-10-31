@@ -36,7 +36,7 @@ namespace FDG.Stages
 
         // A unit left at half strength or less by wounds from shooting must take a morale test; a failed
         // test makes it Shaken (a non-melee morale failure never Routs — Rout is a melee-only result,
-        // GF v3.5.1). The test fires whenever the shoot action wounded the unit and it now sits at half
+        // GF Core Rules v3.6.0, as in v3.5.1). The test fires whenever the shoot action wounded the unit and it now sits at half
         // or less — a unit already below half tests again every activation it takes wounds (#254). The
         // baseline is its wound count when this attacker first targeted it, so a unit shot by three
         // weapons tests at most once, and a targeted-but-unwounded unit doesn't test.

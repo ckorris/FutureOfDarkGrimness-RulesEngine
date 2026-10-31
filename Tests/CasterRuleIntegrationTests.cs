@@ -165,7 +165,7 @@ namespace FDG.Tests
             Assert.That(routed, Is.True, "a caster with a castable spell is offered Cast and routes to the cast stage");
         }
 
-        // #234 — Caster(X) is "at any point before attacking" (GF v3.5.1), so once the unit has shot or
+        // #234 — Caster(X) casts "Once per activation, before attacking" (GF Core Rules v3.6.0), so once the unit has shot or
         // fought, Cast is no longer a valid option. HasAttacked is set by both ShootStage and MeleeStage,
         // so this one gate covers the charge-then-melee case the item was filed for and the shooting case.
         [Test]

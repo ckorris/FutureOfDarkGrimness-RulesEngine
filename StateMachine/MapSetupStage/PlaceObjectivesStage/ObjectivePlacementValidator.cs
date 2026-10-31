@@ -11,8 +11,8 @@ namespace FDG.Stages
 
     /// <summary>
     /// Pure-function checks for whether a candidate <see cref="Position"/> is a
-    /// legal spot for a new objective marker, per the GF Beginner's Guide v3.5.1
-    /// page 6 placement rules. Shared by the engine's auto-placer, the GUI/CLI
+    /// legal spot for a new objective marker, per the GF Beginner's Guide v3.6.0
+    /// page 6 placement rules (unchanged from v3.5.1). Shared by the engine's auto-placer, the GUI/CLI
     /// resolvers, and the AI resolver so all four agree on legality.
     /// </summary>
     public static class ObjectivePlacementValidator

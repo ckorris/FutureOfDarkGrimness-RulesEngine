@@ -103,8 +103,8 @@ namespace FDG.Stages
 
             // #033 — a unit with Caster(X) gets a "Cast" action whenever its army has an affordable spell.
             // Like custom actions, casting is layered (it doesn't end the turn), so moving does not consume
-            // it — but #234 gates it on HasAttacked, per Caster(X)'s "at any point before attacking"
-            // (GF v3.5.1). Only shown for casters (no point graying it out for every non-caster).
+            // it — but #234 gates it on HasAttacked, per Caster(X)'s "Once per activation, before attacking"
+            // (GF Core Rules v3.6.0; v3.5.1 said "at any point before attacking"). Only shown for casters (no point graying it out for every non-caster).
             var __gGateCast = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
             bool isCaster = SpellTargeting.IsCaster(GameContext, context.ActivatingUnit.GetValue());
             string cantCastReason = null;
@@ -728,7 +728,7 @@ namespace FDG.Stages
         {
             IUnit unit = context.ActivatingUnit.GetValue();
 
-            // #234 — Caster(X) is "at any point before attacking" (GF v3.5.1), so shooting or melee closes
+            // #234 — Caster(X) casts "Once per activation, before attacking" (GF Core Rules v3.6.0), so shooting or melee closes
             // the casting window for the rest of the activation. HasAttacked covers both (ShootStage and
             // MeleeStage are its only setters). Moving does not close it — casting brackets the move.
             if (context.HasAttacked)

@@ -55,9 +55,6 @@ public static class EffectRuleReferences
             case Effect.ExtraAttack extra:
                 AddAll(extra.WithRules, names, seen);
                 return;
-            case Effect.StormOfHits storm:
-                AddAll(storm.WithRules, names, seen);
-                return;
             // The only effect that WRAPS another one, so the only place recursion is needed today.
             case Effect.MoraleTestThen moraleTest:
                 Collect(moraleTest.OnFailure, names, seen);

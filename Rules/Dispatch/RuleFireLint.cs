@@ -481,8 +481,6 @@ public static class RuleFireLint
         // #381 Retreating Strike: the same op at move-resolved, rolled by the RetreatingStrike stages.
         RuleOperation.InvokeDealAutoWounds => hook is EHookID.Movement_OnMoveThroughEnemy
             or EHookID.Movement_OnMoveResolved,
-        // #197 P10 Storm of X: an action-choice ability enacted by StormStage (routed from ChooseActionStage).
-        RuleOperation.InvokeStorm => hook is EHookID.Activation_OnActionChoice,
         // #197 Surprise Attack: the first-activation hit pool, rolled by SurpriseAttackStage.
         RuleOperation.InvokeDealPooledHits => hook is EHookID.Activation_OnActivationStart,
         // #197 P16 Takedown Strike / Shot: an extra attack run by ResolveExtraAttackStage at the attack window.

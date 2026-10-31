@@ -24,7 +24,7 @@ namespace FDG.Stages
     ///
     /// The reflected hits are plain (no weapon rules, AP 0) and run the real save/wound pipeline against the
     /// attacker, so its armor and Regeneration apply. Because that pipeline runs as a child stage once per
-    /// entry, the per-bearer batches LOOP (the StormStage pattern): <see cref="OnBatchDone"/> re-enters and
+    /// entry, the per-bearer batches LOOP (the StormStage (deleted, #438) pattern): <see cref="OnBatchDone"/> re-enters and
     /// dequeues the next; <see cref="OnReflectResolved"/> continues the melee flow when the queue drains.
     ///
     /// The hit count is kept FRACTIONAL (never int-locked): in probabilistic mode a model's wounds-taken is a

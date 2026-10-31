@@ -651,23 +651,6 @@ public abstract record RuleOperation
     }
 
     /// <summary>
-    /// #197 P10 Storm of X — the config for a rolled multi-target hit burst. Resolution of
-    /// <see cref="Effect.StormOfHits"/>. A plain <see cref="RuleOperation"/>, enacted by StormStage: it
-    /// rolls <see cref="PoolDice"/> DECISIVELY, and for each success (>= <see cref="SuccessThreshold"/>) the
-    /// player picks an enemy within <see cref="RangeInches"/> that takes <see cref="HitsPerSuccess"/> hits
-    /// with <see cref="WithRules"/> at <see cref="ArmorPenetration"/>. No target rides the op - the targets
-    /// are chosen per success at resolution.
-    /// </summary>
-    public sealed record InvokeStorm(int PoolDice, int SuccessThreshold, int HitsPerSuccess,
-        IReadOnlyList<string> WithRules, int ArmorPenetration, float RangeInches) : RuleOperation
-    {
-        public override string Describe() =>
-            $"rolled {DiceTally(PoolDice)}, each {SuccessThreshold}+ dealing " +
-            $"{RollTags.Count(HitsPerSuccess, "hit")} to an enemy within {RangeInches:0.##}\"" +
-            $"{ApSuffix(ArmorPenetration)}{RulesSuffix(WithRules)}";
-    }
-
-    /// <summary>
     /// #197 Surprise Attack — roll <see cref="DiceCount"/> dice at <see cref="Target"/>; each result >=
     /// <see cref="SuccessThreshold"/> is one HIT at <see cref="ArmorPenetration"/>. Resolution of
     /// <see cref="Effect.DealPooledHits"/>. A plain <see cref="RuleOperation"/>, enacted by

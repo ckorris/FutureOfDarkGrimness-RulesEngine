@@ -37,7 +37,6 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(DealHits), "dealHits")]
 [JsonDerivedType(typeof(AttackWithThisWeapon), "attackWithThisWeapon")]
 [JsonDerivedType(typeof(DealAutoWounds), "dealAutoWounds")]
-[JsonDerivedType(typeof(StormOfHits), "stormOfHits")]
 [JsonDerivedType(typeof(DealPooledHits), "dealPooledHits")]
 [JsonDerivedType(typeof(Heal), "heal")]
 [JsonDerivedType(typeof(GrantToken), "grantToken")]
@@ -599,29 +598,6 @@ public abstract record Effect
     }
 
     /// <summary>
-    /// #197 P10 Storm of X — a rolled, multi-target hit burst. Once activated, roll <see cref="PoolDice"/>
-    /// dice; for each result >= <see cref="SuccessThreshold"/> the player picks one enemy unit within
-    /// <see cref="RangeInches"/> that takes <see cref="HitsPerSuccess"/> hits carrying <see cref="WithRules"/>
-    /// (Shred / Surge / Bane) at <see cref="ArmorPenetration"/>. Covers Storm of Change/Lust/Plague/War.
-    ///
-    /// The effect carries only the CONFIG - it emits a single <see cref="RuleOperation.InvokeStorm"/>. The
-    /// pool roll, the per-success target picks, and the per-target hit batches are enacted stage-side by
-    /// StormStage, because (a) the pool must be rolled DECISIVELY so the number of target picks is a whole
-    /// number even under the probabilistic roller (you cannot pick a fractional number of targets - the
-    /// #100 dice invariant, resolved as for P15's branch die), and (b) each target's hits run the save/wound
-    /// child-stage pipeline, which only sequences correctly as a real stage loop.
-    /// </summary>
-    public sealed record StormOfHits(int PoolDice, int SuccessThreshold, int HitsPerSuccess,
-        IReadOnlyList<string> WithRules, int ArmorPenetration, float RangeInches) : Effect
-    {
-        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
-        {
-            operations.Add(new RuleOperation.InvokeStorm(PoolDice, SuccessThreshold, HitsPerSuccess,
-                WithRules, ArmorPenetration, RangeInches));
-        }
-    }
-
-    /// <summary>
     /// #197 Surprise Attack — rolls a pool of dice against one chosen target and turns each success (a
     /// result >= <see cref="SuccessThreshold"/>) into one HIT at <see cref="ArmorPenetration"/>. Covers
     /// "pick one enemy unit within 6in in line of sight, and roll X dice. For each 2+ it takes one hit
@@ -629,7 +605,7 @@ public abstract record Effect
     ///
     /// The hit-pool sibling of <see cref="DealAutoWounds"/>: where that effect's successes are DIRECT
     /// wounds that skip the armor save, these are ordinary hits and run the full save -> wound pipeline.
-    /// And unlike <see cref="StormOfHits"/> — whose pool must be rolled DECISIVELY because each success
+    /// And unlike the deleted Storm of X burst (#438) — whose pool had to be rolled DECISIVELY because each success
     /// picks a target, and you cannot pick a fractional target — the successes here are a hit COUNT, so
     /// they stay fractional under the probabilistic roller (the #100 dice invariant).
     ///

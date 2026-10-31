@@ -22,7 +22,7 @@ public static class CoreRuleCatalog
     /// </summary>
     public static IReadOnlyList<SpecialRuleDefinition> All => new[]
     {
-        Stealth, Artillery, Indirect, Reliable, Fast, VeryFast, Slow, Surge, Relentless, Furious,
+        Stealth, Artillery, Indirect, Reliable, Fast, Slow, Surge, Relentless, Furious,
         Deadly, Regeneration, Unstoppable, Tough, Rending, Bane, Shred, Vanguard, Scout, Ambush, Thrust,
         Blast, Takedown, Limited, Impact, Counter, Brace, Parry, MartialProwess, Fear, Fearless, Hero, UniqueHero, Transport,
         FuriousBuff, Mend, Immobile, Cumbersome, Caster, SpellAmplifier,
@@ -280,27 +280,6 @@ public static class CoreRuleCatalog
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Positive,
         Description: "Moves +2\" when using Advance, and +4\" when using Rush/Charge.");
-
-    /// <summary> Fast, doubled: Advance +4", Rush/Charge +8". </summary>
-    public static SpecialRuleDefinition VeryFast { get; } = new SpecialRuleDefinition("Very Fast",
-        new[]
-        {
-            new HookEntry(EHookID.Movement_OnMoveActionDeclared,
-                new Condition.ActionTypeIs(EActionType.Advance),
-                new Effect.MovementBonus(EActionType.Advance, DistanceInches: 4f),
-                ELifetime.ThisActivation),
-            new HookEntry(EHookID.Movement_OnMoveActionDeclared,
-                new Condition.ActionTypeIs(EActionType.Rush),
-                new Effect.MovementBonus(EActionType.Rush, DistanceInches: 8f),
-                ELifetime.ThisActivation),
-            new HookEntry(EHookID.Movement_OnMoveActionDeclared,
-                new Condition.ActionTypeIs(EActionType.Charge),
-                new Effect.MovementBonus(EActionType.Charge, DistanceInches: 8f),
-                ELifetime.ThisActivation),
-        },
-        Array.Empty<ActivatedAbility>(),
-        Valence: EValence.Positive,
-        Description: "Moves +4\" when Advancing and +8\" when Rushing or Charging.");
 
     /// <summary> Advance -2", Rush/Charge -4". </summary>
     public static SpecialRuleDefinition Slow { get; } = new SpecialRuleDefinition("Slow",

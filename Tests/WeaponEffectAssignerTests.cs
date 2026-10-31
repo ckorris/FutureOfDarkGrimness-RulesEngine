@@ -32,9 +32,12 @@ public class WeaponEffectAssignerTests
     [Test]
     public void Match_FactionNameOverride_BeatsKeywords()
     {
-        // "power" normally reads daemonic; the Saurian Power Claw is a lizard's gauntlet.
-        Assert.That(WeaponEffectAssigner.Match("Saurian Starhost", "Power Claw", isRanged: false),
+        // "power" normally reads daemonic; the Saurian Power Claw is a lizard's gauntlet. #437: the override
+        // is keyed by the 3.6 name and still reached from the 3.5 one (OprBookNames).
+        Assert.That(WeaponEffectAssigner.Match("Saurian Starhosts", "Power Claw", isRanged: false),
             Is.EqualTo("claw-rend"));
+        Assert.That(WeaponEffectAssigner.Match("Saurian Starhost", "Power Claw", isRanged: false),
+            Is.EqualTo("claw-rend"), "the 3.5 book name (bundled until #438, old army files) keeps the override");
         Assert.That(WeaponEffectAssigner.Match("Wormhole Daemons of War", "Power Claw", isRanged: false),
             Is.EqualTo("daemon-arcane-melee"));
     }
@@ -63,17 +66,31 @@ public class WeaponEffectAssignerTests
             Is.EqualTo(((string?)null, (string?)null)), "an AoF faction is unknown to the GDF table");
     }
 
-    // #435: the 3.6 book names of the four AoF daemon books ("Rift Daemons of X" in 3.5) keep their 3.5 sets.
+    // #435 / #437: OPR 3.6 renamed the daemon books in both systems ("Rift Daemons of X" in AoF, "Wormhole Daemons
+    // of X" in GDF -> "Daemons of X") and the GDF "Saurian Starhost" -> "Saurian Starhosts". The tables are keyed by
+    // the 3.6 names; the 3.5 names reach the same row through OprBookNames, and each system keeps its OWN row for the
+    // now-shared name "Daemons of X".
     [TestCase("Change")]
     [TestCase("Lust")]
     [TestCase("Plague")]
     [TestCase("War")]
-    public void FactionDefaults_The36DaemonsBookNames_KeepTheRiftDaemonsSets(string god)
+    public void FactionDefaults_The36DaemonsBookNames_KeepTheirSets_FromEitherName(string god)
     {
-        Assert.That(WeaponEffectAssigner.FactionDefaults($"Daemons of {god}", GameSystems.AgeOfFantasy),
-            Is.EqualTo(WeaponEffectAssigner.FactionDefaults($"Rift Daemons of {god}", GameSystems.AgeOfFantasy)));
-        Assert.That(WeaponEffectAssigner.FactionDefaults($"Daemons of {god}", GameSystems.AgeOfFantasy).Ranged,
-            Is.Not.Null);
+        var aof = WeaponEffectAssigner.FactionDefaults($"Daemons of {god}", GameSystems.AgeOfFantasy);
+        var gdf = WeaponEffectAssigner.FactionDefaults($"Daemons of {god}");
+        Assert.That(aof.Ranged, Is.Not.Null);
+        Assert.That(gdf.Ranged, Is.Not.Null);
+        Assert.That(WeaponEffectAssigner.FactionDefaults($"Rift Daemons of {god}", GameSystems.AgeOfFantasy), Is.EqualTo(aof));
+        Assert.That(WeaponEffectAssigner.FactionDefaults($"Wormhole Daemons of {god}"), Is.EqualTo(gdf));
+        Assert.That(WeaponEffectAssigner.FactionDefaults($"Wormhole Daemons of {god}", GameSystems.AgeOfFantasy),
+            Is.EqualTo(((string?)null, (string?)null)), "a GDF-only 3.5 name means nothing in the AoF table");
+    }
+
+    [Test]
+    public void FactionDefaults_SaurianStarhosts_FromEitherName()
+    {
+        Assert.That(WeaponEffectAssigner.FactionDefaults("Saurian Starhosts"), Is.EqualTo(("gauss-particle", "claw-rend")));
+        Assert.That(WeaponEffectAssigner.FactionDefaults("Saurian Starhost"), Is.EqualTo(("gauss-particle", "claw-rend")));
     }
 
     [TestCase("Repeater Crossbow", true, "crossbow-bolt")] // crossbow outranks "bow"

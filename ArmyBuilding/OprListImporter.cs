@@ -103,8 +103,11 @@ namespace FDG.ArmyBuilding
             var mapped = new List<(OprListUnit Dto, UnitFileEntry Entry)>();
             foreach (OprListUnit unit in list.Units ?? new())
             {
+                // The book's CURRENT OPR name (#437): it keys the rule-name disambiguation, which is curated by
+                // current names only (OprBookNames). Live share lists already carry current names; this is a no-op
+                // for them and keeps the contract in one place.
                 string bookName = unit.ArmyId is not null && books.TryGetValue(unit.ArmyId, out BookHeader? h)
-                    ? h.Name : string.Empty;
+                    ? OprBookNames.Current(h.Name, systemSlug) : string.Empty;
                 mapped.Add((unit, MapUnit(unit, bookName, warn)));
             }
             MergeCombinedUnits(mapped, warn);

@@ -188,15 +188,17 @@ namespace FDG.ArmyBuilding
         }
 
         // Exact (faction, weapon name) overrides for the handful of names the keywords misread in a
-        // specific book's context. Checked before the keyword tables.
+        // specific book's context. Checked before the keyword tables. Keyed by the book's CURRENT OPR name
+        // (#437: lookups go through OprBookNames.Current, so a pre-rename faction still finds its row).
         private static readonly Dictionary<(string Faction, string Name), string> NameOverrides = new()
         {
             // A lizard's gauntlet, not a daemon relic ("power" would route it to daemon-arcane-melee).
-            [("Saurian Starhost", "Power Claw")] = Sets.ClawRend,
+            [("Saurian Starhosts", "Power Claw")] = Sets.ClawRend,
         };
 
         // Per-faction default sets (ranged, melee) — the fallback look for a weapon no keyword
-        // claims, chosen per book (#239 survey, 2026-07-16). Keys are the books' Faction strings.
+        // claims, chosen per book (#239 survey, 2026-07-16). Keys are the books' CURRENT OPR names (#437:
+        // FactionDefaults maps a pre-3.6 name such as "Wormhole Daemons of War" through OprBookNames first).
         private static readonly Dictionary<string, (string Ranged, string Melee)> FactionDefaultsTable = new(StringComparer.OrdinalIgnoreCase)
         {
             ["Alien Hives"]                  = (Sets.BioOrganic, Sets.ClawRend),
@@ -230,7 +232,7 @@ namespace FDG.ArmyBuilding
             ["Ratmen Clans"]                 = (Sets.BallisticSlug, Sets.ShockMelee),
             ["Rebel Guerrillas"]             = (Sets.BallisticSlug, Sets.EnergyBlade),
             ["Robot Legions"]                = (Sets.GaussParticle, Sets.TitanImpact),
-            ["Saurian Starhost"]             = (Sets.GaussParticle, Sets.ClawRend),
+            ["Saurian Starhosts"]            = (Sets.GaussParticle, Sets.ClawRend),
             ["Soul-Snatcher Cults"]          = (Sets.BallisticSlug, Sets.CrudeMelee),
             ["Titan Lords"]                  = (Sets.FusionMelta, Sets.TitanImpact),
             ["Titan Lords Change Disciples"] = (Sets.FusionMelta, Sets.TitanImpact),
@@ -242,10 +244,11 @@ namespace FDG.ArmyBuilding
             ["Watch Prime Brothers"]         = (Sets.StormTracer, Sets.EnergyBlade),
             ["Wolf Brothers"]                = (Sets.StormTracer, Sets.EnergyBlade),
             ["Wolf Prime Brothers"]          = (Sets.StormTracer, Sets.EnergyBlade),
-            ["Wormhole Daemons of Change"]   = (Sets.ArcanePsychic, Sets.DaemonArcaneMelee),
-            ["Wormhole Daemons of Lust"]     = (Sets.BallisticSlug, Sets.DaemonArcaneMelee),
-            ["Wormhole Daemons of Plague"]   = (Sets.BioOrganic, Sets.ToxicMelee),
-            ["Wormhole Daemons of War"]      = (Sets.BioOrganic, Sets.BladeStandard),
+            // OPR 3.6's "Daemons of X" (3.5 "Wormhole Daemons of X"; the rows carried over unchanged, #437).
+            ["Daemons of Change"]            = (Sets.ArcanePsychic, Sets.DaemonArcaneMelee),
+            ["Daemons of Lust"]              = (Sets.BallisticSlug, Sets.DaemonArcaneMelee),
+            ["Daemons of Plague"]            = (Sets.BioOrganic, Sets.ToxicMelee),
+            ["Daemons of War"]               = (Sets.BioOrganic, Sets.BladeStandard),
         };
 
         // Per-faction default sets for the 40 Age of Fantasy books (#378 survey, 2026-08-23). A separate
@@ -257,8 +260,8 @@ namespace FDG.ArmyBuilding
             ["Beastmen"]                     = (Sets.ArrowLoose, Sets.BeastMaw),
             ["Change Disciples"]             = (Sets.ArcaneBolt, Sets.BladeStandard),
             ["Chivalrous Kingdoms"]          = (Sets.ArrowLoose, Sets.BladeStandard),
-            // #435: OPR 3.6 renamed the four "Rift Daemons of X" books "Daemons of X" (the Faction string a 3.6 import
-            // carries); same sets as the 3.5 rows below, which stay for the bundled 3.5 books until #438 re-bakes.
+            // #435: OPR 3.6 renamed the four "Rift Daemons of X" books "Daemons of X"; #437 dropped the 3.5 rows - a
+            // "Rift Daemons of X" faction (a bundled 3.5 book, an old army) reaches these through OprBookNames.
             ["Daemons of Change"]            = (Sets.ArcaneBolt, Sets.DaemonArcaneMelee),
             ["Daemons of Lust"]              = (Sets.ArcaneBolt, Sets.DaemonArcaneMelee),
             ["Daemons of Plague"]            = (Sets.BioOrganic, Sets.ToxicMelee),
@@ -289,10 +292,6 @@ namespace FDG.ArmyBuilding
             ["Ossified Undead"]              = (Sets.ArrowLoose, Sets.BladeStandard),
             ["Plague Disciples"]             = (Sets.ArcaneBolt, Sets.ToxicMelee),
             ["Ratmen"]                       = (Sets.SlingStone, Sets.BladeStandard),
-            ["Rift Daemons of Change"]       = (Sets.ArcaneBolt, Sets.DaemonArcaneMelee),
-            ["Rift Daemons of Lust"]         = (Sets.ArcaneBolt, Sets.DaemonArcaneMelee),
-            ["Rift Daemons of Plague"]       = (Sets.BioOrganic, Sets.ToxicMelee),
-            ["Rift Daemons of War"]          = (Sets.ArcaneBolt, Sets.DaemonArcaneMelee),
             ["Saurians"]                     = (Sets.ThrownSpear, Sets.ClawRend),
             ["Shadow Stalkers"]              = (Sets.ThrownSpear, Sets.ClawRend),
             ["Sky-City Dwarves"]             = (Sets.BallisticSlug, Sets.CrudeMelee),
@@ -308,7 +307,7 @@ namespace FDG.ArmyBuilding
         public static (string? Ranged, string? Melee) FactionDefaults(string faction, string? gameSystem = null)
         {
             var table = IsAof(gameSystem) ? AofFactionDefaultsTable : FactionDefaultsTable;
-            return table.TryGetValue(faction ?? string.Empty, out var d) ? (d.Ranged, d.Melee) : (null, null);
+            return table.TryGetValue(OprBookNames.Current(faction, gameSystem), out var d) ? (d.Ranged, d.Melee) : (null, null);
         }
 
         private static bool IsAof(string? gameSystem) =>
@@ -331,7 +330,7 @@ namespace FDG.ArmyBuilding
         {
             if (string.IsNullOrWhiteSpace(weaponName)) return null;
 
-            if (NameOverrides.TryGetValue((faction ?? string.Empty, weaponName.Trim()), out string? overridden))
+            if (NameOverrides.TryGetValue((OprBookNames.Current(faction, gameSystem), weaponName.Trim()), out string? overridden))
                 return overridden;
 
             (string Set, string[] Keywords)[] table = IsAof(gameSystem)

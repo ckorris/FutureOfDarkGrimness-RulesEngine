@@ -366,14 +366,16 @@ namespace FDG.ArmyBuilding
         // all five AoF ones), so nothing is renamed any more. The "(Immediate)" definition stays only for the
         // not-yet-rebaked 3.5 books and pre-3.6 army files that name it (#436 removes it, #438 re-bakes). The map
         // and its plumbing stay: a future book that reuses a name for two rules needs exactly this.
+        // Keyed by the book's CURRENT OPR name (#437: callers pass OprBookNames.Current, so a renamed book keeps its row).
         private static readonly Dictionary<(string Army, string Rule), string> AmbiguousRuleNames = new();
 
         private static void DisambiguateAmbiguousRuleNames(BookFile book)
         {
+            string current = OprBookNames.Current(book.Name, book.GameSystem);
             void Fix(List<SpecialRuleEntry> rules)
             {
                 for (int i = 0; i < rules.Count; i++)
-                    rules[i] = Disambiguate(book.Name, rules[i]);
+                    rules[i] = Disambiguate(current, rules[i]);
             }
 
             foreach (RosterUnit unit in book.Units)

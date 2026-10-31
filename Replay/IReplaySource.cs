@@ -10,6 +10,10 @@ namespace FDG.Replay
         /// disabled it. What was recorded before a failure stays exportable.</summary>
         bool IsRecording { get; }
 
+        /// <summary>Line 1 of the file as it will be exported - the game's ID, seed, settings and slots (army names
+        /// included, which #452's file names use) - or null when the recording never started.</summary>
+        ReplayHeader? Header { get; }
+
         /// <summary>The <c>.fdgreplay</c> bytes as of now (gzip JSON Lines, plan 4.1). Safe from any thread;
         /// the event list is copied under the recorder's lock and compressed outside it.</summary>
         byte[] ExportGzip();

@@ -89,8 +89,7 @@ namespace FDG.Replay
 
         public ReplaySummary Summary => _recording.Summary;
 
-        /// <summary>The header as recorded (tests).</summary>
-        internal ReplayHeader? Header => _recording.Header;
+        public ReplayHeader? Header => _recording.Header;
 
         /// <summary>
         /// The join-time sync has been applied to the store (<c>GameDataUpdateReceiver.OnFullStateApplied</c>):

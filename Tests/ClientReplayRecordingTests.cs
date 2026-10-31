@@ -1,6 +1,9 @@
+using System.Net;
+using System.Net.Sockets;
 using FDG.Ai;
 using FDG.Data;
 using FDG.EngineInterface;
+using FDG.Network.Connection;
 using FDG.Network.Connection.Lobby;
 using FDG.Network.Messages;
 using FDG.Network.Messages.StageRequestMessages;
@@ -15,9 +18,9 @@ using static FDG.Tests.TestArmies;
 namespace FDG.Tests
 {
     // #451: a remote client's own replay recording, checked against the host's recording of the same game. A real
-    // host lobby and client lobby over the in-process loopback transport (LoopbackNetwork), each side's decisions
-    // answered by the solo-rules AI, the whole state machine in between. Pins structure and state equalities, never
-    // content (plan rule 8: no golden files).
+    // host lobby and client lobby - over the in-process loopback transport (LoopbackNetwork), and once over real
+    // sockets - each side's decisions answered by the solo-rules AI, the whole state machine in between. Pins
+    // structure and state equalities, never content (plan rule 8: no golden files).
     [TestFixture]
     public class ClientReplayRecordingTests
     {
@@ -36,9 +39,9 @@ namespace FDG.Tests
             public ReplayDocument Client = null!;
         }
 
-        private static async Task<LobbyViewModel_Client> Join(LoopbackNetworkHost net, string name)
+        private static async Task<LobbyViewModel_Client> Join(INetworkClient transport, string name)
         {
-            var clientVm = new LobbyViewModel_Client(name, net.Connect(name), "");
+            var clientVm = new LobbyViewModel_Client(name, transport, "");
             Task<string?> joined = clientVm.JoinResultTask;
             Assert.That(await Task.WhenAny(joined, Task.Delay(TimeSpan.FromSeconds(5))), Is.SameAs(joined), "join handshake");
             Assert.That(await joined, Is.Null, "the client must be accepted");
@@ -71,18 +74,33 @@ namespace FDG.Tests
             return game;
         }
 
-        private static async Task<NetworkedGame> PlayFreshGame()
+        /// <param name="connect">Connects the client's transport, once the host lobby is listening.</param>
+        private static async Task<NetworkedGame> PlayFreshGame(NetworkedGame game, INetworkHost net, Func<Task<INetworkClient>> connect)
         {
-            var net = new LoopbackNetworkHost();
-            var game = new NetworkedGame { HostVm = new LobbyViewModel_Host("Host", "The Table", "", net) };
+            game.HostVm = new LobbyViewModel_Host("Host", "The Table", "", net);
             game.HostVm.PresentationClockFactory = () => new InstantPresentationClock();
-            game.ClientVm = await Join(net, "Client");
+            game.ClientVm = await Join(await connect(), "Client");
             game.HostPlayer = game.HostVm.PlayerInfos.Single(p => p.PlayerType == EPlayerType.Local).PlayerID;
-            game.ClientPlayer = game.HostVm.PlayerInfos.Single(p => p.PlayerType == EPlayerType.Network).PlayerID;
+            game.ClientPlayer = (await HostRosterRow(game.HostVm, p => p.PlayerType == EPlayerType.Network)).PlayerID;
             game.HostVm.UpdateArmyListFile(game.HostPlayer, MakeShooterArmy());
             game.ClientVm.UpdateArmyListFile(game.ClientPlayer, MakeDefenderArmy());
+            await HostRosterRow(game.HostVm, p => p.PlayerID == game.ClientPlayer && p.ArmyListSummary.IsAssigned);
 
             return await Play(game, host => host.TryLaunchGame(out string? reason) || Fail(reason));
+        }
+
+        // Over real sockets the host's roster catches up on its read thread; the loopback transport has it at once.
+        private static async Task<LobbyPlayerInfoSummary> HostRosterRow(LobbyViewModel_Host hostVm, Func<LobbyPlayerInfoSummary, bool> match)
+        {
+            for (int attempt = 0; attempt < 100; attempt++)
+            {
+                LobbyPlayerInfoSummary? row = hostVm.PlayerInfos.FirstOrDefault(match);
+                if (row != null) return row;
+                await Task.Delay(50);
+            }
+
+            Assert.Fail("the host's roster never caught up with the client");
+            throw new InvalidOperationException("unreachable");
         }
 
         private static bool Fail(string? reason)
@@ -111,7 +129,56 @@ namespace FDG.Tests
         [CancelAfter(180_000)]
         public async Task NetworkedGame_TheClientsRecording_MatchesTheHosts()
         {
-            NetworkedGame game = await PlayFreshGame();
+            var net = new LoopbackNetworkHost();
+            NetworkedGame game = await PlayFreshGame(new NetworkedGame(), net, () => Task.FromResult<INetworkClient>(net.Connect("Client")));
+
+            AssertTheClientsRecordingMatchesTheHosts(game);
+
+            Assert.That(game.ClientVm.Replay!.IsRecording, Is.False, "GameEnded closes the client's recording");
+            game.ClientVm.Dispose();
+            game.HostVm.Dispose();
+            Assert.DoesNotThrow(() => game.ClientVm.Replay.ExportGzip(), "what was recorded stays exportable");
+        }
+
+        // The loopback transport delivers every frame inline on the sender's thread. Real sockets add what the
+        // arrival-order finding rests on: one read thread on the client, #086's per-connection write lock on the host,
+        // and the host's engine and read threads both sending.
+        [Test]
+        [CancelAfter(180_000)]
+        public async Task NetworkedGame_OverRealSockets_TheClientsRecording_MatchesTheHosts()
+        {
+            var probe = new TcpListener(IPAddress.Loopback, 0);
+            probe.Start();
+            int port = ((IPEndPoint)probe.LocalEndpoint).Port;
+            probe.Stop();
+
+            var host = new FDGHost(port: port);
+            var client = new FDGClient();
+            var game = new NetworkedGame();
+            try
+            {
+                Task listening = host.StartAsync(); // the accept loop - runs until the host stops
+                Assert.That(listening.IsFaulted, Is.False, $"host failed to bind: {listening.Exception?.GetBaseException().Message}");
+                await PlayFreshGame(game, host, async () =>
+                {
+                    Assert.That(await client.ConnectAsync(IPAddress.Loopback, port), Is.True, "connect");
+                    return client;
+                });
+
+                AssertTheClientsRecordingMatchesTheHosts(game);
+            }
+            finally
+            {
+                // Sockets outlive a failed assertion; a listener left running would make later port picks flaky.
+                foreach (Action teardown in new Action[] { () => game.ClientVm?.Dispose(), () => game.HostVm?.Dispose(), client.Disconnect, host.Stop })
+                {
+                    try { teardown(); } catch { /* teardown must not mask the real failure */ }
+                }
+            }
+        }
+
+        private static void AssertTheClientsRecordingMatchesTheHosts(NetworkedGame game)
+        {
             ReplayDocument host = game.Host, client = game.Client;
 
             // Header: the host's identity, this client's point of view.
@@ -160,11 +227,6 @@ namespace FDG.Tests
             Assert.That(FinalSave(client), Is.EqualTo(game.HostFinalSave));
             ReplayVerification verification = ReplayVerifier.Verify(new ReplayTimeline(client));
             Assert.That(verification.Passed, Is.True, string.Join("\n", verification.Failures.Select(f => f.Message)));
-
-            Assert.That(game.ClientVm.Replay!.IsRecording, Is.False, "GameEnded closes the client's recording");
-            game.ClientVm.Dispose();
-            game.HostVm.Dispose();
-            Assert.DoesNotThrow(() => game.ClientVm.Replay.ExportGzip(), "what was recorded stays exportable");
         }
 
         // A client that joins a game already in progress - a resumed save it rejoins (#187) - records from its join
@@ -180,7 +242,7 @@ namespace FDG.Tests
             var net = new LoopbackNetworkHost();
             var game = new NetworkedGame { HostVm = new LobbyViewModel_Host("Host", "Recovered Game", "", net, loaded) };
             game.HostVm.PresentationClockFactory = () => new InstantPresentationClock();
-            game.ClientVm = await Join(net, "Client");
+            game.ClientVm = await Join(net.Connect("Client"), "Client");
             game.HostPlayer = game.HostVm.PlayerInfos.Single(p => p.PlayerType == EPlayerType.Local).PlayerID;
             game.ClientPlayer = game.HostVm.PlayerInfos.Single(p => p.PlayerType == EPlayerType.Network).PlayerID;
             Assert.That(new[] { game.HostPlayer, game.ClientPlayer }, Is.EqualTo(savedPlayers), "precondition: both sides took their saved slots");

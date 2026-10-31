@@ -17,35 +17,22 @@ namespace FDG.Stages
         public const float MinDistanceInches = 30f;
         public const float MaxDistanceInches = 36f;
 
-        // Living models of one Aircraft must share a heading to within this tolerance (they move rigidly and are
-        // aimed together, so any larger divergence is a bug, not float drift).
-        private const float HeadingMatchToleranceInches = 0.01f;
-
         /// <summary>
         /// The Aircraft's flight heading (a unit vector): the shared <see cref="IModel.Facing"/> of its living
         /// models, exactly as the player placed it at deployment (or edge redeploy) — there is no auto-aim, and
-        /// it never changes while the unit is on the table (#150). Asserts all living models face the same way.
+        /// it never changes while the unit is on the table (#150). Read from the first living model.
         /// </summary>
         public static Float2 GetHeading(UnitData unit)
         {
-            Float2? shared = null;
+            // The first living model's facing is the unit's heading. Its models should all share it, but
+            // single-model deployment can set them apart (no bundled book has a multi-model Aircraft, so it
+            // takes a hand-built list). That used to throw here on every Advance, ending the game; flying the
+            // whole unit on the lead model's heading keeps it rigid and coherent instead.
             foreach (DataBinding<ModelData> model in unit.ModelBindings)
             {
-                if (!model.GetValue().GetIsAlive()) continue;
-                Float2 facing = model.GetValue().Facing;
-                if (shared is not Float2 s)
-                {
-                    shared = facing;
-                    continue;
-                }
-                if (MathF.Abs(s.X - facing.X) > HeadingMatchToleranceInches ||
-                    MathF.Abs(s.Y - facing.Y) > HeadingMatchToleranceInches)
-                {
-                    throw new InvalidOperationException(
-                        $"Aircraft '{unit.Name}' has models with divergent facing - an Aircraft's models must share one heading.");
-                }
+                if (model.GetValue().GetIsAlive()) return model.GetValue().Facing;
             }
-            return shared ?? new Float2(0f, 1f);
+            return new Float2(0f, 1f);
         }
 
         /// <summary>

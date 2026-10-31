@@ -89,36 +89,54 @@ namespace FDG.Tests
         }
 
         // #208: an OPTIONAL triggered move whose resolver hands back a path the authoritative validator
-        // rejects (here a cohesion-breaking hold - the models start >1" apart, as a unit spread by
-        // post-melee intermingling does, and the resolver can only hold them there) is DECLINED, not
-        // faulted. The unit stays exactly where it was and no exception escapes.
+        // rejects (here 10" against a 3" budget) is DECLINED, not faulted. The unit stays exactly where it
+        // was and no exception escapes.
         [Test]
         public async Task TriggeredMove_OptionalInvalidPath_DeclinesInsteadOfFaulting()
         {
-            var ctx = new TriggeredMoveTestContext(_store, new CannedHoldPathRequester());
-            DataBinding<UnitData> unit = MakeUnit(new Position(0f, 0f), new Position(5f, 0f));
+            var ctx = new TriggeredMoveTestContext(_store, new CannedMovePathRequester(dx: 10f, dz: 0f));
+            DataBinding<UnitData> unit = MakeUnit(new Position(0f, 0f), new Position(0f, 1f));
 
             var move = new RuleOperation.InvokeTriggeredMove(unit.GetValue(), MaxInches: 3f, IsOptional: true);
 
             Assert.DoesNotThrowAsync(() =>
                 OperationExecutor.Execute(new RuleOperation[] { move }, new GameOperationServices(ctx)));
             AssertModelAt(unit, 0, 0f, 0f);
-            AssertModelAt(unit, 1, 5f, 0f);
+            AssertModelAt(unit, 1, 0f, 1f);
         }
 
-        // The forced-move twin: a NON-optional triggered move (a spell pushing an enemy) that comes back
-        // invalid is a genuine engine bug, not a legal "no thanks" - so it still faults loudly. Guards
-        // that the #208 decline is scoped to optional moves and did not swallow forced-move errors.
+        // #159 now covers triggered moves too: a unit spread >1" apart by post-melee intermingling may HOLD
+        // where it stands. Under the old strict check this hold was rejected - and a forced one ended the
+        // game - while the move resolvers (the CLI validates leniently) had already offered it as legal.
         [Test]
-        public void TriggeredMove_ForcedInvalidPath_StillFaults()
+        public async Task TriggeredMove_SpreadUnitHold_IsAccepted()
         {
             var ctx = new TriggeredMoveTestContext(_store, new CannedHoldPathRequester());
             DataBinding<UnitData> unit = MakeUnit(new Position(0f, 0f), new Position(5f, 0f));
 
             var move = new RuleOperation.InvokeTriggeredMove(unit.GetValue(), MaxInches: 3f, IsOptional: false);
 
-            Assert.ThrowsAsync<RequestResponseInvalidException>(() =>
-                OperationExecutor.Execute(new RuleOperation[] { move }, new GameOperationServices(ctx)));
+            await OperationExecutor.Execute(new RuleOperation[] { move }, new GameOperationServices(ctx));
+            AssertModelAt(unit, 0, 0f, 0f);
+            AssertModelAt(unit, 1, 5f, 0f);
+        }
+
+        // The forced-move twin: a NON-optional triggered move (a spell pushing an enemy) offers no decline,
+        // so an invalid path is a resolver fault. It used to throw, ending the game; now the resolver is
+        // asked again, and when every attempt fails the forced move fizzles - nobody moves.
+        [Test]
+        public async Task TriggeredMove_ForcedInvalidPath_IsAskedAgainThenFizzles()
+        {
+            var requester = new CannedMovePathRequester(dx: 10f, dz: 0f);
+            var ctx = new TriggeredMoveTestContext(_store, requester);
+            DataBinding<UnitData> unit = MakeUnit(new Position(0f, 0f), new Position(0f, 1f));
+
+            var move = new RuleOperation.InvokeTriggeredMove(unit.GetValue(), MaxInches: 3f, IsOptional: false);
+
+            await OperationExecutor.Execute(new RuleOperation[] { move }, new GameOperationServices(ctx));
+            Assert.That(requester.Calls, Is.EqualTo(ValidatedRequesting.MaxAttempts));
+            AssertModelAt(unit, 0, 0f, 0f);
+            AssertModelAt(unit, 1, 0f, 1f);
         }
 
         // #208: the clean decline channel - an optional move is cancellable (allowCancel = isOptional), so
@@ -141,10 +159,11 @@ namespace FDG.Tests
             AssertModelAt(unit, 1, 0f, 1f);
         }
 
-        // A forced move is NOT cancellable (allowCancel is false), so a Cancelled reply is an engine
-        // contract violation and still faults - the pre-#208 behavior, preserved for forced moves.
+        // A forced move is NOT cancellable (allowCancel is false), so a Cancelled reply is a resolver
+        // contract violation. Like an invalid path it is asked again and then fizzles, rather than ending
+        // the game.
         [Test]
-        public void TriggeredMove_ForcedCancelled_StillFaults()
+        public async Task TriggeredMove_ForcedCancelled_IsAskedAgainThenFizzles()
         {
             var requester = new CannedCancelMovePathRequester();
             var ctx = new TriggeredMoveTestContext(_store, requester);
@@ -152,8 +171,11 @@ namespace FDG.Tests
 
             var move = new RuleOperation.InvokeTriggeredMove(unit.GetValue(), MaxInches: 3f, IsOptional: false);
 
-            Assert.ThrowsAsync<RequestResponseInvalidException>(() =>
-                OperationExecutor.Execute(new RuleOperation[] { move }, new GameOperationServices(ctx)));
+            await OperationExecutor.Execute(new RuleOperation[] { move }, new GameOperationServices(ctx));
+            Assert.That(requester.Calls, Is.EqualTo(ValidatedRequesting.MaxAttempts));
+            Assert.That(requester.Captured!.AllowCancel, Is.False);
+            AssertModelAt(unit, 0, 0f, 0f);
+            AssertModelAt(unit, 1, 0f, 1f);
         }
 
         // Harassing is a PASSIVE rule (a HookEntry, not an activated ability) that fires at the
@@ -527,6 +549,7 @@ namespace FDG.Tests
     {
         private readonly float _dx;
         private readonly float _dz;
+        public int Calls { get; private set; }
         public DefineMovementPathRequest? Captured { get; private set; }
 
         public CannedMovePathRequester(float dx, float dz)
@@ -540,6 +563,7 @@ namespace FDG.Tests
         {
             if (request is DefineMovementPathRequest moveRequest)
             {
+                Calls++;
                 Captured = moveRequest;
                 var entries = new List<ModelMoveEntry>();
                 foreach (DataBinding<ModelData> model in moveRequest.UnitDataBinding.GetValue().ModelBindings)
@@ -579,6 +603,7 @@ namespace FDG.Tests
     // Replies Cancelled to a movement request - the AI's decline when no legal path exists (#208).
     internal sealed class CannedCancelMovePathRequester : IPlayerRequestByID
     {
+        public int Calls { get; private set; }
         public DefineMovementPathRequest? Captured { get; private set; }
 
         public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
@@ -586,6 +611,7 @@ namespace FDG.Tests
         {
             if (request is DefineMovementPathRequest moveRequest)
             {
+                Calls++;
                 Captured = moveRequest;
                 return Task.FromResult((TReply)(object)new Cancelled<List<ModelMoveEntry>>());
             }

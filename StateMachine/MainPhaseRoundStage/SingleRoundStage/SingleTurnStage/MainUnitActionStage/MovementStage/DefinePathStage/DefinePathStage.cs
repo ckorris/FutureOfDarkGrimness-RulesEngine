@@ -66,15 +66,29 @@ namespace FDG.Stages
             bool ignoresImpassibleTerrain = Rules.Dispatch.MovementRuleQueries.IgnoresAllTerrain(
                 context.MovingUnit.GetValue(), context.GameContext.RuleEvaluator);
 
-            var pathRequest = new DefineMovementPathRequest(playerID,
+            DefineMovementPathRequest BuildRequest() => new DefineMovementPathRequest(playerID,
                 $"Moving {context.MovingUnit.GetValue().Name}", context.MovingUnit,
                 context.MaxAdvanceDistance, context.MaxRushDistance, hardCap,
                 WeaponSightProfileBuilder.For(context.MovingUnit.GetValue(), context.GameContext.RuleEvaluator),
                 canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain, BuildRangeOverrides(context),
                 perModelBudgets, allowCancel: true, mainActivationMove: true);
+            // Budgets are the same in every attempt's request, so any one of them validates the reply.
+            DefineMovementPathRequest budgetSource = BuildRequest();
 
-            CancellableResult<List<ModelMoveEntry>> pathResult = await context.PlayerRequester()
-                .RequestDecision<DefineMovementPathRequest, CancellableResult<List<ModelMoveEntry>>>(pathRequest);
+            // A path the authoritative check rejects is asked for again rather than thrown (a throw ends the
+            // game). Once the attempts run out the unit holds - the "Skip all" reply, a 0" move that still
+            // spends the Move action. Not Back: a deterministic resolver handed the action menu again would
+            // pick the same move and loop forever.
+            CancellableResult<List<ModelMoveEntry>> pathResult = await ValidatedRequesting
+                .RequestUntilValid<DefineMovementPathRequest, CancellableResult<List<ModelMoveEntry>>>(
+                    context.GameContext, BuildRequest,
+                    reply => reply is Selected<List<ModelMoveEntry>> selected
+                        && !ValidateAgainstBudgets(context, budgetSource, selected.Value, canMoveThroughEnemies,
+                            ignoresDifficultTerrain, ignoresImpassibleTerrain, out List<ReasonForInvalidMove> invalidReasons)
+                        ? MovementUtilities.DescribeErrors(invalidReasons)
+                        : null,
+                    () => new Selected<List<ModelMoveEntry>>(MovementUtilities.HoldInPlace(context.MovingUnit)),
+                    context.MovingUnit.GetValue().Name, "stays where it is");
 
             // Backing out here costs nothing: positions are committed downstream by ExecuteMoveStage, and
             // strafing hits are rolled after this stage.
@@ -87,20 +101,6 @@ namespace FDG.Stages
             }
 
             List<ModelMoveEntry> movements = ((Selected<List<ModelMoveEntry>>)pathResult).Value;
-
-            if(ValidateAgainstBudgets(context, pathRequest, movements, canMoveThroughEnemies,
-                ignoresDifficultTerrain, ignoresImpassibleTerrain,
-                out List<ReasonForInvalidMove> invalidReasons) == false)
-            {
-                StringBuilder sb = new StringBuilder(invalidReasons[0].ToString());
-                for(int i = 1; i < invalidReasons.Count; i++)
-                {
-                    sb.Append(", " + invalidReasons[i].ToString());
-                }
-
-                throw new RequestResponseInvalidException($"Response to {nameof(DefinePathStage)} movement request was invalid for the following reasons: "
-                    + sb.ToString());
-            }
 
             context.SubmitValidPathTemplate(movements);
 

@@ -36,28 +36,38 @@ namespace FDG.Tests
         }
 
         [Test]
-        public void PlainUnit_PathsThroughEnemy_DefinePathStageRejects()
+        public async Task PlainUnit_PathsThroughEnemy_DefinePathStageRejects()
         {
             DataBinding<UnitData> mover = MakeUnit(withFlying: false, new Position(0f, 0f));
             MakeEnemy(new Position(5f, 0f));
 
-            Assert.That(async () => await RunDefinePath(mover, new Position(10f, 0f)),
-                Throws.TypeOf<RequestResponseInvalidException>(),
-                "Without fly-over, pathing through an enemy is rejected by the authoritative stage check.");
+            // Without fly-over, pathing through an enemy is rejected by the authoritative stage check. A
+            // rejection is asked again (it used to throw and end the game); a resolver that keeps sending
+            // the same path ends up holding - a 0" move.
+            MovementActionContext moveContext = await RunDefinePath(mover, new Position(10f, 0f));
+
+            Assert.That(_lastRequester!.Calls, Is.EqualTo(ValidatedRequesting.MaxAttempts));
+            Assert.That(moveContext.TryGetPaths(out IReadOnlyList<ModelMoveEntry> paths), Is.True);
+            Assert.That(paths.All(e => e.Positions.Count == 0), Is.True,
+                "the submitted path is the hold, not the rejected one");
         }
 
-        private async Task RunDefinePath(DataBinding<UnitData> mover, Position destination)
+        private FixedMoveRequester? _lastRequester;
+
+        private async Task<MovementActionContext> RunDefinePath(DataBinding<UnitData> mover, Position destination)
         {
             var move = new List<ModelMoveEntry>
             {
                 new ModelMoveEntry(mover.GetValue().ModelBindings[0], new List<Position> { destination })
             };
-            var ctx = new WoundTestContext(_store, new FixedMoveRequester(move));
+            _lastRequester = new FixedMoveRequester(move);
+            var ctx = new WoundTestContext(_store, _lastRequester);
             var moveContext = new MovementActionContext(ctx, mover);
 
             var stage = new DefinePathStage(ctx, new NoOpLayer<IMovementActionContext>());
             stage.OnPathDefined.Bind("done");
             await stage.Enter(moveContext);
+            return moveContext;
         }
 
         private DataBinding<UnitData> MakeUnit(bool withFlying, params Position[] positions)
@@ -91,10 +101,14 @@ namespace FDG.Tests
         {
             private readonly List<ModelMoveEntry> _move;
             public FixedMoveRequester(List<ModelMoveEntry> move) => _move = move;
+            public int Calls { get; private set; }
 
             public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
                 where TRequest : IStageTaskRequest<TReply>
-                => Task.FromResult((TReply)(object)new Selected<List<ModelMoveEntry>>(_move));
+            {
+                Calls++;
+                return Task.FromResult((TReply)(object)new Selected<List<ModelMoveEntry>>(_move));
+            }
         }
     }
 }

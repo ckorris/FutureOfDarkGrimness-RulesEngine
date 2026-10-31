@@ -404,9 +404,34 @@ namespace FDG.ArmyBuilding
         private static bool HandsBack(UpgradeSection rivalSection, UpgradeChoice rival, string target)
         {
             UpgradeOption? option = rivalSection.Options.FirstOrDefault(o => o.Id == rival.OptionId);
-            return option != null
-                && (option.WeaponsGained.Any(w => TargetMatches(w.Name, target))
-                    || option.ItemsGained.Any(i => TargetMatches(i.Name, target)));
+            return option != null && HandsBack(option, target);
+        }
+
+        private static bool HandsBack(UpgradeOption option, string target) =>
+            option.WeaponsGained.Any(w => TargetMatches(w.Name, target))
+            || option.ItemsGained.Any(i => TargetMatches(i.Name, target));
+
+        /// <summary>
+        /// #441 — whether the counted (One/Any) Replace <paramref name="countedSwapId"/> leaves copies for a purchase
+        /// of <paramref name="claimantOption"/> in <paramref name="claimant"/>: the swap is authored ABOVE the
+        /// claimant, the claimant competes for one of the swap's targets, and the option hands that target back
+        /// (#438 D3's pass-through combo - 3.6 Assault Brothers' "Replace one Heavy Pistol and Hand Weapon -> Heavy
+        /// Pistol, Energy Hammer" below "Replace any Heavy Pistol"). The condition <see cref="ReservedForLaterSwaps"/>
+        /// yields on, shared with the Forge so it offers the combo the compiler will honour even after the
+        /// counted swap has taken every copy.
+        /// </summary>
+        public static bool CountedSwapYieldsTo(RosterUnit roster, string countedSwapId, UpgradeSection claimant,
+            UpgradeOption claimantOption)
+        {
+            int index = roster.Sections.FindIndex(s => s.Id == countedSwapId);
+            int claimantIndex = roster.Sections.FindIndex(s => s.Id == claimant.Id);
+            if (index < 0 || claimantIndex < 0 || index >= claimantIndex) return false;
+
+            UpgradeSection swap = roster.Sections[index];
+            if (swap.Variant != UpgradeVariant.Replace || swap.Affects == UpgradeAffects.All) return false;
+            return swap.Targets
+                .Select(t => ParseTarget(t).Name)
+                .Any(target => CompetesForTarget(claimant, target) && HandsBack(claimantOption, target));
         }
 
         /// <summary>#324 — whether a counted (One/Any) Replace draws on the same weapon an all-swap targets,

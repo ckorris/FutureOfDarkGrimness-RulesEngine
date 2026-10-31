@@ -673,6 +673,27 @@ public class ArmyForgeCompilerTests
         Assert.That(compiled.PointCost, Is.EqualTo(175), "150 + 5x5 plasma; the starved combo is not charged");
     }
 
+    // #441: the same condition, exposed for the Forge - the pass-through option is yielded to, the consuming one is
+    // not, and only a swap authored ABOVE the claimant yields.
+    [Test]
+    public void CountedSwapYieldsTo_OnlyAPassThroughOptionBelowTheSwap()
+    {
+        RosterUnit roster = AssaultBrothers();
+        UpgradeSection combo = roster.Sections.Single(s => s.Id == "combo");
+        UpgradeSection any = roster.Sections.Single(s => s.Id == "any");
+        UpgradeOption hammer = combo.Options.Single(o => o.Id == "hammer");
+        UpgradeOption chainsword = combo.Options.Single(o => o.Id == "chainsword");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ListCompiler.CountedSwapYieldsTo(roster, "any", combo, hammer), Is.True, "hands the pistol back");
+            Assert.That(ListCompiler.CountedSwapYieldsTo(roster, "any", combo, chainsword), Is.False, "consumes it");
+            Assert.That(ListCompiler.CountedSwapYieldsTo(roster, "combo", any, any.Options.Single()), Is.False,
+                "a section never yields to one authored above it");
+            Assert.That(ListCompiler.CountedSwapYieldsTo(roster, "missing", combo, hammer), Is.False);
+        });
+    }
+
     // ── #324 plural matching ───────────────────────────────────────────────────────────────────────────
 
     [TestCase("Bash", "Bashes", true)]        // the Dwarf Guilds Guardians case - OPR's own data

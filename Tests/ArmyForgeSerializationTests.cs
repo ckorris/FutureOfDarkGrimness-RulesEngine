@@ -455,6 +455,37 @@ public class ArmyForgeSerializationTests
         Assert.That(nearest.Selection[0].RosterUnitId, Is.EqualTo("gunners"));
     }
 
+    // #440: an Army Forge import's units often carry no id. A recovered pair must still link its two halves, or the
+    // compiler leaves them as two separate five-model units and the rebuilt list is not the saved army.
+    [Test]
+    public void ARecoveredPair_LinksItsHalves_EvenWhenTheSavedUnitHadNoId()
+    {
+        BookFile book = MakeBook();
+        BuiltArmyFile compiled = ListCompiler.Compile(book, new BuilderList
+        {
+            BookName = book.Name,
+            Units =
+            {
+                new BuilderUnit { RosterUnitId = "warriors", ModelCount = 5, Id = "a" },
+                new BuilderUnit { RosterUnitId = "warriors", ModelCount = 5, Id = "b", CombinedWithId = "a" },
+            },
+        });
+        var plain = new ArmyListFile { Faction = "Demo" };
+        plain.Units.AddRange(compiled.Units);
+        plain.Units[0].Id = null;
+
+        ArmySolve exact = SelectionSolver.Solve(book, plain);
+        UnitSolve nearest = SelectionSolver.SolveNearest(book, plain.Units[0], book.Units.Where(u => u.Name == "Warriors").ToList(),
+            u => -Math.Abs(u.ModelCount - 10));
+
+        foreach (IReadOnlyList<BuilderUnit> picks in new[] { exact.Units[0].Selection, nearest.Selection })
+        {
+            BuiltArmyFile rebuilt = ListCompiler.Compile(book, new BuilderList { BookName = book.Name, Units = picks.ToList() });
+            Assert.That(rebuilt.Units, Has.Count.EqualTo(1), "the two halves merge again");
+            Assert.That(rebuilt.Units[0].ModelCount, Is.EqualTo(10));
+        }
+    }
+
     [Test]
     public void NormalizeUnitName_TreatsACombinedPairAsItsRosterUnit()
     {

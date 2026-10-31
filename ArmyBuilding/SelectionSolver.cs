@@ -141,7 +141,7 @@ namespace FDG.ArmyBuilding
             {
                 BuilderUnit second = Clone(pair.Best);
                 second.Id = (target.Id ?? target.Name) + "-combined";
-                second.CombinedWithId = target.Id;
+                second.CombinedWithId = PairHostId(target);
                 return Solved(target, pair, new List<BuilderUnit> { pair.Best, second });
             }
 
@@ -210,7 +210,7 @@ namespace FDG.ArmyBuilding
             {
                 BuilderUnit second = Clone(pairSearch.Best);
                 second.Id = (entry.Id ?? entry.Name) + "-combined";
-                second.CombinedWithId = entry.Id;
+                second.CombinedWithId = PairHostId(entry);
                 return Solved(entry, pairSearch, new List<BuilderUnit> { pairSearch.Best, second });
             }
 
@@ -222,7 +222,8 @@ namespace FDG.ArmyBuilding
 
         private static UnitSolve Solved(UnitFileEntry entry, Search search, List<BuilderUnit> units)
         {
-            units[0].Id = entry.Id;
+            // A pair's host needs an id for its partner to name, even when the saved unit had none.
+            units[0].Id = units.Count == 2 ? units[1].CombinedWithId : entry.Id;
             // A joined hero (#006) is its own entry in the file and its own unit in the list; the link is a
             // plain id reference, so it carries across as-is once the hero itself has been solved.
             units[0].JoinsUnitId = entry.JoinsUnitId;
@@ -231,6 +232,11 @@ namespace FDG.ArmyBuilding
                 UnitName = entry.Name, Selection = units, PointsDelta = search.BestDelta,
             };
         }
+
+        /// <summary>#440: the id a combined pair's absorbed copy points at - the saved unit's own, or a fresh one
+        /// when it had none (an Army Forge import often carries no unit ids). Without it the copy names no host,
+        /// the compiler leaves the two halves as separate units, and the recovered list no longer is the army.</summary>
+        private static string PairHostId(UnitFileEntry entry) => entry.Id ?? Guid.NewGuid().ToString("N");
 
         private static string StripCombinedSuffix(string name) => EditableSession.NormalizeUnitName(name);
 

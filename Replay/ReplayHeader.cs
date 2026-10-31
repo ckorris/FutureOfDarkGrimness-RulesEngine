@@ -79,5 +79,20 @@ namespace FDG.Replay
         /// <summary>#453: when each resume of a saved game continued this recording, oldest first (a <c>Resumed</c>
         /// marker in the stream for each). Empty for a game played in one sitting.</summary>
         public List<DateTime> ResumedUtc { get; set; } = new List<DateTime>();
+
+        /// <summary>
+        /// #456: what the file holds - steps, rounds, outcome, duration - stamped by <see cref="ReplayWriter"/> on the
+        /// header line it writes, so the replay browser can list a file from its first line without reading the
+        /// events. Null in memory (a live recorder's header never carries one).
+        /// </summary>
+        public ReplaySummary? Summary { get; set; }
+
+        /// <summary>A shallow copy carrying <paramref name="summary"/> (the writer's; the original stays as it was).</summary>
+        internal ReplayHeader WithSummary(ReplaySummary summary)
+        {
+            ReplayHeader copy = (ReplayHeader)MemberwiseClone();
+            copy.Summary = summary;
+            return copy;
+        }
     }
 }

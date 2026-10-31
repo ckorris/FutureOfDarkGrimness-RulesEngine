@@ -18,7 +18,8 @@ namespace FDG.Replay
     {
         // v2 (#453): the header gained ResumedUtc, and a recording may continue a saved game's - Saved and
         // Resumed markers, and a GameEnded that a later Resumed follows (a resumed #187 recovery save).
-        public const int CurrentVersion = 2;
+        // v3 (#456): the header carries the file's Summary, so the replay browser reads one line per file.
+        public const int CurrentVersion = 3;
 
         /// <summary>
         /// The running application's version string - the entry assembly's InformationalVersion, which

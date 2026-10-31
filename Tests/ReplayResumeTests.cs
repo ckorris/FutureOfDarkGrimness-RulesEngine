@@ -167,7 +167,7 @@ namespace FDG.Tests
             Assert.That(saved.Marker, Is.EqualTo(EReplayMarker.Saved));
             Assert.That(saved.Round, Is.EqualTo(2));
             Assert.That(embedded.Header.GameId, Is.EqualTo(game.Live.Header.GameId));
-            Assert.That(file.ReplaySummary!.Steps, Is.EqualTo(embedded.Events.OfType<ReplyEvent>().Count()),
+            Assert.That(file.ReplaySummary!.Steps, Is.EqualTo(new ReplayTimeline(embedded).Steps.Count),
                 "the summary describes the embedded replay");
             Assert.That(file.ReplaySummary.Rounds, Is.EqualTo(2));
             Assert.That(file.ReplaySummary.Outcome, Is.Null, "saved mid-game");
@@ -225,7 +225,7 @@ namespace FDG.Tests
             Assert.That(verification.Notes.Select(n => n.Message), Has.Some.Contains("follows a resume"));
 
             ReplaySummary summary = resumed.Recorder.Summary;
-            Assert.That(summary.Steps, Is.EqualTo(events.OfType<ReplyEvent>().Count()), "the summary counts both sessions");
+            Assert.That(summary.Steps, Is.EqualTo(new ReplayTimeline(document).Steps.Count), "the summary counts both sessions");
             Assert.That(summary.Outcome, Is.EqualTo(resumed.Result.Outcome.ToString()));
             Assert.That(summary.DurationMs, Is.EqualTo(events[^1].T));
         }

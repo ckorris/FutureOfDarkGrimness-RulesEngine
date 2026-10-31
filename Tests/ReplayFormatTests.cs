@@ -177,6 +177,25 @@ namespace FDG.Tests
             Assert.That(((StoreUpdateEvent)read.Events[1]).Json, Is.EqualTo(tricky));
         }
 
+        // #456: the header line carries the summary of the events written, so a browser lists a file from line 1.
+        [Test]
+        public void TheHeaderLine_CarriesTheSummaryOfWhatWasWritten_AndReadsAlone()
+        {
+            List<ReplayEvent> events = OneOfEachKind();
+            ReplayHeader header = MakeHeader();
+
+            byte[] bytes = Write(header, events);
+            using var stream = new MemoryStream(bytes);
+            ReplayHeader read = ReplayReader.ReadHeaderGzip(stream);
+
+            Assert.That(header.Summary, Is.Null, "the caller's header is not changed");
+            Assert.That(read.Summary, Is.EqualTo(ReplayTally.Of(events)));
+            Assert.That(read.Summary!.Steps, Is.EqualTo(new ReplayTimeline(new ReplayDocument(header, events)).Steps.Count));
+            Assert.That(read.Summary.DurationMs, Is.EqualTo(events[^1].T));
+            Assert.That(read.GameId, Is.EqualTo(header.GameId));
+            Assert.That(Read(bytes).Header.Summary, Is.EqualTo(read.Summary), "the full read sees the same header");
+        }
+
         [Test]
         public void Reader_RefusesTheNextFormatVersion()
         {

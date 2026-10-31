@@ -318,16 +318,25 @@ namespace FDG.Tests
             using ReplayRecorder recorder = new ReplayRecorder();
             recorder.Start(Header());
 
+            PlayerID player = new PlayerID(Guid.NewGuid());
             Parallel.For(0, 4000, i =>
             {
-                if (i % 2 == 0) recorder.RecordLog($"line {i}", debug: false);
-                else recorder.OnReplied(new TaskID(Guid.NewGuid()), "true");
+                if (i % 2 == 0)
+                {
+                    recorder.RecordLog($"line {i}", debug: false);
+                }
+                else
+                {
+                    TaskID task = new TaskID(Guid.NewGuid());
+                    recorder.OnRequested(task, player, "Req", "Rep", "Pick", "{}");
+                    recorder.OnReplied(task, "true");
+                }
             });
 
             IReadOnlyList<ReplayEvent> events = recorder.EventsSnapshot();
-            Assert.That(events, Has.Count.EqualTo(4000));
-            Assert.That(events.Select(e => e.Seq), Is.EqualTo(Enumerable.Range(0, 4000).Select(i => (long)i)));
-            Assert.That(recorder.Summary.Steps, Is.EqualTo(2000));
+            Assert.That(events, Has.Count.EqualTo(6000));
+            Assert.That(events.Select(e => e.Seq), Is.EqualTo(Enumerable.Range(0, 6000).Select(i => (long)i)));
+            Assert.That(recorder.Summary.Steps, Is.EqualTo(2000), "each answered request a step (#456: a reply alone is not)");
         }
     }
 }

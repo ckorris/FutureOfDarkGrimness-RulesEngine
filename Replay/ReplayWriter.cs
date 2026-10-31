@@ -13,15 +13,18 @@ namespace FDG.Replay
         /// <summary>
         /// Writes <paramref name="header"/> and then every event, one JSON object per line, gzipped into
         /// <paramref name="output"/>. The stream is left open (callers own it - a file, or a MemoryStream
-        /// whose bytes go into a save).
+        /// whose bytes go into a save). The header line carries the summary of the events written (#456);
+        /// <paramref name="header"/> itself is not changed.
         /// </summary>
         public static void WriteGzip(ReplayHeader header, IEnumerable<ReplayEvent> events, Stream output)
         {
+            IReadOnlyList<ReplayEvent> written = events as IReadOnlyList<ReplayEvent> ?? events.ToList();
+
             using GZipStream gzip = new GZipStream(output, CompressionLevel.Optimal, leaveOpen: true);
             using StreamWriter writer = new StreamWriter(gzip, Utf8NoBom, bufferSize: 1 << 16);
 
-            WriteLine(writer, header);
-            foreach (ReplayEvent replayEvent in events)
+            WriteLine(writer, header.WithSummary(ReplayTally.Of(written)));
+            foreach (ReplayEvent replayEvent in written)
             {
                 WriteLine(writer, replayEvent);
             }
@@ -79,7 +82,31 @@ namespace FDG.Replay
             }
         }
 
+        /// <summary>
+        /// #456: line 1 only - the header, with the file's <see cref="ReplayHeader.Summary"/> - for listing replays
+        /// without decompressing their events. Same refusals as <see cref="ReadGzip"/> for the header.
+        /// </summary>
+        public static ReplayHeader ReadHeaderGzip(Stream input)
+        {
+            try
+            {
+                using GZipStream gzip = new GZipStream(input, CompressionMode.Decompress, leaveOpen: true);
+                using StreamReader reader = new StreamReader(gzip, Encoding.UTF8);
+                return ReadHeader(reader);
+            }
+            catch (InvalidDataException notGzip)
+            {
+                throw new ReplayFormatException("Not a replay file (the data is not gzip-compressed).", notGzip);
+            }
+        }
+
         private static ReplayDocument Read(StreamReader reader)
+        {
+            ReplayHeader header = ReadHeader(reader);
+            return ReadEvents(reader, header);
+        }
+
+        private static ReplayHeader ReadHeader(StreamReader reader)
         {
             string? headerLine = reader.ReadLine();
             if (string.IsNullOrWhiteSpace(headerLine))
@@ -98,8 +125,12 @@ namespace FDG.Replay
             }
 
             JsonSerializer serializer = JsonSerializer.Create(ReplayFormat.JsonSettings);
-            ReplayHeader header = headerObject.ToObject<ReplayHeader>(serializer)
+            return headerObject.ToObject<ReplayHeader>(serializer)
                 ?? throw new ReplayFormatException("Replay header is null.");
+        }
+
+        private static ReplayDocument ReadEvents(StreamReader reader, ReplayHeader header)
+        {
 
             List<ReplayEvent> events = new List<ReplayEvent>();
             int lineNumber = 1;

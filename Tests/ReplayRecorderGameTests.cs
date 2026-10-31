@@ -145,7 +145,9 @@ namespace FDG.Tests
             Assert.That(requested, Is.Not.Empty);
             Assert.That(closed.Select(c => c.TaskId), Is.EquivalentTo(requested.Keys), "each request closed exactly once");
             Assert.That(closed.All(c => requested[c.TaskId] < c.Seq), Is.True, "a reply never precedes its request");
-            Assert.That(game.Recorder.Summary.Steps, Is.EqualTo(events.OfType<ReplyEvent>().Count()));
+            // #456: the summary counts steps as the viewer does - the folded single-option requests left out.
+            Assert.That(game.Recorder.Summary.Steps, Is.EqualTo(new ReplayTimeline(game.Document).Steps.Count)
+                .And.LessThan(events.OfType<ReplyEvent>().Count()));
 
             // Activations: numbered from 1 within each round; every unit-naming repeat follows its own boundary.
             List<MarkerEvent> activations = Markers(game, EReplayMarker.ActivationStart);

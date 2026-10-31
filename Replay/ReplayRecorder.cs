@@ -41,9 +41,6 @@ namespace FDG.Replay
     /// </summary>
     public sealed class ReplayRecorder : IReplaySource, IRequestObserver, IBeatObserver, IDisposable
     {
-        // Rough per-line overhead of the container (Seq, T, Kind and the field names) for SizeBytes.
-        private const int ApproxLineOverhead = 48;
-
         private readonly object _lock = new object();
         private readonly List<ReplayEvent> _events = new List<ReplayEvent>();
         private readonly Stopwatch _clock = new Stopwatch();
@@ -64,11 +61,8 @@ namespace FDG.Replay
         private string? _continueProblem;
         private long _clockOffset;
 
-        // Summary tallies, kept as events are appended so Summary never walks the list.
-        private int _replies;
-        private int _highestRound;
-        private string? _outcome;
-        private long _approxSize;
+        // Summary counts, kept as events are appended so Summary never walks the list.
+        private ReplayTally _tally = new ReplayTally();
 
         private ITextOutput _failureOutput = new ConsoleTextOutput();
         private IReadableGameDataStore? _attachedStore;
@@ -121,6 +115,7 @@ namespace FDG.Replay
             try
             {
                 ReplayDocument prior = ReadPrior(priorGzip);
+                prior.Header.Summary = null; // the file's; this recording's is its own (#456)
                 lock (recorder._lock)
                 {
                     recorder._continuedHeader = prior.Header;
@@ -181,7 +176,7 @@ namespace FDG.Replay
             foreach (ReplayEvent replayEvent in events)
             {
                 _events.Add(replayEvent);
-                Tally(replayEvent);
+                _tally.Add(replayEvent);
                 if (replayEvent is SnapshotEvent snapshot)
                 {
                     _nextSnapshotIndex = Math.Max(_nextSnapshotIndex, snapshot.Index + 1);
@@ -203,10 +198,7 @@ namespace FDG.Replay
             _nextSeq = 0;
             _nextSnapshotIndex = 0;
             _clockOffset = 0;
-            _replies = 0;
-            _highestRound = 0;
-            _outcome = null;
-            _approxSize = 0;
+            _tally = new ReplayTally();
         }
 
         /// <summary>
@@ -457,8 +449,7 @@ namespace FDG.Replay
             {
                 lock (_lock)
                 {
-                    long duration = _events.Count > 0 ? _events[_events.Count - 1].T : 0;
-                    return new ReplaySummary(_replies, _highestRound, _outcome, duration, _approxSize);
+                    return _tally.ToSummary();
                 }
             }
         }
@@ -513,67 +504,13 @@ namespace FDG.Replay
 
                     ReplayEvent replayEvent = build() with { Seq = _nextSeq++, T = _clockOffset + _clock.ElapsedMilliseconds };
                     _events.Add(replayEvent);
-                    Tally(replayEvent);
+                    _tally.Add(replayEvent);
                 }
             }
             catch (Exception exception)
             {
                 Fail(what, exception);
             }
-        }
-
-        // Under _lock.
-        private void Tally(ReplayEvent replayEvent)
-        {
-            switch (replayEvent)
-            {
-                case StoreAddEvent add:
-                    _approxSize += add.Json.Length;
-                    break;
-                case StoreUpdateEvent update:
-                    _approxSize += update.Json.Length;
-                    break;
-                case SnapshotEvent snapshot:
-                    _approxSize += snapshot.SaveJson.Length;
-                    break;
-                case RequestEvent request:
-                    _approxSize += request.RequestJson.Length + request.RequestType.Length
-                        + request.ReplyType.Length + request.DisplayName.Length;
-                    break;
-                case ReplyEvent reply:
-                    _replies++;
-                    _approxSize += reply.ReplyJson.Length;
-                    break;
-                case RequestErrorEvent error:
-                    _approxSize += error.Message.Length;
-                    break;
-                case BeatEvent beat:
-                    _approxSize += beat.BeatJson.Length;
-                    break;
-                case LogEvent log:
-                    _approxSize += log.Line.Length;
-                    break;
-                case MarkerEvent marker:
-                    if ((marker.Marker == EReplayMarker.RoundStart || marker.Marker == EReplayMarker.GameStart)
-                        && marker.Round > _highestRound)
-                    {
-                        _highestRound = marker.Round.Value;
-                    }
-
-                    if (marker.Marker == EReplayMarker.GameEnded)
-                    {
-                        _outcome = marker.Outcome;
-                    }
-
-                    // #453: a resumed recovery save (#187) ended once already; the game is running again.
-                    if (marker.Marker == EReplayMarker.Resumed)
-                    {
-                        _outcome = null;
-                    }
-                    break;
-            }
-
-            _approxSize += ApproxLineOverhead;
         }
 
         internal void Fail(string what, Exception exception)

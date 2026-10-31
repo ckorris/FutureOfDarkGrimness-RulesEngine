@@ -105,8 +105,8 @@ namespace FDG.ArmyBuilding
         /// the exact search in <see cref="Solve"/> finds nothing, but the same roster unit is still the right
         /// unit. Walks the same option space under the same budget, compiles every leaf through the real
         /// compiler, and keeps the one <paramref name="score"/> rates highest (ties: the price closest to the
-        /// target's). The two-copy combined reading (#107) is also tried when no single copy reaches the
-        /// target's size. The judgement of "close" is the caller's - this only searches.
+        /// target's). The two-copy combined reading (#107) is also tried for every candidate too small to reach
+        /// the target's size alone (and for all of them when no single copy reached it). The judgement of "close" is the caller's - this only searches.
         /// </summary>
         /// <param name="candidates">The roster units the target may be (normally the same-name unit).</param>
         public static UnitSolve SolveNearest(BookFile book, UnitFileEntry target, IReadOnlyList<RosterUnit> candidates,
@@ -122,11 +122,18 @@ namespace FDG.ArmyBuilding
             foreach (RosterUnit roster in candidates)
                 Descend(book, roster, target, 0, new List<UpgradeChoice>(), single);
 
+            // The pair reading is for a roster unit too small to be the target alone. Gating it on the single
+            // search's best size is not enough when there are several candidates: one may reach the size alone
+            // while another, closer in every other respect, only reaches it as a pair.
+            bool singleMissedSize = single.BestCompiled is null || single.BestCompiled.ModelCount != target.ModelCount;
+            List<RosterUnit> pairable = candidates
+                .Where(r => singleMissedSize || r.MaxModels < target.ModelCount)
+                .ToList();
             Search? pair = null;
-            if (single.BestCompiled is null || single.BestCompiled.ModelCount != target.ModelCount)
+            if (pairable.Count > 0)
             {
                 pair = new Search { Budget = combinationCap, Score = score };
-                foreach (RosterUnit roster in candidates)
+                foreach (RosterUnit roster in pairable)
                     DescendPair(book, roster, target, 0, new List<UpgradeChoice>(), pair);
             }
 

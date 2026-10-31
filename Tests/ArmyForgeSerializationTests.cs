@@ -428,6 +428,33 @@ public class ArmyForgeSerializationTests
         Assert.That(nearest.Selection[1].CombinedWithId, Is.EqualTo("w"));
     }
 
+    // Two candidates: a six-model unit that reaches the size alone (so it wins the single-copy search), and a
+    // three-model one whose loadout is the target's. The pair of the closer unit must still be considered, not skipped because the other fit the size.
+    [Test]
+    public void SolveNearest_ConsidersAPairOfACloserSmallerCandidate()
+    {
+        BookFile book = MakeBook();
+        book.Units.Add(new RosterUnit
+        {
+            Id = "mob", Name = "Mob", Quality = 5, Defense = 5, BaseModelCount = 6, MinModels = 6, MaxModels = 6,
+            BasePointCost = 60,
+            Weapons = { new WeaponFileEntry { Name = "Club", Quantity = 6, RangeInches = 0, Attacks = 1 } },
+        });
+        var target = new UnitFileEntry
+        {
+            Name = "Old Gunners", Id = "g", ModelCount = 6, PointCost = 240,
+            Weapons = { new WeaponFileEntry { Name = "Heavy Rifle", Quantity = 6, RangeInches = 36, Attacks = 1 } },
+        };
+        List<RosterUnit> candidates = book.Units.Where(u => u.Name is "Heavy Gunners" or "Mob").ToList();
+
+        double Score(UnitFileEntry u) =>
+            -2 * Math.Abs(u.ModelCount - target.ModelCount) + u.Weapons.Where(w => w.Name == "Heavy Rifle").Sum(w => w.Quantity);
+        UnitSolve nearest = SelectionSolver.SolveNearest(book, target, candidates, Score);
+
+        Assert.That(nearest.IsCombinedPair, Is.True, nearest.Failure);
+        Assert.That(nearest.Selection[0].RosterUnitId, Is.EqualTo("gunners"));
+    }
+
     [Test]
     public void NormalizeUnitName_TreatsACombinedPairAsItsRosterUnit()
     {

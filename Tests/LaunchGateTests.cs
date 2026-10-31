@@ -46,9 +46,9 @@ public class LaunchGateTests
     [Test]
     public void ForgeArmyWithCatalogError_IsAProblem_AttributedToThePlayer()
     {
-        // Two copies of a Unique unit — the catalog validation Error the builder would have flagged.
+        // Two copies of a Unique Hero unit — the catalog validation Error the builder would have flagged.
         var book = DemoBook.Build();
-        book.Units[0].Rules.Add(new SpecialRuleEntry_Core("Unique"));
+        book.Units[0].Rules.Add(new SpecialRuleEntry_Core("Unique Hero"));
         var list = new BuilderList { Name = "L", PointsLimit = 100000 };
         list.Units.Add(new BuilderUnit { RosterUnitId = "warriors" });
         list.Units.Add(new BuilderUnit { RosterUnitId = "warriors" });

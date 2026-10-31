@@ -52,12 +52,10 @@ namespace FDG.ArmyBuilding
                         $"{roster.Name}: {models} models (allowed {roster.MinModels}-{roster.MaxModels}).",
                         ListIssueSeverity.Error, i));
 
-                // Unique - "This unit may only be taken once per army." / Unique Hero (#430, 3.6) - "this
-                // model may only be taken once per army." An absolute list-building rule (unlike the
-                // size-dependent force-org caps below, which stay Warnings), so each copy beyond the first
-                // is an Error.
+                // Unique Hero (#430, 3.6) - "this model may only be taken once per army." An absolute
+                // list-building rule (unlike the size-dependent force-org caps below, which stay Warnings), so
+                // each copy beyond the first is an Error. (#438: the 3.5 "Unique" arm left with the 3.5 books.)
                 string? uniqueRule = HasRule(roster.Rules, CoreRuleCatalog.UniqueHeroName) ? CoreRuleCatalog.UniqueHeroName
-                    : HasRule(roster.Rules, "Unique") ? "Unique"
                     : null;
                 if (uniqueRule != null
                     && list.Units.Take(i).Any(prev => prev.RosterUnitId == bu.RosterUnitId))

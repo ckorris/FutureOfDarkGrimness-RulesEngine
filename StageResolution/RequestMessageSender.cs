@@ -107,7 +107,8 @@ namespace FDG.StageResolution
             // TrySet* because a reply could race the disconnect; the TryRemove claim already makes one win.
             Action<Exception> failWithException = (exception) => taskCompletionSource.TrySetException(exception);
 
-            SuccessAndFailActions actions = new SuccessAndFailActions(targetPlayerID, onSuccess, onFailed, failWithException);
+            SuccessAndFailActions actions = new SuccessAndFailActions(targetPlayerID, onSuccess, onFailed, failWithException,
+                new ResolvedDecision(requestFullTypeName, replyFullTypeName, request.DisplayName, requestJson));
 
             _pendingTaskAndResolvers.TryAdd(taskID, actions);
 
@@ -128,8 +129,9 @@ namespace FDG.StageResolution
             // Route the decision payload to just the target player instead of broadcasting it to everyone
             // (#088): a remote player receives it on their own connection; a local (in-process) player gets
             // an in-process dispatch. The receiver-side PlayerID filter still guards the local case (local
-            // players share one registrar), but no client ever receives another player's request payload —
-            // saving bandwidth and not baking in the open-information assumption.
+            // players share one registrar), but no client receives another player's request payload while
+            // the decision is open. Once it resolves, the resolved notice carries it to everyone for their
+            // replays (#451, D2) - by then it has been acted on and hides nothing.
             if (_playerSlotManager.TryGetConnectionByPlayerID(targetPlayerID, out ConnectionID targetConnection))
             {
                 _messageBusHost.SendCommandToSingleAsync(requestMessage, targetConnection);
@@ -168,9 +170,10 @@ namespace FDG.StageResolution
 
             Observer?.OnReplied(replyMessage.TaskID, replyMessage.ReplyJson);
 
-            //Notify all clients that the task is finished, so they can stop displaying it on the UI.
-            StageTaskNotifyResolvedMessage finishedMessage = new StageTaskNotifyResolvedMessage(replyMessage.TaskID);
-            _messageBusHost.SendCommandToAllAsync(finishedMessage);
+            //Notify all clients that the task is finished, so they can stop displaying it on the UI - and, with
+            //the decision attached, record it in their replays (#451).
+            _messageBusHost.SendCommandToAllAsync(actions.Decision.Resolved(replyMessage.TaskID, actions.TargetPlayerID,
+                replyJson: replyMessage.ReplyJson, errorMessage: null));
 
             actions.OnSuccessful.Invoke(replyMessage.ReplyJson);
         }
@@ -193,6 +196,11 @@ namespace FDG.StageResolution
             }
 
             Observer?.OnFailed(errorMessage.TaskID, errorMessage.ErrorMessage);
+
+            // #451: the error ends the task like a reply does - clear it from every client's outstanding-task
+            // UI (it used to linger there) and let their replays close the request too.
+            _messageBusHost.SendCommandToAllAsync(actions.Decision.Resolved(errorMessage.TaskID, actions.TargetPlayerID,
+                replyJson: null, errorMessage: errorMessage.ErrorMessage));
 
             actions.OnFailed.Invoke(errorMessage.ErrorMessage);
         }
@@ -240,9 +248,10 @@ namespace FDG.StageResolution
                 Observer?.OnFailed(pending.Key, reason);
 
                 //Clear it from every client's outstanding-task UI, same as a normal resolve.
-                _messageBusHost.SendCommandToAllAsync(new StageTaskNotifyResolvedMessage(pending.Key));
+                _messageBusHost.SendCommandToAllAsync(actions!.Decision.Resolved(pending.Key, playerID,
+                    replyJson: null, errorMessage: reason));
 
-                actions!.FailWithException.Invoke(new PlayerDisconnectedException(playerID, reason));
+                actions.FailWithException.Invoke(new PlayerDisconnectedException(playerID, reason));
                 failedCount++;
             }
 
@@ -287,15 +296,27 @@ namespace FDG.StageResolution
             public readonly Action<string> OnSuccessful; //Call with Json
             public readonly Action<string> OnFailed; //Call with error message.
             public readonly Action<Exception> FailWithException; //Fault the awaiting task directly.
+            public readonly ResolvedDecision Decision; //What the resolved notice tells every client (#451).
 
             public SuccessAndFailActions(PlayerID targetPlayerID, Action<string> onSuccessful,
-                Action<string> onFailed, Action<Exception> failWithException)
+                Action<string> onFailed, Action<Exception> failWithException, ResolvedDecision decision)
             {
                 TargetPlayerID = targetPlayerID;
                 OnSuccessful = onSuccessful;
                 OnFailed = onFailed;
                 FailWithException = failWithException;
+                Decision = decision;
             }
+        }
+
+        // The request half of a resolved notice, kept from send until the task ends (#451, D2).
+        private sealed record ResolvedDecision(string RequestFullTypeName, string ReplyFullTypeName,
+            string DisplayName, string RequestJson)
+        {
+            public StageTaskNotifyResolvedMessage Resolved(TaskID taskID, PlayerID playerID, string? replyJson,
+                string? errorMessage) =>
+                new StageTaskNotifyResolvedMessage(taskID, playerID, RequestFullTypeName, ReplyFullTypeName,
+                    DisplayName, RequestJson, replyJson, errorMessage);
         }
 
         public class NetworkedRequestFailedException : Exception

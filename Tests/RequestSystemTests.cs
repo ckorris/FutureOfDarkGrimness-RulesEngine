@@ -299,6 +299,78 @@ namespace FDG.Tests
             Assert.That(mock.LastRequestSingleConnection, Is.Null);
         }
 
+        // #451 (replay decision D2): once a decision is over, every client is told what it was - the request as
+        // sent and the reply as received - so it can record other players' decisions. One test per way a task
+        // ends: answered, resolver error, disconnect.
+        private static (MockMessageBusHost Bus, RequestMessageSender Sender, PlayerID PlayerID, ConnectionID ConnectionID)
+            RemotePlayerSender()
+        {
+            var gameDataStore = new GameDataStore.GameDataStoreBuilder()
+                .RegisterType<PlayerSlotInfo>(1)
+                .Build();
+            var mock = new MockMessageBusHost();
+            var playerID = new PlayerID(Guid.NewGuid());
+            var connectionID = new ConnectionID(Guid.NewGuid());
+
+            PlayerSlot slot = new PlayerSlot(0, 0, playerID, null, gameDataStore);
+            slot.AssignPlayerController(new NetworkPlayerController("Remote", playerID, connectionID, mock, gameDataStore));
+            var sender = new RequestMessageSender(mock, gameDataStore, new PlayerSlotManager(new[] { slot }), new EmptyTextOutput());
+            return (mock, sender, playerID, connectionID);
+        }
+
+        [Test]
+        public async Task Reply_BroadcastsTheResolvedDecision_RequestAndReply()
+        {
+            var (mock, sender, playerID, _) = RemotePlayerSender();
+            Task<string> decision = sender.RequestDecision<TestRequest, string>(
+                new TestRequest(playerID, new TaskID(Guid.NewGuid()), "Test Task"));
+            StageTaskRequestMessage request = mock.LastRequestMessage!;
+
+            // The replier's claimed PlayerID is not what the notice reports: the host's own record of the target is.
+            mock.SimulateMessageReceived(new StageTaskReplyMessage(new PlayerID(Guid.NewGuid()), request.TaskID,
+                request.ReplyFullTypeName, "\"Fire!\""));
+
+            Assert.That(await decision, Is.EqualTo("Fire!"));
+            Assert.That(mock.LastSentWasBroadcast, Is.True, "the resolved notice goes to every client");
+            Assert.That(mock.LastSentCommand, Is.EqualTo(new StageTaskNotifyResolvedMessage(request.TaskID, playerID,
+                request.RequestFullTypeName, request.ReplyFullTypeName, "Test Task", request.RequestJson,
+                ReplyJson: "\"Fire!\"", ErrorMessage: null)));
+        }
+
+        [Test]
+        public void ResolverError_BroadcastsTheResolvedNotice_WithTheError()
+        {
+            var (mock, sender, playerID, _) = RemotePlayerSender();
+            Task<string> decision = sender.RequestDecision<TestRequest, string>(
+                new TestRequest(playerID, new TaskID(Guid.NewGuid()), "Test Task"));
+            StageTaskRequestMessage request = mock.LastRequestMessage!;
+
+            mock.SimulateMessageReceived(new StageTaskRequestErrorMessage(playerID, request.TaskID, "resolver blew up"));
+
+            Assert.That(async () => await decision, Throws.InstanceOf<RequestMessageSender.NetworkedRequestFailedException>());
+            Assert.That(mock.LastSentWasBroadcast, Is.True, "an error ends the task like a reply: every client is told");
+            Assert.That(mock.LastSentCommand, Is.EqualTo(new StageTaskNotifyResolvedMessage(request.TaskID, playerID,
+                request.RequestFullTypeName, request.ReplyFullTypeName, "Test Task", request.RequestJson,
+                ReplyJson: null, ErrorMessage: "resolver blew up")));
+        }
+
+        [Test]
+        public void Disconnect_BroadcastsTheResolvedNotice_WithTheReason()
+        {
+            var (mock, sender, playerID, connectionID) = RemotePlayerSender();
+            Task<string> decision = sender.RequestDecision<TestRequest, string>(
+                new TestRequest(playerID, new TaskID(Guid.NewGuid()), "Test Task"));
+            StageTaskRequestMessage request = mock.LastRequestMessage!;
+
+            mock.SimulateClientDisconnected(connectionID);
+
+            Assert.That(async () => await decision, Throws.InstanceOf<RequestMessageSender.PlayerDisconnectedException>());
+            Assert.That(mock.LastSentWasBroadcast, Is.True);
+            Assert.That(mock.LastSentCommand, Is.EqualTo(new StageTaskNotifyResolvedMessage(request.TaskID, playerID,
+                request.RequestFullTypeName, request.ReplyFullTypeName, "Test Task", request.RequestJson,
+                ReplyJson: null, ErrorMessage: "Player disconnected.")));
+        }
+
         // Mock command dispatcher for testing network requests
         public class MockMessageBusHost : IMessageBusHost, IMessageBusClient
         {

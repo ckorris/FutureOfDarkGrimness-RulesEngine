@@ -64,7 +64,8 @@ namespace FDG.Tests
             _mockMessageBusHost.SimulateMessageReceived(notifyMessage);
 
             //taskLister.NotifyTaskResolved(taskID);
-            StageTaskNotifyResolvedMessage resolvedMessage = new StageTaskNotifyResolvedMessage(taskID);
+            StageTaskNotifyResolvedMessage resolvedMessage = new StageTaskNotifyResolvedMessage(taskID, playerID,
+                "Request", "Reply", taskName, "{}", "{}", null);
             _mockMessageBusHost.SimulateMessageReceived(resolvedMessage);
 
             Assert.That(taskList.Last().Count, Is.EqualTo(0));

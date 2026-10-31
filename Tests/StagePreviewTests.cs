@@ -20,6 +20,10 @@ namespace FDG.Tests
         private const string TYPE_NAME = "TestPreview";
         private const string JSON = "{\"x\":1}";
 
+        // Only the TaskID matters to the feed; the decision payload (#451) is filler.
+        private static StageTaskNotifyResolvedMessage Resolved(TaskID taskID) =>
+            new StageTaskNotifyResolvedMessage(taskID, new PlayerID(Guid.Empty), "Request", "Reply", "Task", "{}", "{}", null);
+
         // ---------- Channel ----------
 
         [Test]
@@ -217,7 +221,7 @@ namespace FDG.Tests
 
             bus.DispatchLocal(new StageTaskNotifyAwaitingMessage(taskID, slotInfo, "Move"));
             bus.DispatchLocal(new StagePreviewMessage(playerID, SLOT, TYPE_NAME, JSON));
-            bus.DispatchLocal(new StageTaskNotifyResolvedMessage(taskID));
+            bus.DispatchLocal(Resolved(taskID));
 
             Assert.That(feed.GetSnapshot(), Is.Empty);
         }
@@ -236,11 +240,11 @@ namespace FDG.Tests
             bus.DispatchLocal(new StageTaskNotifyAwaitingMessage(task2, slotInfo, "Wounds"));
             bus.DispatchLocal(new StagePreviewMessage(playerID, SLOT, TYPE_NAME, JSON));
 
-            bus.DispatchLocal(new StageTaskNotifyResolvedMessage(task1));
+            bus.DispatchLocal(Resolved(task1));
             Assert.That(feed.GetSnapshot(), Has.Count.EqualTo(1),
                 "Preview must survive while the player still has a request outstanding.");
 
-            bus.DispatchLocal(new StageTaskNotifyResolvedMessage(task2));
+            bus.DispatchLocal(Resolved(task2));
             Assert.That(feed.GetSnapshot(), Is.Empty);
         }
 

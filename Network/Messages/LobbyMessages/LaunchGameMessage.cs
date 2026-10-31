@@ -20,5 +20,13 @@ namespace FDG.Network.Messages
         /// activation). Null when the host is not recording - its recording failed to start.
         /// </summary>
         public Replay.ReplayHeader? Replay { get; set; }
+
+        /// <summary>
+        /// #453: in a resumed game, the host's recording through its <c>Resumed</c> marker (gzip <c>.fdgreplay</c>
+        /// bytes, base64 on the wire) - the saved game's history, so each client's recording continues it rather than
+        /// starting at the join. Here rather than in a message of its own so it arrives before anything the client
+        /// records. Null for a new game, a resume without a replay, or a history too large to send.
+        /// </summary>
+        public byte[]? ReplayHistory { get; set; }
     }
 }

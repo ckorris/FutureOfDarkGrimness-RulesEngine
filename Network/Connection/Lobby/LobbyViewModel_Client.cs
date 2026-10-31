@@ -423,7 +423,7 @@ namespace FDG.Network.Connection.Lobby
             }
 
             FDGGame_AsClient fdgGame = new FDGGame_AsClient(_gameDataStore, _messageBusClient, _thisPlayerID.Value,
-                launchGameMessage.Replay);
+                launchGameMessage.Replay, launchGameMessage.ReplayHistory);
             _replay = fdgGame.ReplayRecorder;
 
             // #412: only a well-formed ID is passed on; anything else (an older host, a garbled frame)

@@ -225,6 +225,13 @@ namespace FDG.Replay
         /// <summary>Folded requests made before the first step (a forced first deployment pick, say).</summary>
         public IReadOnlyList<ReplayRequest> FoldedBeforeFirstStep { get; }
 
+        /// <summary>
+        /// #453: the marker that ended the game - the last <c>GameEnded</c> with no <c>Resumed</c> after it - or null
+        /// when the recording's last session has none (abandoned, cut short, still running). A resumed #187 recovery
+        /// save also holds the earlier session's <c>GameEnded</c> (Disconnect), before its <c>Resumed</c>.
+        /// </summary>
+        public MarkerEvent? GameEndedMarker { get; }
+
         /// <summary>Set once a <c>ReplayPlayer</c> has filled every step's Summary.</summary>
         internal bool StepsDescribed { get; set; }
 
@@ -312,6 +319,14 @@ namespace FDG.Replay
             Snapshots = snapshots;
             Markers = markers;
             Requests = requests;
+
+            MarkerEvent? ended = null;
+            foreach (MarkerEvent marker in markers)
+            {
+                if (marker.Marker == EReplayMarker.GameEnded) ended = marker;
+                else if (marker.Marker == EReplayMarker.Resumed) ended = null;
+            }
+            GameEndedMarker = ended;
 
             // Steps need every reply joined first: a reply can land after later requests were made.
             var steps = new List<ReplayStep>();

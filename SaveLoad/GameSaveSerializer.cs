@@ -1,5 +1,6 @@
 using FDG.Data;
 using FDG.Data.Containers;
+using FDG.Replay;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Foundation;
 using Newtonsoft.Json;
@@ -24,7 +25,12 @@ namespace FDG.SaveLoad
         // fallback in ResolveType/the binder is cheap insurance rather than a live compatibility path.
         public const int CurrentVersion = 2;
 
-        public static string Save(GameDataStore store)
+        /// <param name="replay">#453: the game's recording, embedded so that resuming this save continues it
+        /// (<see cref="LoadWithReplay"/>, <c>ReplayRecorder.Continue</c>). Only a real game's save passes one - the
+        /// player's save and the #187 recovery save, through <c>FDGServer.SaveGame</c>. Snapshots (replay snapshots,
+        /// <c>StoreSnapshot</c>, simulations) and compiled scenarios leave it null, and their output is unchanged. A
+        /// recording that never started embeds nothing.</param>
+        public static string Save(GameDataStore store, IReplaySource? replay = null)
         {
             GameSaveFile file = new GameSaveFile
             {
@@ -35,10 +41,44 @@ namespace FDG.SaveLoad
                 Entries = store.GetAllDataReferencesAsJson(),
             };
 
+            if (replay?.Header != null)
+            {
+                // Summary first: anything recorded between the two reads makes the summary undercount, never
+                // describe events the bytes do not hold.
+                file.ReplaySummary = replay.Summary;
+                file.Replay = Convert.ToBase64String(replay.ExportGzip());
+            }
+
             return JsonConvert.SerializeObject(file, Formatting.Indented);
         }
 
         public static GameDataStore Load(string json) => Load(json, stampLegacyReserves: true);
+
+        /// <summary>
+        /// #453: <see cref="Load(string)"/>, plus the replay the save carries - the gzip bytes of its
+        /// <c>.fdgreplay</c>, for <c>ReplayRecorder.Continue</c> - or null when it carries none (a scenario, a save
+        /// from before #453 or of an unrecorded game). An unreadable block comes back as an empty array rather than
+        /// failing the load: the resume must never depend on the replay, and Continue reports the bad bytes and
+        /// starts the recording afresh at the resume.
+        /// </summary>
+        public static (GameDataStore Store, byte[]? ReplayGzip) LoadWithReplay(string json)
+        {
+            GameSaveFile file = Parse(json);
+            byte[]? replay = null;
+            if (file.Replay != null)
+            {
+                try
+                {
+                    replay = Convert.FromBase64String(file.Replay);
+                }
+                catch (FormatException)
+                {
+                    replay = Array.Empty<byte>();
+                }
+            }
+
+            return (Build(file, stampLegacyReserves: true), replay);
+        }
 
         /// <summary>
         /// <paramref name="stampLegacyReserves"/> false is replay playback's load (#454): a replay snapshot is an
@@ -46,7 +86,10 @@ namespace FDG.SaveLoad
         /// stamp would put an InReserve token on every not-yet-deployed unit of snapshot 0 (taken before
         /// deployment, every model at the origin), where it would linger until that unit's next recorded update.
         /// </summary>
-        internal static GameDataStore Load(string json, bool stampLegacyReserves)
+        internal static GameDataStore Load(string json, bool stampLegacyReserves) =>
+            Build(Parse(json), stampLegacyReserves);
+
+        private static GameSaveFile Parse(string json)
         {
             GameSaveFile? file = JsonConvert.DeserializeObject<GameSaveFile>(json);
             if (file == null)
@@ -59,6 +102,12 @@ namespace FDG.SaveLoad
                 throw new InvalidOperationException(
                     $"Unsupported save version {file.Version} (this build expects {CurrentVersion}).");
             }
+
+            return file;
+        }
+
+        private static GameDataStore Build(GameSaveFile file, bool stampLegacyReserves)
+        {
 
             List<GameDataStore.TypeAndCapacity> typeMap = file.TypeMap
                 .Select(entry => new GameDataStore.TypeAndCapacity(ResolveType(entry.TypeId), entry.Capacity))

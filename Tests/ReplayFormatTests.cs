@@ -151,7 +151,7 @@ namespace FDG.Tests
             string[] lines = DecompressLines(Write(MakeHeader(), OneOfEachKind()));
 
             Assert.That(lines, Has.Length.EqualTo(1 + OneOfEachKind().Count), "one line per event, plus the header");
-            Assert.That(lines[0], Does.StartWith("{\"FormatVersion\":1,"));
+            Assert.That(lines[0], Does.StartWith($"{{\"FormatVersion\":{ReplayFormat.CurrentVersion},"));
             Assert.That(lines[1], Does.StartWith("{\"Seq\":0,\"T\":0,\"Kind\":\"StoreAdd\","),
                 "Kind is an explicit greppable string right after Seq/T, not a Newtonsoft $type");
             Assert.That(lines.Skip(1), Has.None.Contains("\"$type\":\"FDG."), "no CLR type names in the container itself");
@@ -192,7 +192,7 @@ namespace FDG.Tests
         [Test]
         public void Reader_RefusesDataThatIsNotGzip()
         {
-            byte[] plain = Encoding.UTF8.GetBytes("{\"FormatVersion\":1}\n");
+            byte[] plain = Encoding.UTF8.GetBytes($"{{\"FormatVersion\":{ReplayFormat.CurrentVersion}}}\n");
 
             Assert.Throws<ReplayFormatException>(() => Read(plain));
         }
@@ -206,7 +206,7 @@ namespace FDG.Tests
         [Test]
         public void Reader_RefusesAnUnknownKind_NamingTheLine()
         {
-            string text = "{\"FormatVersion\":1}\n{\"Seq\":0,\"T\":0,\"Kind\":\"Teleport\"}\n";
+            string text = $"{{\"FormatVersion\":{ReplayFormat.CurrentVersion}}}\n{{\"Seq\":0,\"T\":0,\"Kind\":\"Teleport\"}}\n";
 
             ReplayFormatException? refused = Assert.Throws<ReplayFormatException>(() => Read(Gzip(text)));
             Assert.That(refused!.Message, Does.Contain("line 2").And.Contain("Teleport"));
@@ -215,7 +215,7 @@ namespace FDG.Tests
         [Test]
         public void Reader_RefusesAMissingKind()
         {
-            string text = "{\"FormatVersion\":1}\n{\"Seq\":0,\"T\":0,\"Line\":\"x\"}\n";
+            string text = $"{{\"FormatVersion\":{ReplayFormat.CurrentVersion}}}\n{{\"Seq\":0,\"T\":0,\"Line\":\"x\"}}\n";
 
             Assert.Throws<ReplayFormatException>(() => Read(Gzip(text)));
         }

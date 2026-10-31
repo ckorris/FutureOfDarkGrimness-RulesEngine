@@ -32,6 +32,13 @@ namespace FDG.Replay
     /// - whether a person or the host's AI answered it, it was answered somewhere else.
     /// </para>
     /// <para>
+    /// <b>Resumed games (#453).</b> The launch message of a resumed save carries the host's recording through its
+    /// <c>Resumed</c> marker. This recording begins with it - the host's events, verbatim - and its join snapshot
+    /// becomes the snapshot after the resume, under the index the host's has, so the two recordings agree event for
+    /// event up to the resume and the earlier history is in every player's file. Without that history (a save that
+    /// carried no replay) the recording starts at the join, as in a new game.
+    /// </para>
+    /// <para>
     /// <b>Order.</b> Every message arrives on the client's one network read thread, in the host's send order per
     /// connection (#086's write lock). Another player's request is recorded when its resolved notice arrives, i.e.
     /// next to its reply rather than where the host sent it; deltas made while that decision was open (rare - two
@@ -56,6 +63,7 @@ namespace FDG.Replay
         private readonly HashSet<TaskID> _requested = new HashSet<TaskID>();
         private readonly HashSet<TaskID> _closed = new HashSet<TaskID>();
         private readonly PlayerID _thisPlayer;
+        private readonly bool _continuesHistory;
         private bool _joined;
         private bool _disposed;
 
@@ -63,14 +71,36 @@ namespace FDG.Replay
         /// <see cref="GameDataStore"/>; any other store records everything but them.</param>
         /// <param name="hostHeader">The host's header from the launch message, or null when the host sent none
         /// (its own recording failed to start): the game ID is then empty and seed, settings and slots unknown.</param>
+        /// <param name="history">#453: the launch message's replay history (a resumed game), or null.</param>
         internal ClientReplayRecorder(IMessageBusClient bus, IReadableGameDataStore store, PlayerID thisPlayer,
-            ReplayHeader? hostHeader, ITextOutput? failureOutput = null)
+            ReplayHeader? hostHeader, byte[]? history = null, ITextOutput? failureOutput = null)
         {
             _bus = bus;
             _store = store as GameDataStore;
             _thisPlayer = thisPlayer;
             _beatSettings = WireJsonSettings.For(store);
-            _recording.Start(ClientHeader(hostHeader, thisPlayer), failureOutput);
+
+            string? problem = null;
+            if (history != null)
+            {
+                try
+                {
+                    ReplayDocument prior = ReplayRecorder.ReadPrior(history);
+                    _recording.Seed(prior.Events);
+                    _continuesHistory = true;
+                }
+                catch (Exception exception)
+                {
+                    problem = $"[replay] The game's replay so far could not be read ({exception.Message}). " +
+                        "This player's replay starts at the join.";
+                }
+            }
+
+            _recording.Start(ClientHeader(hostHeader, thisPlayer, _continuesHistory), failureOutput);
+            if (problem != null)
+            {
+                _recording.Note(problem);
+            }
 
             _bus.RegisterForMessageEvent<AddSingleDataMessage>(OnStoreAdd);
             _bus.RegisterForMessageEvent<UpdateSingleDataMessage>(OnStoreUpdate);
@@ -110,7 +140,9 @@ namespace FDG.Replay
             _recording.Snapshot(_store);
         });
 
-        internal static ReplayHeader ClientHeader(ReplayHeader? host, PlayerID thisPlayer) => new ReplayHeader
+        /// <param name="continuesHistory">#453: the recording begins with the host's history, so it began when the
+        /// host's did and has been resumed as often.</param>
+        internal static ReplayHeader ClientHeader(ReplayHeader? host, PlayerID thisPlayer, bool continuesHistory = false) => new ReplayHeader
         {
             BuildVersion = ReplayFormat.BuildVersion,
             EngineVersion = ReplayFormat.EngineVersion,
@@ -129,19 +161,37 @@ namespace FDG.Replay
             }).ToList(),
             RecordedBy = EReplayRecordedBy.Client,
             RecordedByPlayerId = thisPlayer,
-            StartedUtc = DateTime.UtcNow,
+            StartedUtc = continuesHistory && host != null ? host.StartedUtc : DateTime.UtcNow,
+            ResumedUtc = continuesHistory && host != null ? new List<DateTime>(host.ResumedUtc) : new List<DateTime>(),
         };
 
         // --- Store ------------------------------------------------------------------------------------
 
-        private void OnStoreAdd(AddSingleDataMessage message) =>
-            _recording.RecordStoreAdd(message.DataReference, message.InitialValueAsJson);
+        private void OnStoreAdd(AddSingleDataMessage message)
+        {
+            if (RecordsDeltas()) _recording.RecordStoreAdd(message.DataReference, message.InitialValueAsJson);
+        }
 
-        private void OnStoreUpdate(UpdateSingleDataMessage message) =>
-            _recording.RecordStoreUpdate(message.DataReference, message.ValueAsJson);
+        private void OnStoreUpdate(UpdateSingleDataMessage message)
+        {
+            if (RecordsDeltas()) _recording.RecordStoreUpdate(message.DataReference, message.ValueAsJson);
+        }
 
-        private void OnStoreRemove(RemoveSingleDataMessage message) =>
-            _recording.RecordStoreRemove(message.DataReference);
+        private void OnStoreRemove(RemoveSingleDataMessage message)
+        {
+            if (RecordsDeltas()) _recording.RecordStoreRemove(message.DataReference);
+        }
+
+        // #453: after the history's Resumed marker, nothing can be played back until the join snapshot replaces the
+        // state, so a delta arriving ahead of it (none should - the host's engine waits on this player's ready) is
+        // left out rather than leaving the recording with a delta playback cannot place. The snapshot holds its effect.
+        private bool RecordsDeltas()
+        {
+            lock (_lock)
+            {
+                return _joined || _continuesHistory == false;
+            }
+        }
 
         // --- Decisions ----------------------------------------------------------------------------------
 

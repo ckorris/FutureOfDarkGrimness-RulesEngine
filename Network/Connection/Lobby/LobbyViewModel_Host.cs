@@ -24,8 +24,9 @@ namespace FDG.Network.Connection.Lobby
         // while the engine runs on another thread; in practice the player triggers a save while the
         // engine is awaiting their input (quiescent), and the snapshot iterates fixed-capacity stores
         // without resizing, so a torn read is unlikely. (#054 will move saving to a request the host
-        // services at a guaranteed-safe point.)
-        public string? SaveGameToJson() => GameSaveSerializer.Save((GameDataStore)_gameDataStore);
+        // services at a guaranteed-safe point.) #453: once launched, through the server, which embeds the
+        // replay so far (the recorder's lock keeps that part consistent even should the store part not be).
+        public string? SaveGameToJson() => _server?.SaveGame() ?? GameSaveSerializer.Save((GameDataStore)_gameDataStore);
 
         public IObservable<string> ServerNameObservable => _serverName;
 
@@ -180,6 +181,16 @@ namespace FDG.Network.Connection.Lobby
         // #450: the launched game's recorder, built by both launch paths and handed to FDGServer.
         private volatile Replay.ReplayRecorder? _replay;
 
+        // #453: the launched game's server - saves go through it, so they embed the replay.
+        private volatile FDGServer? _server;
+
+        // #453: the loaded save's replay (resume lobby only), which the resumed game's recording continues.
+        private readonly byte[]? _priorReplay;
+
+        /// <summary>#453: the largest replay history a resumed game's launch message carries to its clients - half
+        /// the frame limit, leaving room for base64 on the wire. A 2k game's whole replay is ~0.5 MB.</summary>
+        internal const int MAX_REPLAY_HISTORY_BYTES = CommandProtocol.MAX_PAYLOAD_BYTES / 2;
+
         public Replay.IReplaySource? Replay => _replay;
 
         /// <summary>Test seam (#451): the clock both launch paths pace presentation beats with. Networked game tests
@@ -269,10 +280,14 @@ namespace FDG.Network.Connection.Lobby
         /// host can re-crew each slot (default: host plays the first slot, the rest become AI) before
         /// resuming. Networked re-crew (assigning connected clients to saved slots) is a follow-up.
         /// </summary>
+        /// <param name="priorReplay">#453: the save's embedded replay (<see cref="GameSaveSerializer.LoadWithReplay"/>),
+        /// which the resumed game's recording continues - on this host and on every client - or null when the save
+        /// carries none.</param>
         public LobbyViewModel_Host(string hostPlayerName, string serverName, string? password, INetworkHost host,
-            GameDataStore loadedGameDataStore)
+            GameDataStore loadedGameDataStore, byte[]? priorReplay = null)
         {
             _isResume = true;
+            _priorReplay = priorReplay;
             _gameDataStore = loadedGameDataStore;
             _messageBus = new MessageBusHost_Networked(host, _gameDataStore);
             _host = host;
@@ -780,11 +795,13 @@ namespace FDG.Network.Connection.Lobby
             // presentation beats play at a presentable tempo (without it the beats run instantly).
             // #265: the save owns the settings on resume, except the few a resume lobby may re-pick
             // (the table background) - see GameSettings.WithResumeOverridesFrom.
-            Replay.ReplayRecorder replay = new Replay.ReplayRecorder();
+            // #453: the recording continues the save's own, when it carries one.
+            Replay.ReplayRecorder replay = FDG.Replay.ReplayRecorder.Continue(_priorReplay);
             _replay = replay;
             gameModel?.AttachReplay(replay);
             FDGServer server = new FDGServer(_gameDataStore, _messageBus, playerSlots,
                 PresentationClockFactory(), _gameSettings, replay: replay);
+            _server = server;
             server.OnGameEnded += HandleServerGameEnded;
             server.OnGameCompleted += HandleServerGameCompleted;
 
@@ -794,7 +811,29 @@ namespace FDG.Network.Connection.Lobby
                 OnLaunched?.Invoke(gameModel);
             }
 
-            await _messageBus.SendCommandToAllAsync(new LaunchGameMessage { GameId = _launchedGameId, Replay = replay.Header });
+            byte[]? history = infos.Any(info => info.PlayerType == EPlayerType.Network) ? ReplayHistoryForClients(replay) : null;
+            await _messageBus.SendCommandToAllAsync(new LaunchGameMessage
+            {
+                GameId = _launchedGameId,
+                Replay = replay.Header,
+                ReplayHistory = history,
+            });
+        }
+
+        // #453: what a resumed game's clients seed their recordings with - the host's through its Resumed marker. Null
+        // for a resume that began a fresh recording (the save had no replay), and for one too large for the launch
+        // frame (far beyond any real game): those clients record from their join, as in a new game.
+        private static byte[]? ReplayHistoryForClients(Replay.ReplayRecorder replay)
+        {
+            byte[]? history = replay.ExportThroughResume();
+            if (history != null && history.Length > MAX_REPLAY_HISTORY_BYTES)
+            {
+                Console.WriteLine($"[replay] The replay so far ({history.Length / 1024} KB) is too large to send to the other players; " +
+                    "their replays of this game start at the resume.");
+                return null;
+            }
+
+            return history;
         }
 
         // Fired by FDGServer when the game finishes (engine thread). Forward to this host's own front
@@ -945,6 +984,7 @@ namespace FDG.Network.Connection.Lobby
             gameModel?.AttachReplay(replay);
             FDGServer server = new FDGServer(_gameDataStore, _messageBus, launchSettings, playerSlots,
                 PresentationClockFactory(), replay);
+            _server = server;
             server.OnGameEnded += HandleServerGameEnded;
             server.OnGameCompleted += HandleServerGameCompleted;
 

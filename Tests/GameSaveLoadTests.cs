@@ -1,4 +1,5 @@
 using FDG.Data;
+using FDG.Replay;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Foundation;
 using FDG.Rules.Tokens;
@@ -277,6 +278,81 @@ namespace FDG.Tests
             Assert.That(ReserveRules.IsInReserve(loaded.GetValue<UnitData>(placedRef)), Is.False,
                 "a deployed unit is not a reserve.");
             Assert.That(loaded.GetValue<UnitData>(placedRef).GetIsOnBattlefield(), Is.True);
+        }
+
+        // --- #453: the replay a save carries ----------------------------------------------------------
+
+        private static ReplayRecorder StartedRecorder()
+        {
+            var recorder = new ReplayRecorder();
+            recorder.Start(new ReplayHeader { GameId = Guid.NewGuid() });
+            var task = new StageResolution.TaskID(Guid.NewGuid());
+            recorder.OnRequested(task, new PlayerID(Guid.NewGuid()), "Req", "Rep", "Pick", "{}");
+            recorder.OnReplied(task, "{}");
+            recorder.RecordMarker(new MarkerEvent(EReplayMarker.Saved));
+            return recorder;
+        }
+
+        [Test]
+        public void SaveWithARecording_EmbedsItAndItsSummary_AndBothLoadsRead()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            ReplayRecorder recorder = StartedRecorder();
+
+            string json = GameSaveSerializer.Save(store, recorder);
+
+            GameSaveFile file = JsonConvert.DeserializeObject<GameSaveFile>(json)!;
+            Assert.That(file.ReplaySummary, Is.EqualTo(recorder.Summary));
+            Assert.That(json.IndexOf("\"ReplaySummary\"", StringComparison.Ordinal), Is.LessThan(json.IndexOf("\"Entries\"", StringComparison.Ordinal)),
+                "the summary comes ahead of the entries, for a browser that reads no further");
+            (GameDataStore loaded, byte[]? replay) = GameSaveSerializer.LoadWithReplay(json);
+            Assert.That(replay, Is.EqualTo(recorder.ExportGzip()));
+            Assert.That(loaded.GetTypeMap(), Is.EqualTo(store.GetTypeMap()));
+            Assert.That(GameSaveSerializer.Load(json).GetTypeMap(), Is.EqualTo(store.GetTypeMap()), "Load ignores the replay");
+        }
+
+        [Test]
+        public void SaveWithoutARecording_IsWhatItWasBefore453()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+
+            string json = GameSaveSerializer.Save(store);
+
+            Assert.That(json, Does.Not.Contain("\"Replay"), "no replay fields at all, not even nulls - snapshots stay as they were");
+            Assert.That(GameSaveSerializer.Save(store, new ReplayRecorder()), Is.EqualTo(json), "a recording that never started embeds nothing");
+            Assert.That(GameSaveSerializer.LoadWithReplay(json).ReplayGzip, Is.Null);
+        }
+
+        [Test]
+        public void AHandWrittenV2SaveWithoutTheField_LoadsWithNoReplay()
+        {
+            // A v2 save as #070 defined it - exactly these three fields - with a real store's type map.
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            Newtonsoft.Json.Linq.JObject real = Newtonsoft.Json.Linq.JObject.Parse(GameSaveSerializer.Save(store, StartedRecorder()));
+            string json = new Newtonsoft.Json.Linq.JObject
+            {
+                ["Version"] = 2,
+                ["TypeMap"] = real["TypeMap"],
+                ["Entries"] = new Newtonsoft.Json.Linq.JArray(),
+            }.ToString();
+
+            (GameDataStore loaded, byte[]? replay) = GameSaveSerializer.LoadWithReplay(json);
+
+            Assert.That(loaded.GetTypeMap(), Is.EqualTo(store.GetTypeMap()));
+            Assert.That(replay, Is.Null);
+        }
+
+        [Test]
+        public void AnUnreadableReplayBlock_StillLoadsTheGame()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            GameSaveFile file = JsonConvert.DeserializeObject<GameSaveFile>(GameSaveSerializer.Save(store, StartedRecorder()))!;
+            file.Replay = "not base64 at all!";
+
+            (GameDataStore loaded, byte[]? replay) = GameSaveSerializer.LoadWithReplay(JsonConvert.SerializeObject(file));
+
+            Assert.That(loaded.GetTypeMap(), Is.EqualTo(store.GetTypeMap()));
+            Assert.That(replay, Is.Empty, "handed on as empty bytes, which ReplayRecorder.Continue reports and replaces");
         }
 
         private static DataReference MakeUnitAt(GameDataStore store, PlayerID player, string name, Position at)

@@ -29,6 +29,15 @@ namespace FDG.Replay
     /// replies on the bus / network read thread, <see cref="ExportGzip"/> and <see cref="Summary"/> from the
     /// UI thread. <see cref="Seq"/> is assigned under the lock, so it is dense and matches append order.
     /// </para>
+    /// <para>
+    /// <b>Continuing a saved game (#453).</b> A save embeds the recording so far, ending with a <c>Saved</c> marker
+    /// (<c>FDGServer.SaveGame</c>). <see cref="Continue"/> seeds a recorder with it: the earlier events stay as they
+    /// were, <c>Seq</c>, <c>T</c> and the snapshot index count on from them, and the resume adds a <c>Resumed</c>
+    /// marker and a fresh snapshot. That snapshot REPLACES the state - the activation under way at the save is
+    /// re-played from its start after the resume (the #052 save point is the activation boundary), so the deltas
+    /// between its <c>ActivationStart</c> and <c>Saved</c> describe work the resume undid, and playback never
+    /// applies anything across a <c>Resumed</c> (plan 4.1).
+    /// </para>
     /// </summary>
     public sealed class ReplayRecorder : IReplaySource, IRequestObserver, IBeatObserver, IDisposable
     {
@@ -46,6 +55,15 @@ namespace FDG.Replay
         private bool _failed;
         private bool _disposed;
 
+        // #453: set by Continue. _continues makes the resume record Resumed rather than GameStart, whether or not the
+        // earlier recording could be kept; _continuedHeader is that recording's header (null if it could not); a
+        // problem found while reading it is reported once the failure output is known, at Start. _clockOffset is
+        // the T the seeded events reached, so T keeps counting play time across the gap between sessions.
+        private bool _continues;
+        private ReplayHeader? _continuedHeader;
+        private string? _continueProblem;
+        private long _clockOffset;
+
         // Summary tallies, kept as events are appended so Summary never walks the list.
         private int _replies;
         private int _highestRound;
@@ -58,7 +76,7 @@ namespace FDG.Replay
 
         /// <summary>Test seam: how a snapshot's save JSON is produced. A throwing serializer is how the
         /// tests exercise the disable-on-failure path.</summary>
-        internal Func<GameDataStore, string> SnapshotSerializer { get; set; } = GameSaveSerializer.Save;
+        internal Func<GameDataStore, string> SnapshotSerializer { get; set; } = store => GameSaveSerializer.Save(store);
 
         /// <summary>Test seam: replaces the beat serializer (null = the wire settings).</summary>
         internal Func<PresentationBeat, string>? BeatSerializerOverride { get; set; }
@@ -74,6 +92,123 @@ namespace FDG.Replay
             get { lock (_lock) { return _header; } }
         }
 
+        /// <summary>#453: this recorder continues a saved game's recording (<see cref="Continue"/>), so the resume
+        /// records <c>Resumed</c>, not <c>GameStart</c>.</summary>
+        internal bool ContinuesASave
+        {
+            get { lock (_lock) { return _continues; } }
+        }
+
+        /// <summary>
+        /// #453: the recorder for a resumed save. <paramref name="priorGzip"/> is the save's embedded replay
+        /// (<c>GameSaveSerializer.LoadWithReplay</c>); null - a scenario, a save from before #453 or of an unrecorded
+        /// game - gives a plain recorder whose resume records <c>GameStart</c>, as before.
+        /// <para>Otherwise the earlier events are kept and <see cref="Start"/> keeps their header (game ID, seed, slots,
+        /// first start), adding this resume to <see cref="ReplayHeader.ResumedUtc"/>. Bytes this build cannot read (a
+        /// format bump between the save and the load, a damaged file), or a replay of a different game than the one
+        /// resumed, never block the resume: the recording starts afresh at the resume, with its <c>Resumed</c>
+        /// marker, and says so once in the game log.</para>
+        /// </summary>
+        public static ReplayRecorder Continue(byte[]? priorGzip)
+        {
+            ReplayRecorder recorder = new ReplayRecorder();
+            if (priorGzip == null)
+            {
+                return recorder;
+            }
+
+            recorder._continues = true;
+            try
+            {
+                ReplayDocument prior = ReadPrior(priorGzip);
+                lock (recorder._lock)
+                {
+                    recorder._continuedHeader = prior.Header;
+                    recorder.Seed(prior.Events);
+                }
+            }
+            catch (Exception exception)
+            {
+                recorder._continueProblem = $"[replay] The save's replay could not be read ({exception.Message}). " +
+                    "This game's replay starts at the resume.";
+            }
+
+            return recorder;
+        }
+
+        /// <summary>
+        /// #453, for <c>--at STEP --make-save</c>: the recording in <paramref name="document"/> cut before the event
+        /// <paramref name="beforeSeq"/> and closed with a <c>Saved</c> marker - what a save taken at that point would
+        /// have embedded - for <c>GameSaveSerializer.Save</c>. Not a live recorder: it is closed when returned.
+        /// </summary>
+        public static ReplayRecorder CutForSave(ReplayDocument document, long beforeSeq)
+        {
+            ReplayRecorder recorder = new ReplayRecorder();
+            int? round = null;
+            lock (recorder._lock)
+            {
+                List<ReplayEvent> kept = document.Events.Where(replayEvent => replayEvent.Seq < beforeSeq).ToList();
+                recorder.Seed(kept);
+                recorder._header = document.Header;
+                recorder._recording = true;
+                round = kept.OfType<MarkerEvent>().LastOrDefault(marker => marker.Round != null)?.Round;
+            }
+
+            recorder.RecordMarker(new MarkerEvent(EReplayMarker.Saved) { Round = round });
+            recorder.Dispose();
+            return recorder;
+        }
+
+        /// <summary>#453: reads an earlier recording to continue, with the same checks playback makes (format version,
+        /// event order). Throws <see cref="ReplayFormatException"/> on anything this build cannot continue.</summary>
+        internal static ReplayDocument ReadPrior(byte[] gzip)
+        {
+            using MemoryStream stream = new MemoryStream(gzip);
+            ReplayDocument prior = ReplayReader.ReadGzip(stream);
+            _ = new ReplayTimeline(prior);
+            return prior;
+        }
+
+        /// <summary>#453: takes <paramref name="events"/> as this recording's beginning - before <see cref="Start"/>,
+        /// under <c>_lock</c>. Seq, T and the snapshot index count on from them; Summary includes them.</summary>
+        internal void Seed(IEnumerable<ReplayEvent> events)
+        {
+            if (_header != null || _events.Count > 0)
+            {
+                throw new InvalidOperationException("Only a recorder that has not started can be seeded.");
+            }
+
+            foreach (ReplayEvent replayEvent in events)
+            {
+                _events.Add(replayEvent);
+                Tally(replayEvent);
+                if (replayEvent is SnapshotEvent snapshot)
+                {
+                    _nextSnapshotIndex = Math.Max(_nextSnapshotIndex, snapshot.Index + 1);
+                }
+            }
+
+            if (_events.Count > 0)
+            {
+                _nextSeq = _events[_events.Count - 1].Seq + 1;
+                _clockOffset = _events[_events.Count - 1].T;
+            }
+        }
+
+        // Under _lock: back to an empty recording (a continued recording of the wrong game).
+        private void ClearSeed()
+        {
+            _events.Clear();
+            _continuedHeader = null;
+            _nextSeq = 0;
+            _nextSnapshotIndex = 0;
+            _clockOffset = 0;
+            _replies = 0;
+            _highestRound = 0;
+            _outcome = null;
+            _approxSize = 0;
+        }
+
         /// <summary>
         /// Begins the recording: <c>T</c> counts from here. <paramref name="failureOutput"/> is where the one
         /// failure line goes - the server's player-facing log, but NOT the recording log decorator (a failure
@@ -81,6 +216,7 @@ namespace FDG.Replay
         /// </summary>
         public void Start(ReplayHeader header, ITextOutput? failureOutput = null)
         {
+            string? problem;
             lock (_lock)
             {
                 if (_header != null)
@@ -93,10 +229,37 @@ namespace FDG.Replay
                     throw new ObjectDisposedException(nameof(ReplayRecorder));
                 }
 
+                // #453: a continued recording keeps the header it began with - its game ID, seed, slots and first
+                // start - so long as it is this game's.
+                problem = _continueProblem;
+                if (_continuedHeader != null)
+                {
+                    if (_continuedHeader.GameId == header.GameId)
+                    {
+                        header = _continuedHeader;
+                    }
+                    else
+                    {
+                        problem = $"[replay] The save's replay is of another game (ID {_continuedHeader.GameId}, " +
+                            $"not {header.GameId}). This game's replay starts at the resume.";
+                        ClearSeed();
+                    }
+                }
+
+                if (_continues)
+                {
+                    header.ResumedUtc.Add(DateTime.UtcNow);
+                }
+
                 _header = header;
                 _failureOutput = failureOutput ?? _failureOutput;
                 _recording = true;
                 _clock.Start();
+            }
+
+            if (problem != null)
+            {
+                Note(problem);
             }
         }
 
@@ -247,6 +410,32 @@ namespace FDG.Replay
 
         // --- Export -------------------------------------------------------------------------------------
 
+        /// <summary>
+        /// #453: the recording through its latest <c>Resumed</c> marker - the history a resumed game's clients seed
+        /// their own recordings with (<c>LaunchGameMessage.ReplayHistory</c>), so theirs continue it too and agree
+        /// with the host's event for event up to the resume. Null when the recording did not begin at a resume.
+        /// </summary>
+        internal byte[]? ExportThroughResume()
+        {
+            ReplayHeader header;
+            ReplayEvent[] events;
+            lock (_lock)
+            {
+                int resumed = _events.FindLastIndex(replayEvent => replayEvent is MarkerEvent { Marker: EReplayMarker.Resumed });
+                if (_header == null || resumed < 0)
+                {
+                    return null;
+                }
+
+                header = _header;
+                events = _events.GetRange(0, resumed + 1).ToArray();
+            }
+
+            using MemoryStream stream = new MemoryStream();
+            ReplayWriter.WriteGzip(header, events, stream);
+            return stream.ToArray();
+        }
+
         public byte[] ExportGzip()
         {
             ReplayHeader header;
@@ -322,7 +511,7 @@ namespace FDG.Replay
                         return;
                     }
 
-                    ReplayEvent replayEvent = build() with { Seq = _nextSeq++, T = _clock.ElapsedMilliseconds };
+                    ReplayEvent replayEvent = build() with { Seq = _nextSeq++, T = _clockOffset + _clock.ElapsedMilliseconds };
                     _events.Add(replayEvent);
                     Tally(replayEvent);
                 }
@@ -375,6 +564,12 @@ namespace FDG.Replay
                     {
                         _outcome = marker.Outcome;
                     }
+
+                    // #453: a resumed recovery save (#187) ended once already; the game is running again.
+                    if (marker.Marker == EReplayMarker.Resumed)
+                    {
+                        _outcome = null;
+                    }
                     break;
             }
 
@@ -394,10 +589,16 @@ namespace FDG.Replay
                 _recording = false;
             }
 
+            Note($"[replay] Recording stopped: a {what} could not be recorded " +
+                $"({exception.GetType().Name}: {exception.Message}). This game's replay ends here.");
+        }
+
+        /// <summary>One line to the failure output (the game log), never throwing.</summary>
+        internal void Note(string line)
+        {
             try
             {
-                _failureOutput.Log(ReplayText.Ascii($"[replay] Recording stopped: a {what} could not be recorded " +
-                    $"({exception.GetType().Name}: {exception.Message}). This game's replay ends here."));
+                _failureOutput.Log(ReplayText.Ascii(line));
             }
             catch
             {

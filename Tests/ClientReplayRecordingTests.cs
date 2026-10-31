@@ -3,15 +3,18 @@ using System.Net.Sockets;
 using FDG.Ai;
 using FDG.Data;
 using FDG.EngineInterface;
+using FDG.Network;
 using FDG.Network.Connection;
 using FDG.Network.Connection.Lobby;
 using FDG.Network.Messages;
+using FDG.Network.Messages.DataMessages;
 using FDG.Network.Messages.StageRequestMessages;
 using FDG.Players;
 using FDG.Presentation;
 using FDG.Replay;
 using FDG.SaveLoad;
 using FDG.StageResolution;
+using Newtonsoft.Json;
 using NUnit.Framework;
 using static FDG.Tests.TestArmies;
 
@@ -60,7 +63,7 @@ namespace FDG.Tests
                 AiResolverRegistryFactory.BuildSoloRules(remote.TableState, game.ClientPlayer, slotID: 1), null, null);
             game.HostVm.OnGameCompleted += _ =>
             {
-                game.HostFinalSave = game.HostVm.SaveGameToJson()!;
+                game.HostFinalSave = ReplayResumeTests.StoreOnly(game.HostVm.SaveGameToJson()!); // #453: a save embeds the replay
                 hostEnded.TrySetResult();
             };
             game.ClientVm.OnGameEnded += _ => clientEnded.TrySetResult();
@@ -264,6 +267,59 @@ namespace FDG.Tests
             game.HostVm.Dispose();
         }
 
+        // #453: a resumed save that carries a replay hands it to the client with the launch message. The client's file
+        // begins with the host's, event for event, through the host's Resumed marker; its join snapshot is the one after
+        // the resume (same index, same state); the rest is its own recording, as in any game.
+        [Test]
+        [CancelAfter(240_000)]
+        public async Task ResumedSave_TheClientsRecording_ContinuesTheSavedHistory()
+        {
+            ReplayResumeTests.SavedGame saved = await ReplayResumeTests.PlayAndSaveInRoundTwo();
+            (GameDataStore loaded, byte[]? prior) = GameSaveSerializer.LoadWithReplay(saved.Save);
+            int historyLength = ReplayResumeTests.Read(prior!).Events.Count;
+
+            var net = new LoopbackNetworkHost();
+            var game = new NetworkedGame { HostVm = new LobbyViewModel_Host("Host", "Saved Game", "", net, loaded, prior) };
+            game.HostVm.PresentationClockFactory = () => new InstantPresentationClock();
+            game.ClientVm = await Join(net.Connect("Client"), "Client");
+            game.HostPlayer = game.HostVm.PlayerInfos.Single(p => p.PlayerType == EPlayerType.Local).PlayerID;
+            game.ClientPlayer = game.HostVm.PlayerInfos.Single(p => p.PlayerType == EPlayerType.Network).PlayerID;
+
+            await Play(game, host => host.TryResumeGame(out string? reason) || Fail(reason));
+            ReplayDocument host = game.Host, client = game.Client;
+
+            var resumed = (MarkerEvent)host.Events[historyLength];
+            Assert.That(resumed.Marker, Is.EqualTo(EReplayMarker.Resumed), "precondition: the host continued the save's replay");
+            Assert.That(Lines(client).Take(historyLength + 1), Is.EqualTo(Lines(host).Take(historyLength + 1)),
+                "the client's recording begins with the host's, verbatim, through the resume");
+
+            var hostSnapshot = (SnapshotEvent)host.Events[historyLength + 1];
+            SnapshotEvent joinSnapshot = client.Events.Skip(historyLength + 1).OfType<SnapshotEvent>().First();
+            Assert.That(client.Events[historyLength + 1], Is.SameAs(joinSnapshot), "nothing recorded between the resume and the join");
+            Assert.That(joinSnapshot.Index, Is.EqualTo(hostSnapshot.Index));
+            Assert.That(joinSnapshot.SaveJson, Is.EqualTo(hostSnapshot.SaveJson), "the join snapshot is the resumed state");
+
+            Assert.That(client.Header.RecordedBy, Is.EqualTo(EReplayRecordedBy.Client));
+            Assert.That(client.Header.GameId, Is.EqualTo(host.Header.GameId));
+            Assert.That(client.Header.StartedUtc, Is.EqualTo(host.Header.StartedUtc), "the client's file begins when the game did");
+            Assert.That(client.Header.ResumedUtc, Is.EqualTo(host.Header.ResumedUtc).And.Count.EqualTo(1));
+            Assert.That(Markers(client).Skip(Markers(host).IndexOf(Markers(host).First(m => m.Marker == EReplayMarker.Resumed))),
+                Is.EqualTo(Markers(host).SkipWhile(m => m.Marker != EReplayMarker.Resumed)));
+
+            Assert.That(FinalSave(client), Is.EqualTo(game.HostFinalSave));
+            foreach (ReplayDocument recording in new[] { host, client })
+            {
+                ReplayVerification verification = ReplayVerifier.Verify(new ReplayTimeline(recording));
+                Assert.That(verification.Passed, Is.True, string.Join("\n", verification.Failures.Select(f => f.Message)));
+            }
+
+            game.ClientVm.Dispose();
+            game.HostVm.Dispose();
+        }
+
+        private static List<string> Lines(ReplayDocument document) =>
+            document.Events.Select(e => JsonConvert.SerializeObject(e, ReplayFormat.JsonSettings)).ToList();
+
         // The bookkeeping a real game rarely or never exercises, as a scripted message sequence: a request arrives
         // once however it is learnt, a duplicate notice is ignored, an error closes a request, a snapshot cue before
         // the join has nothing to save, and the host's GameEnded closes the recording.
@@ -303,6 +359,61 @@ namespace FDG.Tests
             Assert.That(events.OfType<RequestErrorEvent>().Single().Message, Is.EqualTo("Player disconnected."));
             Assert.That(recorder.Header!.GameId, Is.EqualTo(Guid.Empty), "no host header: no game ID");
             Assert.That(recorder.Header.Settings, Is.Null);
+        }
+
+        // #453, scripted: a seeded recording leaves out a delta that arrives before its join snapshot (playback could
+        // not place it after the history's Resumed), and history it cannot read is reported and dropped.
+        [Test]
+        public void ScriptedHistory_SeedsTheRecording_DropsDeltasBeforeTheJoin_AndReportsBadBytes()
+        {
+            var host = new ReplayHeader { GameId = Guid.NewGuid(), StartedUtc = new DateTime(2026, 10, 31, 9, 0, 0, DateTimeKind.Utc) };
+            host.ResumedUtc.Add(new DateTime(2026, 10, 31, 10, 0, 0, DateTimeKind.Utc));
+            byte[] history;
+            using (var stream = new MemoryStream())
+            {
+                ReplayWriter.WriteGzip(host, new ReplayEvent[]
+                {
+                    new MarkerEvent(EReplayMarker.GameStart) { Seq = 0 },
+                    new SnapshotEvent(0, "{}") { Seq = 1 },
+                    new MarkerEvent(EReplayMarker.Saved) { Seq = 2, T = 50 },
+                    new MarkerEvent(EReplayMarker.Resumed) { Seq = 3, T = 50, Round = 2 },
+                }, stream);
+                history = stream.ToArray();
+            }
+
+            var bus = new InProcessBus();
+            GameDataStore store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var me = new PlayerID(Guid.NewGuid());
+            var recorder = new ClientReplayRecorder(bus, store, me, host, history);
+            var early = new DataReference { TypeID = new TypeID(1), Index = 0, Generation = 1 };
+            bus.SendCommandToAllAsync(new AddSingleDataMessage(early, "{}")); // ahead of the join: left out
+            recorder.OnFullStateApplied();
+            bus.SendCommandToAllAsync(new AddSingleDataMessage(early, "{}"));
+
+            List<ReplayEvent> events = Read(recorder).Events.ToList();
+            Assert.That(events.Select(e => e.Kind), Is.EqualTo(new[] { "Marker", "Snapshot", "Marker", "Marker", "Snapshot", "StoreAdd" }));
+            Assert.That(events.Select(e => e.Seq), Is.EqualTo(new long[] { 0, 1, 2, 3, 4, 5 }));
+            Assert.That(((SnapshotEvent)events[4]).Index, Is.EqualTo(1), "the join snapshot counts on from the history's");
+            Assert.That(recorder.Header!.StartedUtc, Is.EqualTo(host.StartedUtc));
+            Assert.That(recorder.Header.ResumedUtc, Is.EqualTo(host.ResumedUtc));
+            Assert.That(recorder.Header.RecordedBy, Is.EqualTo(EReplayRecordedBy.Client));
+
+            var lines = new List<string>();
+            var unread = new ClientReplayRecorder(new InProcessBus(), store, me, host, new byte[] { 1, 2, 3 }, new LinesOutput(lines));
+            Assert.That(lines.Single(), Does.StartWith("[replay] The game's replay so far could not be read"));
+            Assert.That(unread.Summary.SizeBytes, Is.Zero, "nothing seeded");
+            Assert.That(unread.Header!.ResumedUtc, Is.Empty, "without the history the recording is not a continuation");
+        }
+
+        private sealed class LinesOutput : ITextOutput
+        {
+            private readonly List<string> _lines;
+
+            public LinesOutput(List<string> lines) => _lines = lines;
+
+            public void Log(string message, TextColor? color = null) => _lines.Add(message);
+
+            public void LogDebug(string message, TextColor? color = null) => _lines.Add(message);
         }
 
         private static ArmyListFile[] MakeRejoinArmies() =>

@@ -52,6 +52,19 @@ namespace FDG.Tests
             Assert.That(((LaunchGameMessage)decoded!).GameId, Is.EqualTo(id));
         }
 
+        // #453: a resumed game's replay history rides the launch message as base64 bytes.
+        [Test]
+        public void ReplayHistory_RoundTripsAcrossTheWire()
+        {
+            byte[] history = Enumerable.Range(0, 5000).Select(i => (byte)(i * 7)).ToArray();
+            ArraySegment<byte> bytes = Serializer().SerializeMessage(new LaunchGameMessage { GameId = "x", ReplayHistory = history });
+
+            var decoded = (LaunchGameMessage)Serializer().DeserializeMessage(bytes)!;
+
+            Assert.That(decoded.ReplayHistory, Is.EqualTo(history));
+            Assert.That(((LaunchGameMessage)Serializer().DeserializeMessage(RawFrame("{}"))!).ReplayHistory, Is.Null);
+        }
+
         [Test]
         public void AnOlderHostsEmptyLaunchMessage_DecodesWithNoId()
         {

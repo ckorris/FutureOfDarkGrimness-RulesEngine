@@ -72,6 +72,12 @@ namespace FDG.Replay
         /// AI and remote slots).</summary>
         public PlayerID? RecordedByPlayerId { get; set; }
 
+        /// <summary>When the recording began - for a recording that continues a saved game (#453), when the game
+        /// itself first began, however many resumes later.</summary>
         public DateTime StartedUtc { get; set; }
+
+        /// <summary>#453: when each resume of a saved game continued this recording, oldest first (a <c>Resumed</c>
+        /// marker in the stream for each). Empty for a game played in one sitting.</summary>
+        public List<DateTime> ResumedUtc { get; set; } = new List<DateTime>();
     }
 }

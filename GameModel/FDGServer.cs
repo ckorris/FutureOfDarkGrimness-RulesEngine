@@ -322,13 +322,34 @@ namespace FDG.GameModel
             {
                 _replay.Start(BuildReplayHeader(settings), playerOutput);
                 _replay.AttachStore(_gameDataStore);
-                _replayMarkers?.GameStart(resumeProgress?.RoundCount);
+                // #453: a resumed save that carried a replay continues it from a Resumed marker.
+                if (resumeProgress != null && _replay.ContinuesASave)
+                {
+                    _replayMarkers?.Resumed(resumeProgress.RoundCount);
+                }
+                else
+                {
+                    _replayMarkers?.GameStart(resumeProgress?.RoundCount);
+                }
             }
             catch (Exception exception)
             {
                 _replay.Dispose();
                 playerOutput.Log($"[replay] Recording could not start ({exception.GetType().Name}). This game will have no replay.");
             }
+        }
+
+        /// <summary>
+        /// #453: this game as a save (<see cref="GameSaveSerializer"/>), with its replay so far embedded - ending with
+        /// a <c>Saved</c> marker, which clients record too - so that resuming the save continues the recording. The
+        /// one way a real game is saved: the player's save and the #187 recovery save alike. Called from the UI
+        /// thread on the terms saving always had (#054: in practice while the engine awaits a decision); a recovery
+        /// save comes after the game ended, when the recording is closed and embeds as it stands.
+        /// </summary>
+        public string SaveGame()
+        {
+            _replayMarkers?.Saved();
+            return GameSaveSerializer.Save((GameDataStore)_gameDataStore, _replay);
         }
 
         private ReplayHeader BuildReplayHeader(GameSettings settings)

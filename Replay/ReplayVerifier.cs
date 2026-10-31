@@ -69,8 +69,12 @@ namespace FDG.Replay
     /// <list type="bullet">
     /// <item><b>seq</b> - <c>Seq</c> starts at 0 and is dense (a gap is a lost event).</item>
     /// <item><b>request</b> - every request was answered or failed, unless it was still open when the recording
-    /// stopped (no later request from the same player was answered); no reply without its request.</item>
-    /// <item><b>marker</b> - at most one <c>GameEnded</c>; none at all is a note (abandoned or cut short).</item>
+    /// stopped (no later request from the same player was answered) or when the game was saved (#453: a
+    /// <c>Resumed</c> follows before that player answered anything - the resumed game asks again); no reply without
+    /// its request.</item>
+    /// <item><b>marker</b> - at most one <c>GameEnded</c> per session (a <c>Resumed</c> begins the next); none in the
+    /// last session is a note (abandoned or cut short), and so is an ended session that was resumed (#453: a #187
+    /// recovery save, played on).</item>
     /// <item><b>snapshot</b> - each snapshot after the first, unless a <c>Resumed</c> marker separates it from the
     /// one before, equals (as a re-saved store) the state its predecessor plus the deltas between them build. A
     /// divergence lists the entries that differ, each with its differing top-level properties and the Seq of its
@@ -127,17 +131,24 @@ namespace FDG.Replay
 
         private static void CheckRequests(ReplayTimeline timeline, List<ReplayVerifyIssue> failures, List<ReplayVerifyIssue> notes)
         {
-            // A player's request is still open when the recording stopped if that player answered nothing later.
-            var lastAnsweredByPlayer = new Dictionary<PlayerID, long>();
+            // A player's request is still open when its session ended - the recording stopped, or (#453) the game was
+            // saved and resumed - if that player answered nothing later in the session.
+            var answeredByPlayer = new Dictionary<PlayerID, List<long>>();
             foreach (ReplayRequest request in timeline.Requests)
             {
                 if (request.IsAnswered || request.Error != null)
                 {
-                    lastAnsweredByPlayer[request.Request.PlayerId] = request.Request.Seq;
+                    if (answeredByPlayer.TryGetValue(request.Request.PlayerId, out List<long>? seqs) == false)
+                    {
+                        answeredByPlayer[request.Request.PlayerId] = seqs = new List<long>();
+                    }
+                    seqs.Add(request.Request.Seq);
                 }
             }
+            List<long> resumes = timeline.Markers.Where(m => m.Marker == EReplayMarker.Resumed).Select(m => m.Seq).ToList();
 
-            int open = 0;
+            int open = 0, abandoned = 0;
+            long firstAbandoned = 0;
             foreach (ReplayRequest request in timeline.Requests)
             {
                 RequestEvent asked = request.Request;
@@ -148,17 +159,30 @@ namespace FDG.Replay
                 }
                 else if (request.IsAnswered == false)
                 {
-                    if (lastAnsweredByPlayer.TryGetValue(asked.PlayerId, out long later) && later > asked.Seq)
+                    long sessionEnd = resumes.FirstOrDefault(seq => seq > asked.Seq, long.MaxValue);
+                    answeredByPlayer.TryGetValue(asked.PlayerId, out List<long>? seqs);
+                    long later = seqs?.FirstOrDefault(seq => seq > asked.Seq && seq < sessionEnd, -1) ?? -1;
+                    if (later >= 0)
                     {
                         failures.Add(new ReplayVerifyIssue(asked.Seq, "request",
                             $"{ShortType(asked.RequestType)} (Seq {asked.Seq}, task {Short(asked.TaskId)}) was never answered, " +
                             $"but the same player answered a later request (Seq {later})."));
+                    }
+                    else if (sessionEnd != long.MaxValue)
+                    {
+                        if (abandoned++ == 0) firstAbandoned = asked.Seq;
                     }
                     else
                     {
                         open++;
                     }
                 }
+            }
+
+            if (abandoned > 0)
+            {
+                notes.Add(new ReplayVerifyIssue(firstAbandoned, "request",
+                    $"{Count(abandoned, "request")} open when the game was saved, asked again after the resume."));
             }
 
             if (open > 0)
@@ -201,17 +225,37 @@ namespace FDG.Replay
 
         private static void CheckMarkers(ReplayTimeline timeline, List<ReplayVerifyIssue> failures, List<ReplayVerifyIssue> notes)
         {
-            List<MarkerEvent> ended = timeline.Markers.Where(m => m.Marker == EReplayMarker.GameEnded).ToList();
-            if (ended.Count == 0)
+            // Per session: a resume (#453) begins the next.
+            MarkerEvent? ended = null;
+            foreach (MarkerEvent marker in timeline.Markers)
+            {
+                if (marker.Marker == EReplayMarker.Resumed)
+                {
+                    if (ended != null)
+                    {
+                        notes.Add(new ReplayVerifyIssue(marker.Seq, "marker",
+                            $"The game ended ({ended.Outcome ?? "?"}) at Seq {ended.Seq} and was resumed from a save at Seq {marker.Seq}."));
+                    }
+                    ended = null;
+                }
+                else if (marker.Marker == EReplayMarker.GameEnded)
+                {
+                    if (ended != null)
+                    {
+                        failures.Add(new ReplayVerifyIssue(marker.Seq, "marker",
+                            $"A second GameEnded marker at Seq {marker.Seq} (the first is at Seq {ended.Seq})."));
+                    }
+                    else
+                    {
+                        ended = marker;
+                    }
+                }
+            }
+
+            if (ended == null)
             {
                 long last = timeline.Events.Count > 0 ? timeline.Events[^1].Seq : 0;
                 notes.Add(new ReplayVerifyIssue(last, "marker", "No GameEnded marker: the game was abandoned or the recording was cut short."));
-            }
-
-            foreach (MarkerEvent extra in ended.Skip(1))
-            {
-                failures.Add(new ReplayVerifyIssue(extra.Seq, "marker",
-                    $"A second GameEnded marker at Seq {extra.Seq} (the first is at Seq {ended[0].Seq})."));
             }
         }
 

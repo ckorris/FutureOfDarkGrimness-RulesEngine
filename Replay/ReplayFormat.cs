@@ -16,7 +16,9 @@ namespace FDG.Replay
     /// </summary>
     public static class ReplayFormat
     {
-        public const int CurrentVersion = 1;
+        // v2 (#453): the header gained ResumedUtc, and a recording may continue a saved game's - Saved and
+        // Resumed markers, and a GameEnded that a later Resumed follows (a resumed #187 recovery save).
+        public const int CurrentVersion = 2;
 
         /// <summary>
         /// The running application's version string - the entry assembly's InformationalVersion, which

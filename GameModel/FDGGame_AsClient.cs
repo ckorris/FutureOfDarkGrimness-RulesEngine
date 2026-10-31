@@ -61,8 +61,10 @@ namespace FDG.GameModel
 
         /// <param name="hostReplayHeader">The host's replay header from the launch message (#451), for this
         /// client's recording; null when the host sent none.</param>
+        /// <param name="replayHistory">#453: a resumed game's replay so far, from the launch message, which this
+        /// client's recording continues; null when there is none to continue.</param>
         public FDGGame_AsClient(IReadWriteableGameDataStore gameDataStore, IMessageBusClient messageBusClient, PlayerID thisPlayerID,
-            Replay.ReplayHeader? hostReplayHeader = null)
+            Replay.ReplayHeader? hostReplayHeader = null, byte[]? replayHistory = null)
         {
             _gameDataStore = gameDataStore;
             _messageBusClient = messageBusClient;
@@ -76,7 +78,8 @@ namespace FDG.GameModel
             // #451: record from before the catch-up is even asked for, so nothing the host sends is missed. Its
             // request handler registers ahead of AssignInterfaces' resolver, so an own request is recorded before
             // its answer can come back.
-            _replay = new Replay.ClientReplayRecorder(messageBusClient, _gameDataStore, thisPlayerID, hostReplayHeader);
+            _replay = new Replay.ClientReplayRecorder(messageBusClient, _gameDataStore, thisPlayerID, hostReplayHeader,
+                replayHistory);
             _dataUpdateReceiver.OnFullStateApplied += _replay.OnFullStateApplied;
             _dataUpdateReceiver.RequestAllCurrentData();
 

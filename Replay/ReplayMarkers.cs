@@ -69,7 +69,13 @@ namespace FDG.Replay
 
         /// <summary>The recording begins: <paramref name="round"/> is null for a fresh game (setup has not
         /// run yet) or the round a resumed game re-enters. Followed by snapshot 0.</summary>
-        public void GameStart(int? round) => Guard(() =>
+        public void GameStart(int? round) => Begin(EReplayMarker.GameStart, round);
+
+        /// <summary>#453: a resumed save continues its recording (<c>ReplayRecorder.Continue</c>): <c>Resumed</c> in
+        /// the round the game re-enters, then the snapshot that replaces the state.</summary>
+        public void Resumed(int round) => Begin(EReplayMarker.Resumed, round);
+
+        private void Begin(EReplayMarker kind, int? round) => Guard(() =>
         {
             lock (_lock)
             {
@@ -78,8 +84,29 @@ namespace FDG.Replay
                 _activePlayer = null;
             }
 
-            Emit(new MarkerEvent(EReplayMarker.GameStart) { Round = round });
+            Emit(new MarkerEvent(kind) { Round = round });
             TakeSnapshot();
+        });
+
+        /// <summary>
+        /// #453: the game is being saved (<c>FDGServer.SaveGame</c>, usually on the UI thread while the engine waits
+        /// on a decision). Sent to clients too, so their recordings show where the host saved. Nothing once the game
+        /// has ended - the recording is closed by then (a #187 recovery save).
+        /// </summary>
+        public void Saved() => Guard(() =>
+        {
+            int? round;
+            lock (_lock)
+            {
+                if (_ended)
+                {
+                    return;
+                }
+
+                round = _round;
+            }
+
+            Emit(new MarkerEvent(EReplayMarker.Saved) { Round = round });
         });
 
         public void RoundStart(int round) => Guard(() =>

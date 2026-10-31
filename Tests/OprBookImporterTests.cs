@@ -1001,6 +1001,16 @@ public class OprBookImporterTests
             { new SpecialRuleEntry_Core("Assault"), new SpecialRuleEntry_Core("Fracture") }), "a gained Assault weapon too");
     }
 
+    // #438: Army Forge regenerates every section `id` per request (two fetches of an unchanged book disagree on all of
+    // them); the section `uid` is stable, so it keys the section and a re-bake keeps saved Forge picks valid.
+    [Test]
+    public void Import36_SectionIdIsTheStableUid_NotThePerRequestId()
+    {
+        RosterUnit tank = OprBookImporter.Import(HighElfExcerpt36, "TestSource", "CC-BY-SA 4.0").Units.Single();
+
+        Assert.That(tank.Sections.Select(sec => sec.Id), Is.EqualTo(new[] { "-1b_g", "Gz6Ba" }));
+    }
+
     [Test]
     public void Import36_PricesEachOptionFromTheUnitsCostsEntry()
     {

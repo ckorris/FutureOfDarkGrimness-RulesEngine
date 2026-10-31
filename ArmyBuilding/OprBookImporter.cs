@@ -459,7 +459,11 @@ namespace FDG.ArmyBuilding
 
             return new UpgradeSection
             {
-                Id = s.Id ?? s.Uid ?? Guid.NewGuid().ToString("N")[..8],
+                // #438: the section `uid` first. Army Forge regenerates a section's `id` on EVERY request (two fetches
+                // of the same unchanged book disagree on all of them), while `uid` is stable and unique per unit across
+                // the whole 3.6.0 corpus - so a re-fetch no longer re-keys every saved Forge pick, and a share list's
+                // selectedUpgrades (which carry the uid) match the section directly.
+                Id = s.Uid ?? s.Id ?? Guid.NewGuid().ToString("N")[..8],
                 Label = s.Label ?? string.Empty,
                 // "attachment" ("Take one X attachment") is additive like upgrade — only "replace" swaps.
                 Variant = s.Variant == "replace" ? UpgradeVariant.Replace : UpgradeVariant.Upgrade,

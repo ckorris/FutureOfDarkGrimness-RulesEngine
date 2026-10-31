@@ -173,6 +173,11 @@ namespace FDG.Network.Connection.Lobby
 
         public bool IsResumeMode => _isResume;
 
+        // #444 D2: the loaded save's rules stamp (resume lobbies only; null = a pre-3.6 save, or a fresh lobby).
+        private readonly string? _saveRulesVersion;
+
+        public string? SaveRulesVersion => _saveRulesVersion;
+
         // #412: minted at launch (new game or resume), before OnLaunched fires and before the launch
         // message goes out carrying it. Written once on the launch path; read by the front end.
         private volatile string? _launchedGameId;
@@ -260,10 +265,14 @@ namespace FDG.Network.Connection.Lobby
         /// host can re-crew each slot (default: host plays the first slot, the rest become AI) before
         /// resuming. Networked re-crew (assigning connected clients to saved slots) is a follow-up.
         /// </summary>
+        /// <param name="saveRulesVersion">#444 D2: the save's <see cref="GameSaveFile.RulesVersion"/> stamp as
+        /// <see cref="GameSaveSerializer.Load(string, out string?)"/> reported it. Null (the default, and what every
+        /// pre-3.6 save carries) reads as a legacy save in the lobby's <see cref="LegacySaveNotice"/> line.</param>
         public LobbyViewModel_Host(string hostPlayerName, string serverName, string? password, INetworkHost host,
-            GameDataStore loadedGameDataStore)
+            GameDataStore loadedGameDataStore, string? saveRulesVersion = null)
         {
             _isResume = true;
+            _saveRulesVersion = saveRulesVersion;
             _gameDataStore = loadedGameDataStore;
             _messageBus = new MessageBusHost_Networked(host, _gameDataStore);
             _host = host;

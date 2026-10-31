@@ -1,5 +1,4 @@
 using System;
-using System.Text.RegularExpressions;
 using FDG.SaveLoad;
 
 namespace FDG.ArmyBuilding
@@ -17,10 +16,10 @@ namespace FDG.ArmyBuilding
     /// </summary>
     public static class LegacyArmyNotice
     {
-        /// <summary>The OPR ruleset this build plays (major.minor).</summary>
-        public const string CurrentRules = "3.6";
-
-        private static readonly Regex VersionPattern = new(@"v?(\d+)\.(\d+)", RegexOptions.CultureInvariant);
+        /// <summary>The OPR ruleset this build plays (major.minor, "3.6"), derived from the one engine stamp
+        /// <see cref="OprRulesVersion.CurrentStamp"/> so the army notice, the save notice and the stamp written
+        /// into saves cannot drift apart (#444 D2).</summary>
+        public static string CurrentRules => OprRulesVersion.CurrentMajorMinor;
 
         /// <summary>The ruleset stamp of the book embedded in <paramref name="army"/>, or null when it embeds
         /// none (a hand-authored list, or a file read as the base type).</summary>
@@ -31,13 +30,9 @@ namespace FDG.ArmyBuilding
 
         /// <summary>True when <paramref name="rulesVersion"/> names a ruleset other than
         /// <see cref="CurrentRules"/>. Null, empty or unparseable stamps are not legacy - nothing says so.</summary>
-        public static bool IsLegacy(string? rulesVersion)
-        {
-            if (string.IsNullOrWhiteSpace(rulesVersion)) return false;
-            Match m = VersionPattern.Match(rulesVersion);
-            return m.Success && !string.Equals($"{m.Groups[1].Value}.{m.Groups[2].Value}", CurrentRules,
-                StringComparison.Ordinal);
-        }
+        public static bool IsLegacy(string? rulesVersion) =>
+            OprRulesVersion.MajorMinorOf(rulesVersion) is string majorMinor
+            && !string.Equals(majorMinor, CurrentRules, StringComparison.Ordinal);
 
         /// <summary>The notice for one army, or null when it is not legacy. ASCII only (it is game text).</summary>
         public static string? Line(string? armyName, string? rulesVersion) =>

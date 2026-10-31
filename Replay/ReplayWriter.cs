@@ -61,7 +61,7 @@ namespace FDG.Replay
     /// <c>FormatVersion</c> mismatch is refused (plan rule 5); a <c>BuildVersion</c> mismatch is only a
     /// <see cref="ReplayDocument.Warnings"/> entry - playback applies recorded state, so a different build can
     /// still show it, though its rules or presentation may have moved on. Dev builds all stamp
-    /// <c>&lt;Version&gt;-dev</c>, so they never warn about each other.
+    /// <c>&lt;Version&gt;-dev</c> (plus the commit, which is ignored), so they never warn about each other.
     /// </summary>
     public static class ReplayReader
     {
@@ -135,7 +135,7 @@ namespace FDG.Replay
             }
 
             List<string> warnings = new List<string>();
-            if (header.BuildVersion != ReplayFormat.BuildVersion)
+            if (SameBuild(header.BuildVersion, ReplayFormat.BuildVersion) == false)
             {
                 warnings.Add(ReplayText.Ascii($"This replay was recorded by build {Describe(header.BuildVersion)}; this is build " +
                     $"{ReplayFormat.BuildVersion}. It plays back what was recorded, but rules and visuals may differ."));
@@ -146,6 +146,23 @@ namespace FDG.Replay
 
         private static string Describe(string buildVersion) =>
             string.IsNullOrEmpty(buildVersion) ? "(unknown)" : buildVersion;
+
+        /// <summary>
+        /// Two dev builds (<c>&lt;Version&gt;-dev</c>) are the same build whatever commit each was built from: the SDK
+        /// appends the source revision (<c>0.3.0-dev+&lt;sha&gt;</c>), and a warning on every replay from another
+        /// commit would train everyone to ignore it (#455). Any other stamp - a CI release carries its commit and
+        /// date - must match exactly.
+        /// </summary>
+        internal static bool SameBuild(string recorded, string running)
+        {
+            if (recorded == running)
+            {
+                return true;
+            }
+
+            string recordedVersion = recorded.Split('+')[0];
+            return recordedVersion.EndsWith("-dev", StringComparison.Ordinal) && recordedVersion == running.Split('+')[0];
+        }
 
         private static JObject ParseLine(string line, int lineNumber)
         {

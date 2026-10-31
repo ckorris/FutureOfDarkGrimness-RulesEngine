@@ -72,8 +72,8 @@ namespace FDG.Replay
         public ReplayFormatException(string message, Exception inner) : base(message, inner) { }
     }
 
-    /// <summary>Player-facing replay text (warnings, failure lines, decision summaries).</summary>
-    internal static class ReplayText
+    /// <summary>Player-facing replay text (warnings, failure lines, decision summaries, the #455 CLI's output).</summary>
+    public static class ReplayText
     {
         /// <summary>
         /// Game text is ASCII-only (the ImGui atlas renders anything else as '?'), but names, exception messages

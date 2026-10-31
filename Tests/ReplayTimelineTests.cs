@@ -233,5 +233,16 @@ namespace FDG.Tests
             Assert.That(read.Warnings[0].All(c => c < 128), Is.True, "player-facing text is ASCII");
             Assert.That(RoundTrip(Header()).Warnings, Is.Empty, "the same build reads its own replays silently");
         }
+
+        [Test]
+        public void DevBuilds_FromDifferentCommits_AreTheSameBuild()
+        {
+            // #455: the SDK appends the commit to every stamp; between dev builds it is not a mismatch.
+            Assert.That(ReplayReader.SameBuild("0.3.0-dev+34060e7d", "0.3.0-dev+ede90fc2"), Is.True);
+            Assert.That(ReplayReader.SameBuild("0.3.0-dev", "0.3.0-dev+ede90fc2"), Is.True);
+            Assert.That(ReplayReader.SameBuild("0.2.0-dev+34060e7d", "0.3.0-dev+34060e7d"), Is.False, "a version bump still warns");
+            Assert.That(ReplayReader.SameBuild("0.2.0+opr.3.5.1.git-abc-1", "0.2.0+opr.3.5.1.git-def-2"), Is.False, "release stamps match exactly");
+            Assert.That(ReplayReader.SameBuild("", "0.3.0-dev+ede90fc2"), Is.False);
+        }
     }
 }

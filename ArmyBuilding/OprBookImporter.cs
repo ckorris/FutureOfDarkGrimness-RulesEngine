@@ -310,6 +310,17 @@ namespace FDG.ArmyBuilding
                 Items = (unit.Items ?? new()).Select(MapItem).ToList(),
             };
 
+            // #438: a base-loadout item's nested weapons fight too (OPR 3.6 mounts and crews - the Jackals Charger Beast
+            // has NO weapon outside its "Beast Rider", the Goblin Pump Plane's Bombing Run rides in its "Bomber Plane").
+            // They used to be dropped here; one copy per item.
+            foreach (OprGain item in unit.Items ?? new())
+                foreach (OprGain inner in (item.Content ?? new()).Where(c => c.Type == "ArmyBookWeapon"))
+                {
+                    WeaponFileEntry weapon = WeaponFromGain(inner);
+                    weapon.Quantity *= Math.Max(1, item.Count ?? 1);
+                    roster.Weapons.Add(weapon);
+                }
+
             // Resolve the unit's referenced upgrade packages → their sections.
             foreach (string pkgUid in unit.Upgrades ?? new())
                 if (packages.TryGetValue(pkgUid, out OprPackage? pkg))
@@ -505,15 +516,7 @@ namespace FDG.ArmyBuilding
             switch (g.Type)
             {
                 case "ArmyBookWeapon":
-                    var weapon = new WeaponFileEntry
-                    {
-                        Name = g.Name ?? "Weapon",
-                        Quantity = Math.Max(1, g.Count ?? 1),
-                        RangeInches = g.Range ?? 0,
-                        Attacks = g.Attacks ?? 0,
-                    };
-                    ApplyRules(weapon, g.SpecialRules);
-                    option.WeaponsGained.Add(weapon);
+                    option.WeaponsGained.Add(WeaponFromGain(g));
                     break;
                 case "ArmyBookRule":
                     option.RulesGained.Add(MapRule(new OprRule { Name = g.Name, Rating = g.Rating }));
@@ -880,17 +883,37 @@ namespace FDG.ArmyBuilding
             return new BaseFileEntry { Shape = EBaseShapeKind.Rectangle, WidthInches = widthMm / MmPerInch, HeightInches = lengthMm / MmPerInch };
         }
 
-        /// <summary>Maps an OPR item (unit-level or gain) to an <see cref="ItemEntry"/>: name + its rule content.
-        /// Non-rule content (nested weapons) is the caller's job to route.</summary>
-        private static ItemEntry MapItem(OprGain g) => new()
+        /// <summary>Maps an OPR item (unit-level or gain) to an <see cref="ItemEntry"/>: name + its rule content, plus
+        /// (#438) a record of its nested weapons. Putting those weapons in the weapon list is the caller's job.</summary>
+        private static ItemEntry MapItem(OprGain g)
         {
-            Name = g.Name ?? "Item",
-            Quantity = Math.Max(1, g.Count ?? 1),
-            Rules = (g.Content ?? new())
-                .Where(c => c.Type == "ArmyBookRule")
-                .Select(c => MapRule(new OprRule { Name = c.Name, Rating = c.Rating }))
-                .ToList(),
-        };
+            List<WeaponFileEntry> weapons = (g.Content ?? new())
+                .Where(c => c.Type == "ArmyBookWeapon").Select(WeaponFromGain).ToList();
+            return new ItemEntry
+            {
+                Name = g.Name ?? "Item",
+                Quantity = Math.Max(1, g.Count ?? 1),
+                Rules = (g.Content ?? new())
+                    .Where(c => c.Type == "ArmyBookRule")
+                    .Select(c => MapRule(new OprRule { Name = c.Name, Rating = c.Rating }))
+                    .ToList(),
+                // #438: recorded so removing the item removes its weapons (ListCompiler.RemoveTarget).
+                Weapons = weapons.Count > 0 ? weapons : null,
+            };
+        }
+
+        private static WeaponFileEntry WeaponFromGain(OprGain g)
+        {
+            var weapon = new WeaponFileEntry
+            {
+                Name = g.Name ?? "Weapon",
+                Quantity = Math.Max(1, g.Count ?? 1),
+                RangeInches = g.Range ?? 0,
+                Attacks = g.Attacks ?? 0,
+            };
+            ApplyRules(weapon, g.SpecialRules);
+            return weapon;
+        }
 
         // ── OPR JSON DTOs (only the fields we consume; lore/image/meta fields are ignored) ──────────────────
 

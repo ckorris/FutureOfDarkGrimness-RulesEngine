@@ -1001,6 +1001,65 @@ public class OprBookImporterTests
             { new SpecialRuleEntry_Core("Assault"), new SpecialRuleEntry_Core("Fracture") }), "a gained Assault weapon too");
     }
 
+    // #438: a base-loadout item that bundles weapons (3.6 mounts and crews - Jackals' Charger Beast, Goblins' Spider
+    // Mounts) keeps them: they join the unit's weapons (one copy per item) and are recorded on the item, so a Replace
+    // that removes the item removes them too. A "Replace <weapon>" target now finds the weapon.
+    private const string BeastJson = """
+    {
+      "name": "Beast Book", "versionString": "3.6.0",
+      "units": [
+        { "id": "rid", "name": "Spider Riders", "size": 5, "cost": 100, "quality": 5, "defense": 5,
+          "weapons": [ { "name": "Hand Weapon", "count": 5, "range": 0, "attacks": 1, "specialRules": [] } ],
+          "items": [ { "name": "Spider Mounts", "type": "ArmyBookItem", "count": 5, "content": [
+            { "type": "ArmyBookRule", "name": "Strider" },
+            { "type": "ArmyBookWeapon", "name": "Poison Fangs", "count": 1, "range": 0, "attacks": 1,
+              "specialRules": [ { "name": "Poison" } ] } ] } ],
+          "upgrades": ["P1"] }
+      ],
+      "upgradePackages": [
+        { "uid": "P1", "sections": [
+          { "uid": "mounts", "label": "Replace all Spider Mounts", "variant": "replace", "affects": {"type": "all"},
+            "targets": ["Spider Mounts"],
+            "options": [ { "uid": "wolves", "label": "Wolf Mounts (Fast)", "cost": 10, "gains": [
+              { "type": "ArmyBookItem", "name": "Wolf Mounts", "count": 1, "content": [ { "type": "ArmyBookRule", "name": "Fast" } ] } ] } ] }
+        ] }
+      ]
+    }
+    """;
+
+    [Test]
+    public void Import36_ABaseItemsNestedWeapons_JoinTheUnit_AndAreRecordedOnTheItem()
+    {
+        RosterUnit riders = OprBookImporter.Import(BeastJson, "TestSource", "CC-BY-SA 4.0").Units.Single();
+
+        WeaponFileEntry fangs = riders.Weapons.Single(w => w.Name == "Poison Fangs");
+        Assert.That(fangs.Quantity, Is.EqualTo(5), "one per mount");
+        Assert.That(fangs.SpecialRules, Is.EqualTo(new SpecialRuleEntry[] { new SpecialRuleEntry_Core("Poison") }));
+
+        ItemEntry mounts = riders.Items.Single();
+        Assert.That(mounts.Rules, Is.EqualTo(new SpecialRuleEntry[] { new SpecialRuleEntry_Core("Strider") }));
+        Assert.That(mounts.Weapons!.Select(w => (w.Name, w.Quantity)), Is.EqualTo(new[] { ("Poison Fangs", 1) }),
+            "per ONE item");
+    }
+
+    [Test]
+    public void Compile_ReplacingAWeaponBundlingItem_RemovesItsWeaponsToo()
+    {
+        BookFile book = OprBookImporter.Import(BeastJson, "TestSource", "CC-BY-SA 4.0");
+        RosterUnit riders = book.Units.Single();
+        var bu = new BuilderUnit { RosterUnitId = riders.Id, ModelCount = 5 };
+
+        (UnitFileEntry before, _) = ListCompiler.CompileUnitDetailed(book, bu);
+        Assert.That(before.Weapons.Single(w => w.Name == "Poison Fangs").Quantity, Is.EqualTo(5));
+
+        bu.Choices.Add(new UpgradeChoice { SectionId = "mounts", OptionId = "wolves", Count = 1 });
+        (UnitFileEntry after, List<ItemEntry> items) = ListCompiler.CompileUnitDetailed(book, bu);
+        Assert.That(after.Weapons.Any(w => w.Name == "Poison Fangs"), Is.False, "the spiders' fangs leave with them");
+        Assert.That(after.Weapons.Single(w => w.Name == "Hand Weapon").Quantity, Is.EqualTo(5));
+        Assert.That(items.Select(i => i.Name), Is.EqualTo(new[] { "Wolf Mounts" }));
+        Assert.That(after.PointCost, Is.EqualTo(110));
+    }
+
     // #438: Army Forge regenerates every section `id` per request (two fetches of an unchanged book disagree on all of
     // them); the section `uid` is stable, so it keys the section and a re-bake keeps saved Forge picks valid.
     [Test]

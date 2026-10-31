@@ -613,6 +613,66 @@ public class ArmyForgeCompilerTests
         Assert.That(compiled.Weapons.Any(w => w.Name == "Flamer"), Is.False, "still swallowed - tracked separately");
     }
 
+    // ── #438 a counted swap yields to a PASS-THROUGH rival below it ────────────────────────────────────
+
+    // OPR 3.6's Assault Brothers in miniature: "Replace any Heavy Pistol" authored ABOVE a combo that consumes a
+    // pistol and a hand weapon and hands a pistol BACK ("Heavy Pistol, Energy Hammer"). The any-swap used to take
+    // every pistol first, leaving the combo nothing to consume - the Energy Hammer was silently dropped, unpaid.
+    private static RosterUnit AssaultBrothers() => new()
+    {
+        Id = "assault", Name = "Assault Brothers", Quality = 3, Defense = 4,
+        BaseModelCount = 5, MinModels = 5, MaxModels = 5, BasePointCost = 150,
+        Weapons = { Wpn("Heavy Pistol", 5), Wpn("Hand Weapon", 5) },
+        Sections =
+        {
+            new UpgradeSection
+            {
+                Id = "any", Label = "Replace any Heavy Pistol", Variant = UpgradeVariant.Replace,
+                Affects = UpgradeAffects.Any, Targets = { "Heavy Pistol" },
+                Options = { new UpgradeOption { Id = "plasma", Cost = 5, WeaponsGained = { Wpn("Plasma Pistol") } } },
+            },
+            new UpgradeSection
+            {
+                Id = "combo", Label = "Replace one Heavy Pistol and Hand Weapon", Variant = UpgradeVariant.Replace,
+                Affects = UpgradeAffects.One, Targets = { "Heavy Pistol", "Hand Weapon" },
+                Options =
+                {
+                    new UpgradeOption { Id = "hammer", Cost = 10, WeaponsGained = { Wpn("Heavy Pistol"), Wpn("Energy Hammer") } },
+                    new UpgradeOption { Id = "chainsword", Cost = 10, WeaponsGained = { Wpn("Great Chain-Sword") } },
+                },
+            },
+        },
+    };
+
+    [Test]
+    public void ReplaceAny_YieldsToAPassThroughComboBelowIt_AndBothPurchasesLand()
+    {
+        UnitFileEntry compiled = CompileOne(AssaultBrothers(),
+            new UpgradeChoice { SectionId = "combo", OptionId = "hammer", Count = 1 },
+            new UpgradeChoice { SectionId = "any", OptionId = "plasma", Count = 5 });
+
+        Assert.That(compiled.Weapons.Single(w => w.Name == "Plasma Pistol").Quantity, Is.EqualTo(5),
+            "the combo hands its pistol back, so all five still swap");
+        Assert.That(compiled.Weapons.Single(w => w.Name == "Energy Hammer").Quantity, Is.EqualTo(1));
+        Assert.That(compiled.Weapons.Single(w => w.Name == "Hand Weapon").Quantity, Is.EqualTo(4));
+        Assert.That(compiled.Weapons.Any(w => w.Name == "Heavy Pistol"), Is.False);
+        Assert.That(compiled.PointCost, Is.EqualTo(185), "150 + 10 combo + 5x5 plasma");
+    }
+
+    // A rival that does NOT hand the pistol back really competes for the pool (5 pistols, 6 asked), and keeps
+    // the pre-#438 outcome: book order decides, the any-swap above takes its five.
+    [Test]
+    public void ReplaceAny_DoesNotYieldToAConsumingRival()
+    {
+        UnitFileEntry compiled = CompileOne(AssaultBrothers(),
+            new UpgradeChoice { SectionId = "combo", OptionId = "chainsword", Count = 1 },
+            new UpgradeChoice { SectionId = "any", OptionId = "plasma", Count = 5 });
+
+        Assert.That(compiled.Weapons.Single(w => w.Name == "Plasma Pistol").Quantity, Is.EqualTo(5));
+        Assert.That(compiled.Weapons.Any(w => w.Name == "Great Chain-Sword"), Is.False);
+        Assert.That(compiled.PointCost, Is.EqualTo(175), "150 + 5x5 plasma; the starved combo is not charged");
+    }
+
     // ── #324 plural matching ───────────────────────────────────────────────────────────────────────────
 
     [TestCase("Bash", "Bashes", true)]        // the Dwarf Guilds Guardians case - OPR's own data

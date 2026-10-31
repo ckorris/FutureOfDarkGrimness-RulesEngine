@@ -108,6 +108,14 @@ namespace FDG.ArmyBuilding
         public string Name { get; set; } = string.Empty;
         public int Quantity { get; set; } = 1;
         public List<SpecialRuleEntry> Rules { get; set; } = new();
+
+        /// <summary>#438: the attack profiles this item bundles, per ONE item (OPR 3.6 mounts and crews: the
+        /// Jackals Charger Beast's "Beast Rider" carries its Explosive Spear, a Goblin "Spider Mount" its Poison
+        /// Fangs). The importer also puts them in the unit's / option's weapon list, where they fight; this list
+        /// only lets a Replace that removes the item remove its weapons too. Null (and omitted) for the plain
+        /// rule-bundle items every 3.5 book and old army file carries.</summary>
+        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+        public List<SaveLoad.WeaponFileEntry>? Weapons { get; set; }
     }
 
     /// <summary>What an upgrade section does to the unit when an option is chosen.</summary>

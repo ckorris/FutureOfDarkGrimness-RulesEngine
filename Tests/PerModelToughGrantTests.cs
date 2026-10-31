@@ -171,7 +171,7 @@ namespace FDG.Tests
 
         private static readonly Dictionary<string, string> ImportBooks = new()
         {
-            ["hdf"] = """{"uid":"hdf","name":"Human Defense Force","versionString":"3.5.0","units":[]}""",
+            ["hdf"] = """{"uid":"hdf","name":"Human Defense Force","versionString":"3.6.0","units":[]}""",
         };
 
         private static UpgradeChoice WeaponTeamChoice() =>

@@ -139,8 +139,19 @@ namespace FDG.ArmyBuilding
                 }
             }
 
+            // #437: OPR 3.6 lists a 0-unit PARENT entry per daemon family ("Wormhole Daemons", "Rift Daemons") beside
+            // the real "Daemons of X" books. It imports cleanly to an empty book, which is never what a caller wants -
+            // say so (the --import-opr tool then refuses to write it; see IsParentEntry).
+            if (IsParentEntry(book))
+                warn?.Invoke($"Book '{book.Name}' has no units and no spells - an Army Forge parent entry, not a playable army book.");
+
             return book;
         }
+
+        /// <summary>#437: true for an Army Forge PARENT entry - a book with no units and no spells (OPR 3.6's
+        /// "Wormhole Daemons" / "Rift Daemons", whose content lives in the "Daemons of X" books). Index-driven fetches
+        /// and the bake skip these; the index carries the same fact as <c>unitCount: 0</c>.</summary>
+        public static bool IsParentEntry(BookFile book) => book.Units.Count == 0 && book.Spells.Count == 0;
 
         /// <summary>
         /// Re-parses ONLY the spells of <paramref name="book"/> from its OPR source JSON, leaving every
@@ -256,6 +267,9 @@ namespace FDG.ArmyBuilding
                     '“' or '”' => "\"",
                     '…' => "...",
                     ' ' => " ",  // no-break space
+                    // #437: zero-width format characters (the 3.6.0 AoF snapshots carry U+200D in seven books'
+                    // text) have no visible form, so they fold to nothing rather than survive as '?'.
+                    '\u200B' or '\u200C' or '\u200D' or '\u2060' or '\uFEFF' => "",
                     '×' => "x",  // multiplication sign
                     '→' => "->",
                     '≤' => "<=",
@@ -884,6 +898,8 @@ namespace FDG.ArmyBuilding
             public List<OprSpell>? Spells { get; set; }
         }
 
+        // #437: 3.6.0 spells also carry effectSkirmish (the Skirmish-variant text) and costFormula/generation; none
+        // is read - effect + threshold are the whole contract.
         private sealed class OprSpell
         {
             public string? Name { get; set; }
@@ -912,6 +928,9 @@ namespace FDG.ArmyBuilding
             public string? Square { get; set; }
         }
 
+        // #437 (3.6.0 shape check): attacksMultiplier, originalCount and label ride every weapon but are not read -
+        // `attacks` is already the multiplied figure ("Overrun (A5, Thrust)" is attacks 5, attacksMultiplier 5; the
+        // label agrees with `attacks` on every labelled 3.6.0 weapon) and `count` is the unit total.
         private sealed class OprWeapon
         {
             public string? Name { get; set; }
@@ -974,6 +993,8 @@ namespace FDG.ArmyBuilding
             public List<OprGain>? Gains { get; set; }
         }
 
+        // #437: 3.6.0 costs[] entries also carry exactCost (the unrounded algorithm value) and questCost (campaign
+        // pricing); Army Forge charges `cost`, so only it is read.
         internal sealed class OprOptionCost
         {
             public int? Cost { get; set; }

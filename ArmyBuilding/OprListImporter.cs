@@ -29,15 +29,18 @@ namespace FDG.ArmyBuilding
     //
     // Recorded fidelity gaps (v1 — warned, not silently dropped):
     //   • Campaign/narrative features (campaignMode, narrativeMode, per-unit xp/traits) are not imported (#242).
-    //   • attacksMultiplier != 1 on a loadout weapon is unverified corpus territory — attacks stay as-is.
+    //   • (#437) attacksMultiplier is NOT a gap: `attacks` already carries the multiplied value (verified over
+    //     every labelled weapon in the 90 3.6.0 snapshots - "Overrun (A4)" is attacks 4, attacksMultiplier 4 - and on
+    //     a live 3.6.0 share list), so the field is informational and ignored, like originalCount and label.
     //   • selectedUpgrades is parsed defensively for RULE gains only (dedupe-merged); `loadout` is trusted
     //     as the sole source of weapons/items.
     public static partial class OprListImporter
     {
         /// <summary>The OPR army-book major.minor this game's data and rule implementations target. A book
         /// whose versionString is outside this prefix refuses to import (see OprVersionMismatchException).
-        /// Bump when the bundled Assets/Books snapshots are re-imported against a newer OPR release.</summary>
-        public const string SupportedVersionPrefix = "3.5";
+        /// Bump when the bundled Assets/Books snapshots are re-imported against a newer OPR release.
+        /// #437: 3.6 (OPR v3.6.0, 2026-10-29) - 3.6 replaces 3.5, so a 3.5 book is refused too.</summary>
+        public const string SupportedVersionPrefix = "3.6";
 
         /// <summary>The OPR game systems this game implements, as the short codes a /api/tts list
         /// carries, each mapped to the slug our data records (#378). Grimdark Future and Age of
@@ -226,8 +229,8 @@ namespace FDG.ArmyBuilding
         private static IReadOnlyList<string> DistinctArmyIds(OprList list) =>
             (list.Units ?? new()).Select(u => u.ArmyId).OfType<string>().Distinct().ToList();
 
-        // "3.5.3" matches prefix "3.5"; "3.5" itself matches; "3.50.1" must NOT (component compare, not
-        // string StartsWith). OPR's live books legitimately mix patch levels (3.5.2/3.5.3 today).
+        // "3.6.0" matches prefix "3.6"; "3.6" itself matches; "3.60.1" must NOT (component compare, not
+        // string StartsWith). OPR's live books legitimately mix patch levels (3.5.2/3.5.3 in the 3.5 era).
         internal static bool VersionMatches(string versionString)
         {
             string[] found = versionString.Split('.');
@@ -295,8 +298,11 @@ namespace FDG.ArmyBuilding
             int upgradeCost = 0;
             foreach (OprSelectedUpgrade selected in unit.SelectedUpgrades ?? new())
             {
+                // #437: the per-unit `costs` entry WINS over the flat scalar - the book importer's #261 order, which
+                // this path never got. A 3.6.0 selection carries both and they disagree (a live High Elf Fleets list:
+                // Anti-Gravity Tank's Hologram Field is flat 65 but costs[] 30 for that tank - Army Forge charges 30).
                 if (selected.Option is { } opt)
-                    upgradeCost += opt.Cost ?? opt.Costs?.FirstOrDefault(c => c.UnitId == unit.Id)?.Cost ?? 0;
+                    upgradeCost += opt.Costs?.FirstOrDefault(c => c.UnitId == unit.Id)?.Cost ?? opt.Cost ?? 0;
 
                 foreach (OprLoadoutEntry gain in selected.Option?.Gains ?? new())
                 {
@@ -364,8 +370,6 @@ namespace FDG.ArmyBuilding
                 RangeInches = w.Range ?? 0,
                 Attacks = w.Attacks ?? 0,
             };
-            if (w.AttacksMultiplier is int m && m != 1)
-                warn($"Weapon '{weapon.Name}' has attacksMultiplier {m} (unsupported) - attacks left at {weapon.Attacks}.");
             foreach (OprListRule rule in w.SpecialRules ?? new())
             {
                 if (rule.Name == "AP" && int.TryParse(rule.Rating, out int ap)) weapon.ArmorPenetration = ap;
@@ -486,8 +490,8 @@ namespace FDG.ArmyBuilding
             public string? Name { get; set; }
             public int? Count { get; set; }
             public int? Range { get; set; }
+            // Already the multiplied figure (#437): attacksMultiplier / originalCount / label are not read.
             public int? Attacks { get; set; }
-            public int? AttacksMultiplier { get; set; }
             public string? Rating { get; set; }         // rule-typed entries (#197 P17: can be text)
             public List<OprListRule>? SpecialRules { get; set; }
             public List<OprLoadoutEntry>? Content { get; set; }
@@ -557,10 +561,31 @@ namespace FDG.ArmyBuilding
         public OprVersionMismatchException(string bookName, string foundVersion)
             : base($"Army book '{bookName}' is at OPR version {(string.IsNullOrEmpty(foundVersion) ? "(unknown)" : foundVersion)}; " +
                    $"this game supports {OprListImporter.SupportedVersionPrefix}.x. " +
-                   "The game's data needs an update before this list can be imported.")
+                   Remedy(foundVersion))
         {
             BookName = bookName;
             FoundVersion = foundVersion;
+        }
+
+        // #437: the remedy depends on which side is behind. The gate reads the book's LIVE version, so an older
+        // book is one OPR has not moved to the supported release yet (nothing the player's list can fix), and a
+        // newer one means this game's data trails OPR. ASCII only (game text).
+        private static string Remedy(string foundVersion) =>
+            IsOlderThanSupported(foundVersion)
+                ? "That book has not been updated to this OPR version yet, so lists using it cannot be imported."
+                : "The game's data needs an update before this list can be imported.";
+
+        internal static bool IsOlderThanSupported(string foundVersion)
+        {
+            string[] found = (foundVersion ?? string.Empty).Split('.');
+            string[] supported = OprListImporter.SupportedVersionPrefix.Split('.');
+            for (int i = 0; i < supported.Length; i++)
+            {
+                if (i >= found.Length || !int.TryParse(found[i].Trim(), out int f)) return false;
+                int s = int.Parse(supported[i]);
+                if (f != s) return f < s;
+            }
+            return false;
         }
     }
 }

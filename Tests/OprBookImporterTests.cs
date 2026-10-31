@@ -50,7 +50,7 @@ public class OprBookImporterTests
     [Test]
     public void Import_StampsGameSystemSlug_AbsentStaysNull()
     {
-        string json = """{"name":"Fantasy Book","versionString":"3.5.3","gameSystemSlug":"age-of-fantasy","units":[]}""";
+        string json = """{"name":"Fantasy Book","versionString":"3.6.0","gameSystemSlug":"age-of-fantasy","units":[]}""";
         Assert.That(OprBookImporter.Import(json, "src", "lic").GameSystem, Is.EqualTo(GameSystems.AgeOfFantasy));
         Assert.That(Import().GameSystem, Is.Null, "no gameSystemSlug in the JSON leaves the field null (= GDF)");
     }
@@ -58,7 +58,7 @@ public class OprBookImporterTests
     [Test]
     public void Compile_CopiesGameSystemOntoArmy()
     {
-        string json = """{"name":"Fantasy Book","versionString":"3.5.3","gameSystemSlug":"age-of-fantasy","units":[]}""";
+        string json = """{"name":"Fantasy Book","versionString":"3.6.0","gameSystemSlug":"age-of-fantasy","units":[]}""";
         BookFile book = OprBookImporter.Import(json, "src", "lic");
         BuiltArmyFile army = ListCompiler.Compile(book, new BuilderList { BookName = book.Name });
         Assert.That(army.GameSystem, Is.EqualTo(GameSystems.AgeOfFantasy));
@@ -76,7 +76,8 @@ public class OprBookImporterTests
         // '"', so the fold must run on parsed string values, never on the raw JSON text (folding raw text
         // would inject an unescaped quote and corrupt the document — 29/47 corpus books hit exactly that).
         // Truly unfoldable characters warn instead of mangling.
-        string json = """{"name":"Kī’s “Legion” — Elite","versionString":"1.0","units":[]}""";
+        // (#437: one unit, so the book is not read as a 0-unit Army Forge parent entry, which warns.)
+        string json = """{"name":"Kī’s “Legion” — Elite","versionString":"1.0","units":[{"id":"u","name":"U","size":1,"cost":1,"bases":{"round":"25"}}]}""";
         var warnings = new List<string>();
 
         BookFile book = OprBookImporter.Import(json, "src", "lic", warnings.Add);
@@ -180,7 +181,7 @@ public class OprBookImporterTests
     // wrong. "generic" pins the fallback when a unit has no per-unit entry at all.
     private const string PerUnitCostJson = """
     {
-      "name": "Cost Legion", "versionString": "3.5.3",
+      "name": "Cost Legion", "versionString": "3.6.0",
       "units": [
         { "id": "noble",   "name": "Noble",   "size": 1, "cost": 45, "quality": 3, "defense": 4, "upgrades": ["P1"] },
         { "id": "protector","name": "Protector","size": 1, "cost": 35, "quality": 4, "defense": 5, "upgrades": ["P1"] }
@@ -891,5 +892,151 @@ public class OprBookImporterTests
         Assert.That(unit.PointCost, Is.EqualTo(120));                       // 100 + 10×2
         Assert.That(unit.Weapons.Single(w => w.Name == "Blaster").Quantity, Is.EqualTo(3));  // 5 − 2 replaced
         Assert.That(unit.Weapons.Single(w => w.Name == "Heavy Blaster").Quantity, Is.EqualTo(2));
+    }
+
+    // #437 - the 3.6.0 snapshot shape, on a hand-trimmed excerpt of the High Elf Fleets 3.6.0 book (one unit, one
+    // package, two spells; lore and product fields dropped, a few typographic characters kept on purpose). Pins:
+    // the version stamp comes from versionString; an Assault weapon is ONE entry with the rule (#424); Overrun is a
+    // range-0 melee weapon carrying Thrust; attacks is read as-is (already multiplied - attacksMultiplier,
+    // originalCount and label are not applied); per-unit costs[] wins over the flat cost and its exactCost /
+    // questCost are ignored; spells' effectSkirmish / costFormula / generation are ignored; none of it warns.
+    private const string HighElfExcerpt36 = """
+    {
+      "uid": "7i7blhft75q9zfdc", "name": "High Elf Fleets", "versionString": "3.6.0", "gameEngine": 1,
+      "gameSystemId": 2, "gameSystemSlug": "grimdark-future", "manualUnitSorting": false, "raceGroup": "Elves",
+      "background": "They fled the Great War‍ - “never again”, they swore…",
+      "units": [
+        { "id": "NNVOyAx", "name": "Anti-Gravity Tank", "size": 1, "sizeSkirmish": 1, "cost": 535, "quality": 3, "defense": 2,
+          "rules": [ {"id":"KdgwlPb8LuD2","name":"Fast","label":"Fast"}, {"id":"a0YtInGiUDd6","name":"Tough","rating":12,"label":"Tough(12)"} ],
+          "weapons": [
+            { "id": "_o11SyDX", "name": "Shard Cannon", "type": "ArmyBookWeapon", "count": 2, "range": 24, "attacks": 6,
+              "weaponId": "RuWZrJpV", "attacksMultiplier": 2, "originalCount": 2, "label": "2x Shard Cannon (24\", A6, Anti-Cover, Fracture)",
+              "specialRules": [ {"type":"ArmyBookRule","id":"efmjJPTe0Yzd","name":"Anti-Cover","label":"Anti-Cover"},
+                                {"type":"ArmyBookRule","id":"JSnFcm3SCiMD","name":"Fracture","label":"Fracture"} ] },
+            { "id": "i6kCRfk3", "name": "Hull Shard Cannon", "type": "ArmyBookWeapon", "count": 1, "range": 12, "attacks": 3,
+              "weaponId": "Oglu9AuE", "attacksMultiplier": 1, "originalCount": 1, "label": "Hull Shard Cannon (12\", A3, Anti-Cover, Assault, Fracture)",
+              "specialRules": [ {"type":"ArmyBookRule","id":"efmjJPTe0Yzd","name":"Anti-Cover","label":"Anti-Cover"},
+                                {"type":"ArmyBookRule","id":"FF5ddXgx75lI","name":"Assault","label":"Assault"},
+                                {"type":"ArmyBookRule","id":"JSnFcm3SCiMD","name":"Fracture","label":"Fracture"} ] },
+            { "id": "mmIw7lbH", "name": "Overrun", "type": "ArmyBookWeapon", "count": 1, "range": 0, "attacks": 4,
+              "weaponId": "9yR1y88z", "attacksMultiplier": 4, "originalCount": 1, "label": "Overrun (A4, Thrust)",
+              "specialRules": [ {"type":"ArmyBookRule","id":"umbiz4tnEyF8","name":"Thrust","label":"Thrust"} ] }
+          ],
+          "items": [], "upgrades": ["D2"], "bases": { "round": "120x92", "square": "150x100" } }
+      ],
+      "upgradePackages": [
+        { "uid": "D2", "calcErrorReason": null, "sections": [
+          { "uid": "-1b_g", "id": "CinFtiX", "label": "Replace 2x Shard Cannon", "variant": "replace", "targets": ["2x Shard Cannon"],
+            "options": [
+              { "uid": "s7mp3", "id": "s7mp3", "cost": 55, "label": "Heavy Focal Cannon (36\", A2, AP(4), Deadly(6))",
+                "costs": [ {"cost":80,"unitId":"NNVOyAx","exactCost":78.78,"questCost":235} ],
+                "gains": [ {"id":null,"name":"Heavy Focal Cannon","type":"ArmyBookWeapon","count":1,"range":36,"attacks":2,
+                            "attacksMultiplier":2,"weaponId":"dfhsdKVE","parentId":"x1","label":"Heavy Focal Cannon (36\", A2, AP(4), Deadly(6))",
+                            "specialRules":[{"id":"17crjK7P6_w6","name":"AP","type":"ArmyBookRule","rating":4},
+                                            {"id":"_mrPya5SXSqW","name":"Deadly","type":"ArmyBookRule","rating":6}]} ] }
+            ] },
+          { "uid": "Gz6Ba", "id": "TQrtsBr", "label": "Replace Hull Shard Cannon", "variant": "replace", "targets": ["Hull Shard Cannon"],
+            "options": [
+              { "uid": "hs1", "id": "hs1", "label": "Hull Shardguns (6\", A3, AP(1), Assault, Fracture)",
+                "costs": [ {"cost":5,"unitId":"NNVOyAx","exactCost":4.94,"questCost":15} ],
+                "gains": [ {"id":null,"name":"Hull Shardguns","type":"ArmyBookWeapon","count":1,"range":6,"attacks":3,
+                            "attacksMultiplier":1,"weaponId":"hsg","label":"Hull Shardguns (6\", A3, AP(1), Assault, Fracture)",
+                            "specialRules":[{"name":"AP","type":"ArmyBookRule","rating":1},{"name":"Assault","type":"ArmyBookRule"},
+                                            {"name":"Fracture","type":"ArmyBookRule"}]} ] }
+            ] }
+        ] }
+      ],
+      "spells": [
+        { "id": "Hql50", "cost": 15, "name": "Elemental Seeker", "type": 0, "threshold": 1, "spellbookId": "sb",
+          "effect": "Pick one enemy unit within 18\" in line of sight, which takes 1 hit with Blast(3).",
+          "effectSkirmish": "Pick one enemy model within 18\" in line of sight, which takes 1 hit.",
+          "generation": { "effect": { "id": "QFjxWsOHTCSi", "parameters": [] } },
+          "costFormula": [ { "type": "cost", "value": "return 1;", "params": { "assignment": { "inLoS": true } } } ] },
+        { "id": "UVq_l", "cost": 5, "name": "Creator of Illusions", "type": 2, "threshold": 1,
+          "effect": "Pick one enemy unit within 18\" in line of sight, which gets Unwieldy on its weapons in melee once (next time the effect would apply).",
+          "effectSkirmish": "Pick one enemy model within 18\" in line of sight, which gets Unwieldy once.",
+          "costFormula": [] }
+      ]
+    }
+    """;
+
+    [Test]
+    public void Import36_StampsTheVersionString_AndImportsWithoutWarnings()
+    {
+        var warnings = new List<string>();
+        BookFile book = OprBookImporter.Import(HighElfExcerpt36, "TestSource", "CC-BY-SA 4.0", warnings.Add);
+
+        Assert.That(book.Version, Is.EqualTo("OPR v3.6.0"));
+        Assert.That(book.Name, Is.EqualTo("High Elf Fleets"));
+        Assert.That(book.GameSystem, Is.EqualTo(GameSystems.GrimdarkFuture));
+        Assert.That(book.Spells.Select(sp => sp.Name), Is.EqualTo(new[] { "Elemental Seeker", "Creator of Illusions" }));
+        Assert.That(book.Spells[0].Threshold, Is.EqualTo(1), "threshold is read as before");
+        Assert.That(warnings, Is.Empty,
+            "the new 3.6 fields (effectSkirmish, questCost, exactCost, attacksMultiplier, sizeSkirmish, ...) are ignored silently");
+    }
+
+    [Test]
+    public void Import36_AssaultIsOneEntry_OverrunIsMeleeWithThrust_AttacksReadAsIs()
+    {
+        RosterUnit tank = OprBookImporter.Import(HighElfExcerpt36, "TestSource", "CC-BY-SA 4.0").Units.Single();
+
+        Assert.That(tank.Weapons.Select(w => w.Name), Is.EqualTo(new[] { "Shard Cannon", "Hull Shard Cannon", "Overrun" }),
+            "one entry per OPR weapon - no Assault copy");
+        WeaponFileEntry shard = tank.Weapons[0];
+        Assert.That((shard.Quantity, shard.Attacks, shard.RangeInches), Is.EqualTo((2, 6, 24)),
+            "2x A6 each: attacks is the per-weapon figure already multiplied, count is the copy count");
+
+        WeaponFileEntry hull = tank.Weapons[1];
+        Assert.That(hull.RangeInches, Is.EqualTo(12));
+        Assert.That(hull.SpecialRules, Does.Contain(new SpecialRuleEntry_Core("Assault")));
+
+        WeaponFileEntry overrun = tank.Weapons[2];
+        Assert.That((overrun.RangeInches, overrun.Attacks), Is.EqualTo((0, 4)));
+        Assert.That(overrun.SpecialRules, Is.EqualTo(new SpecialRuleEntry[] { new SpecialRuleEntry_Core("Thrust") }));
+
+        WeaponFileEntry shardguns = tank.Sections.Single(sec => sec.Label == "Replace Hull Shard Cannon")
+            .Options.Single().WeaponsGained.Single();
+        Assert.That(shardguns.ArmorPenetration, Is.EqualTo(1));
+        Assert.That(shardguns.SpecialRules, Is.EqualTo(new SpecialRuleEntry[]
+            { new SpecialRuleEntry_Core("Assault"), new SpecialRuleEntry_Core("Fracture") }), "a gained Assault weapon too");
+    }
+
+    [Test]
+    public void Import36_PricesEachOptionFromTheUnitsCostsEntry()
+    {
+        RosterUnit tank = OprBookImporter.Import(HighElfExcerpt36, "TestSource", "CC-BY-SA 4.0").Units.Single();
+
+        UpgradeOption focal = tank.Sections.Single(sec => sec.Label == "Replace 2x Shard Cannon").Options.Single();
+        Assert.That((focal.Cost, focal.CostUnpriced), Is.EqualTo((80, false)), "costs[].cost, not the flat 55 nor exactCost 78.78");
+        UpgradeOption shardguns = tank.Sections.Single(sec => sec.Label == "Replace Hull Shard Cannon").Options.Single();
+        Assert.That((shardguns.Cost, shardguns.CostUnpriced), Is.EqualTo((5, false)), "no flat cost at all - costs[] alone prices it");
+    }
+
+    [Test]
+    public void Import36_FoldsZeroWidthAndTypographicCharacters()
+    {
+        Assert.That(OprBookImporter.AsciiFold("War‍ - “never”…"), Is.EqualTo("War - \"never\"..."));
+        foreach (char zeroWidth in new[] { '​', '‌', '‍', '⁠', '﻿' })
+        {
+            var leftovers = new List<string>();
+            Assert.That(OprBookImporter.AsciiFold($"a{zeroWidth}b", leftovers.Add), Is.EqualTo("ab"));
+            Assert.That(leftovers, Is.Empty, $"U+{(int)zeroWidth:X4} folds to nothing, it does not survive as '?'");
+        }
+    }
+
+    // #437: OPR 3.6's index lists a 0-unit PARENT entry per daemon family beside the real "Daemons of X" books.
+    [Test]
+    public void Import_AParentEntry_WarnsAndIsDetectable()
+    {
+        const string parent = """
+        { "uid": "i4ZEAmqeFSfAcw3f", "name": "Wormhole Daemons", "versionString": "3.6.0", "gameSystemSlug": "grimdark-future",
+          "factionName": "Wormhole Daemons", "units": [], "upgradePackages": [], "spells": [] }
+        """;
+        var warnings = new List<string>();
+        BookFile book = OprBookImporter.Import(parent, "src", "lic", warnings.Add);
+
+        Assert.That(OprBookImporter.IsParentEntry(book), Is.True);
+        Assert.That(warnings, Has.One.Contains("parent entry"));
+        Assert.That(OprBookImporter.IsParentEntry(OprBookImporter.Import(HighElfExcerpt36, "src", "lic")), Is.False);
     }
 }

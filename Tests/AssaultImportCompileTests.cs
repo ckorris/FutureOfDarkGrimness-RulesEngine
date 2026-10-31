@@ -68,11 +68,10 @@ namespace FDG.Tests
               "forceOrgErrors": []
             }
             """;
-            // The share-link importer's version gate still reads 3.5.x (#437 moves it to 3.6); the weapon mapping under
-            // test is version-independent, so the stub book claims 3.5.3 to get past the gate.
+            // #437 moved the share-link importer's version gate to 3.6.x, so the stub book is a 3.6.0 book.
             var books = new Dictionary<string, string>
             {
-                ["bookA"] = """{"uid":"bookA","name":"Test Chapter","versionString":"3.5.3","units":[]}""",
+                ["bookA"] = """{"uid":"bookA","name":"Test Chapter","versionString":"3.6.0","units":[]}""",
             };
 
             ArmyListFile army = OprListImporter.Import(listJson, books).Army;

@@ -26,6 +26,10 @@ namespace FDG.Network.Messages
 
         public string? Message { get; set; }
 
+        public PlayerID? Winner { get; set; }
+
+        public string? WinnerName { get; set; }
+
         public int? SnapshotIndex { get; set; }
 
         public ReplayMarkerMessage() { }
@@ -39,6 +43,8 @@ namespace FDG.Network.Messages
             UnitRef = marker.UnitRef,
             Outcome = marker.Outcome,
             Message = marker.Message,
+            Winner = marker.Winner,
+            WinnerName = marker.WinnerName,
         };
 
         public static ReplayMarkerMessage ForSnapshot(int index) => new ReplayMarkerMessage { SnapshotIndex = index };
@@ -54,6 +60,8 @@ namespace FDG.Network.Messages
                 UnitRef = UnitRef,
                 Outcome = Outcome,
                 Message = Message,
+                Winner = Winner,
+                WinnerName = WinnerName,
             };
     }
 }

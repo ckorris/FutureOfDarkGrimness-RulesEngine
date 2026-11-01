@@ -29,11 +29,14 @@ namespace FDG.Replay
     /// give one number). A request with at most one option, and one that failed, is not counted.</param>
     /// <param name="Rounds">The highest round the recording reached (0 before the main phase).</param>
     /// <param name="Outcome">The GameEnded marker's outcome name, or null while the game is running.</param>
+    /// <param name="Winner">On a Win, the winners' names as the GameEnded marker's prose ("Alpha" / "Alpha and
+    /// Bravo"); null otherwise, and in files from before it was recorded (#457).</param>
     /// <param name="DurationMs">Milliseconds from the recording's start to its latest event.</param>
     /// <param name="SizeBytes">Approximate UNcompressed size of the event stream (payload characters plus a
     /// per-line allowance) - it ignores JSON escaping, so it reads ~18% under the real raw size (measured on
     /// 2k games, #450). The exported file is the gzip of the stream, ~14-16x smaller than the raw.</param>
-    public sealed record ReplaySummary(int Steps, int Rounds, string? Outcome, long DurationMs, long SizeBytes);
+    public sealed record ReplaySummary(int Steps, int Rounds, string? Outcome, long DurationMs, long SizeBytes,
+        string? Winner = null);
 
     /// <summary>
     /// The counts behind a <see cref="ReplaySummary"/>, kept event by event - by the recorder as it records, and by
@@ -51,6 +54,7 @@ namespace FDG.Replay
         // Per open request: did it offer a real choice? Decided when it is asked, counted when it is answered.
         private readonly Dictionary<FDG.StageResolution.TaskID, bool> _isChoice = new Dictionary<FDG.StageResolution.TaskID, bool>();
         private string? _outcome;
+        private string? _winner;
         private long _approxSize;
         private long _lastT;
 
@@ -65,7 +69,7 @@ namespace FDG.Replay
             return tally.ToSummary();
         }
 
-        public ReplaySummary ToSummary() => new ReplaySummary(_steps, _highestRound, _outcome, _lastT, _approxSize);
+        public ReplaySummary ToSummary() => new ReplaySummary(_steps, _highestRound, _outcome, _lastT, _approxSize, _winner);
 
         public void Add(ReplayEvent replayEvent)
         {
@@ -112,12 +116,14 @@ namespace FDG.Replay
                     if (marker.Marker == EReplayMarker.GameEnded)
                     {
                         _outcome = marker.Outcome;
+                        _winner = marker.WinnerName;
                     }
 
                     // #453: a resumed recovery save (#187) ended once already; the game is running again.
                     if (marker.Marker == EReplayMarker.Resumed)
                     {
                         _outcome = null;
+                        _winner = null;
                     }
                     break;
             }

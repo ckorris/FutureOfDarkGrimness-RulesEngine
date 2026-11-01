@@ -182,6 +182,8 @@ namespace FDG.Replay
             {
                 Outcome = result.Outcome.ToString(),
                 Message = result.Message,
+                Winner = result.WinnerPlayers.Count == 1 ? result.WinnerPlayers[0] : null,
+                WinnerName = result.WinnerName,
             });
         });
 

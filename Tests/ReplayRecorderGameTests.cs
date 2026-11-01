@@ -123,6 +123,8 @@ namespace FDG.Tests
             Assert.That(events[^1], Is.EqualTo(ended[0]), "GameEnded is the last event");
             Assert.That(ended[0].Outcome, Is.EqualTo(game.Result.Outcome.ToString()));
             Assert.That(ended[0].Message, Is.EqualTo(game.Result.Message));
+            Assert.That(ended[0].WinnerName, Is.EqualTo(game.Result.WinnerName), "#457: the browser lists who won");
+            Assert.That(ended[0].Winner, Is.EqualTo(game.Result.WinnerPlayers.Count == 1 ? game.Result.WinnerPlayers[0] : (PlayerID?)null));
 
             // A RoundStart per round played, in order, each followed by a snapshot; snapshots = rounds + 1.
             List<MarkerEvent> rounds = Markers(game, EReplayMarker.RoundStart);
@@ -192,6 +194,7 @@ namespace FDG.Tests
             Assert.That(game.Recorder.IsRecording, Is.False);
             Assert.That(events, Is.EqualTo(game.Recorder.EventsSnapshot()));
             Assert.That(game.Recorder.Summary.Outcome, Is.EqualTo(game.Result.Outcome.ToString()));
+            Assert.That(game.Recorder.Summary.Winner, Is.EqualTo(game.Result.WinnerName));
             Assert.That(game.Recorder.Summary.Rounds, Is.EqualTo(game.Result.RoundsPlayed));
         }
 
@@ -402,6 +405,10 @@ namespace FDG.Tests
                 Activation = 2,
                 PlayerId = new PlayerID(Guid.NewGuid()),
                 UnitRef = new DataReference { TypeID = new TypeID(4), Index = 1, Generation = 2 },
+                Outcome = "Win",
+                Message = "Alpha wins!",
+                Winner = new PlayerID(Guid.NewGuid()),
+                WinnerName = "Alpha",
             };
 
             var decodedMarker = (ReplayMarkerMessage?)receiver.DeserializeMessage(sender.SerializeMessage(ReplayMarkerMessage.For(marker)));

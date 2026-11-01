@@ -113,6 +113,13 @@ namespace FDG.Replay
 
         /// <summary>GameEnded: the player-facing end-of-game sentence.</summary>
         public string? Message { get; init; }
+
+        /// <summary>GameEnded, Win only: the winner when exactly one player won (a team of several has none
+        /// here - <see cref="WinnerName"/> names them all; #457 viewer colours).</summary>
+        public PlayerID? Winner { get; init; }
+
+        /// <summary>GameEnded, Win only: the winning players' names as prose ("Alpha" / "Alpha and Bravo").</summary>
+        public string? WinnerName { get; init; }
     }
 
     /// <summary>The fixed Kind &lt;-&gt; type table. The reader resolves ONLY these names (no <c>$type</c>).</summary>

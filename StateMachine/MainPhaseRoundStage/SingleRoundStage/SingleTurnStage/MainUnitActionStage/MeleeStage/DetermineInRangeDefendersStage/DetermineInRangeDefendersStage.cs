@@ -33,7 +33,7 @@ namespace FDG.Stages
             List<DataBinding<ModelData>> inRange = MeleeRangeUtilities.GetModelsInMeleeRange(defenderModels, attackerModels);
             context.SetInRangeDefenders(inRange);
 
-            GameContext.Log($"Determine In Range Defenders: {inRange.Count} of {defenderModels.Count} models in melee range.");
+            GameContext.Log($"Determine In Range Defenders: {inRange.Count} of {MeleeRangeUtilities.CountLiving(defenderModels)} models in melee range.");
 
             // #355: nothing to swing - skip the weapon offer (and the extra-attack window before it, which
             // is an extra ATTACK for a unit making none) and let the defender strike back.

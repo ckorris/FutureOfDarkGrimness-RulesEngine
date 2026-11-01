@@ -75,6 +75,21 @@ namespace FDG.Stages
 
         /// <summary>Returns the subset of <paramref name="models"/> that are in melee range of any model in
         /// <paramref name="enemyModels"/>. Bindings are preserved so callers can rebuild weapon pools from them.</summary>
+        /// <summary>
+        /// How many of <paramref name="models"/> are alive - the denominator for the "N of M models in melee
+        /// range" log lines. A unit's bindings keep its casualties, so counting bindings read "1 of 3" for a
+        /// 3-model unit that had lost two to Impact hits before its Counter swing.
+        /// </summary>
+        public static int CountLiving(IReadOnlyList<DataBinding<ModelData>> models)
+        {
+            int living = 0;
+            foreach (DataBinding<ModelData> binding in models)
+            {
+                if (((IModel)binding.GetValue()).GetIsAlive()) living++;
+            }
+            return living;
+        }
+
         public static List<DataBinding<ModelData>> GetModelsInMeleeRange(
             IReadOnlyList<DataBinding<ModelData>> models,
             IReadOnlyList<DataBinding<ModelData>> enemyModels)

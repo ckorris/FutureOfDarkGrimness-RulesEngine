@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using FDG.Data;
 using FDG.Presentation.Beats;
@@ -160,6 +161,81 @@ namespace FDG.Tests
                 "the fresh Counter unit still swings first - only its own fatigue switches Counter off.");
             Assert.That(StrikeFirstBanner(), Is.Not.Null);
         }
+
+        // 3.6 C1 (#417): "charged defenders move up to 3\" into contact" - the CHARGED unit piles in whoever strikes
+        // first. Counter's role swap runs before PileInStage, and a pile-in that read the swapped roles walked the
+        // CHARGER up to the unit it had just charged (a hand-verify game logged "Pile in: 5 defender model(s)" for a
+        // 5-model charger against 3 Gunners). The stage reads the context's immutable charger capture instead.
+        [Test]
+        public async Task CounterSwap_StillPilesInTheChargedUnit_NotTheCharger()
+        {
+            DataBinding<UnitData> charger = MakeUnit(modelCount: 3);
+            DataBinding<UnitData> defender = MakeUnit(modelCount: 3);
+            AttachCounter(defender);
+            // Bases r=0.75: a 2.5" centre gap is 1" edge to edge, inside the 3" pile-in cap.
+            PlaceRow(charger, z: 0f);
+            PlaceRow(defender, z: 2.5f);
+            var chargerBefore = Footprint(charger);
+            var defenderBefore = Footprint(defender);
+
+            CombatActionContext context = await RunStage(charger, defender);
+            Assert.That(context.AttackingUnit.GetValue(), Is.SameAs(defender.GetValue()), "premise: Counter swapped the roles");
+
+            var pileIn = new PileInStage(_ctx, new NoOpLayer<ICombatActionContext>());
+            pileIn.OnPiledIn.Bind("done");
+            await pileIn.Enter(context);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(Footprint(charger), Is.EqualTo(chargerBefore), "the charger stays where its charge move left it");
+                Assert.That(Footprint(defender), Is.Not.EqualTo(defenderBefore), "the charged Counter unit is the one that piles in");
+                Assert.That(Footprint(defender).All(p => p.z < 2.5f), Is.True, "toward the charger");
+            });
+        }
+
+        // The same geometry without Counter: no swap, and the pile-in is unchanged by the fix (the control).
+        [Test]
+        public async Task NoCounter_TheChargedUnitPilesIn()
+        {
+            DataBinding<UnitData> charger = MakeUnit(modelCount: 3);
+            DataBinding<UnitData> defender = MakeUnit(modelCount: 3);
+            PlaceRow(charger, z: 0f);
+            PlaceRow(defender, z: 2.5f);
+            var chargerBefore = Footprint(charger);
+
+            CombatActionContext context = await RunStage(charger, defender);
+            var pileIn = new PileInStage(_ctx, new NoOpLayer<ICombatActionContext>());
+            pileIn.OnPiledIn.Bind("done");
+            await pileIn.Enter(context);
+
+            Assert.That(Footprint(charger), Is.EqualTo(chargerBefore));
+            Assert.That(Footprint(defender).All(p => p.z < 2.5f), Is.True);
+        }
+
+        // The "N of M models in melee range" lines count living models in M. A unit's bindings keep its
+        // casualties, and the first Counter swing after Impact hits had read "1 of 3" for a lone survivor.
+        [Test]
+        public void CountLiving_LeavesTheCasualtiesOut()
+        {
+            DataBinding<UnitData> unit = MakeUnit(modelCount: 3);
+            foreach (IModel model in unit.GetValue().Models.Take(2)) model.DealWounds(model.TotalWounds);
+
+            Assert.That(unit.GetValue().ModelBindings.Count, Is.EqualTo(3), "premise: the bindings keep the dead");
+            Assert.That(MeleeRangeUtilities.CountLiving(unit.GetValue().ModelBindings), Is.EqualTo(1));
+        }
+
+        private static void PlaceRow(DataBinding<UnitData> unit, float z)
+        {
+            float x = 0f;
+            foreach (IModel model in unit.GetValue().Models)
+            {
+                model.SetPosition(new Position(x, z));
+                x += 1.6f;
+            }
+        }
+
+        private static List<(float x, float z)> Footprint(DataBinding<UnitData> unit) =>
+            unit.GetValue().Models.Select(m => (m.Position.x, m.Position.z)).ToList();
 
         private async Task<CombatActionContext> RunStage(DataBinding<UnitData> charger, DataBinding<UnitData> defender)
         {

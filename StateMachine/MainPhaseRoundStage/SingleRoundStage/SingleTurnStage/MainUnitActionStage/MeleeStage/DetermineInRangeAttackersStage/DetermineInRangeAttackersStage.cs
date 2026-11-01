@@ -33,7 +33,7 @@ namespace FDG.Stages
             List<DataBinding<ModelData>> inRange = MeleeRangeUtilities.GetModelsInMeleeRange(attackerModels, defenderModels);
             context.SetInRangeAttackers(inRange);
 
-            GameContext.Log($"Determine In Range Attackers: {inRange.Count} of {attackerModels.Count} models in melee range.");
+            GameContext.Log($"Determine In Range Attackers: {inRange.Count} of {MeleeRangeUtilities.CountLiving(attackerModels)} models in melee range.");
 
             // No attacker can actually strike when the swing pool is empty — either no model is in melee
             // range, OR the in-range models carry no melee weapon (e.g. the melee-armed models died and only

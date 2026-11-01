@@ -930,7 +930,10 @@ namespace FDG.ArmyBuilding
 
         // Two weapons merge only if their whole profile matches — name alone isn't enough (a rule difference
         // would otherwise be silently lost into an existing entry).
-        private static bool SameProfile(WeaponFileEntry a, WeaponFileEntry b) =>
+        // Public for #441 F6: the Forge card attributes a compiled weapon row to the mount/crew item that bundles
+        // it (#438 D4) by the SAME key the compiler merged it under, so the card never splits a row the compiler
+        // would have merged or merges two it kept apart.
+        public static bool SameProfile(WeaponFileEntry a, WeaponFileEntry b) =>
             a.Name == b.Name && a.RangeInches == b.RangeInches && a.Attacks == b.Attacks &&
             a.ArmorPenetration == b.ArmorPenetration && a.SpecialRules.SequenceEqual(b.SpecialRules);
 

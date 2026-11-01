@@ -1,5 +1,6 @@
 using FDG.Data;
 using FDG.Rules.Foundation;
+using FDG.Stages;
 using FDG.Utilities;
 using System.Collections.Generic;
 
@@ -61,6 +62,12 @@ namespace FDG
         /// histogram-derived) earned count with the REAL weapon, keeping its AP and rules.</summary>
         public float? AttackCountOverride => null;
 
+        /// <summary>#423 B1: the Parry dice pool this attack shares across the attacker's weapon profiles - the
+        /// <see cref="ICombatActionContext"/>'s, handed down by <c>ConsumeAttackIntoContext</c> for melee swings. Null
+        /// (the default) gives the Parry step a pool of its own for this one hit group arrival: shooting (where it is
+        /// never read), the charge's Impact hits (their own hit-taking event, #423 D3) and single-volley harnesses.</summary>
+        public ParryBudget? ParryBudget => null;
+
         //TODO: Next value can replace everything after?
         public void AddResult<TResult>(TResult result);
 
@@ -97,6 +104,8 @@ namespace FDG
 
         public float? AttackCountOverride { get; private set; }
 
+        public ParryBudget? ParryBudget { get; private set; }
+
 
         private QueryableResults _queryableResults = new QueryableResults();
 
@@ -105,7 +114,8 @@ namespace FDG
             bool attackerMoved = false, bool isMelee = false, bool isCharging = false, bool isSpell = false,
             float chargeOriginDistanceInches = 0f,
             EUnpredictableBranch unpredictableBranch = EUnpredictableBranch.None,
-            int burstShotIndex = 0, bool isBonusAttack = false, float? attackCountOverride = null)
+            int burstShotIndex = 0, bool isBonusAttack = false, float? attackCountOverride = null,
+            ParryBudget? parryBudget = null)
         {
             GameContext = gameContext;
             AttackingUnit = attackingUnit;
@@ -121,6 +131,7 @@ namespace FDG
             BurstShotIndex = burstShotIndex;
             IsBonusAttack = isBonusAttack;
             AttackCountOverride = attackCountOverride;
+            ParryBudget = parryBudget;
         }
 
         public void AddResult<TResult>(TResult result)

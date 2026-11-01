@@ -9,9 +9,10 @@ namespace FDG.Tests
     // Dangerous terrain deals wounds but is NOT a morale-test source (corrected 2026-07-02). Shooting, melee,
     // transport destruction, etc. cause morale tests; crossing dangerous terrain never does. The earlier #009
     // wiring that ran a half-strength morale test from dangerous terrain was a rules bug and was removed.
-    // Models are 1 wound each; every crossing model now rolls together in one batch, so the roller must honor
-    // rollCount -- FixedFaceDiceRoller(1) makes every die in the batch a 1, wounding each crossing model. The
-    // unit takes casualties but is never asked to take a morale test.
+    // Models are 1 wound each. 3.6 (#420): any crossing model puts the WHOLE unit to the test, which rolls one
+    // die per wound it would take to destroy it (4 models = 4 dice) in one batch, each 1 a wound to the unit.
+    // The roller must honor rollCount -- FixedOnesDiceRoller(n) makes exactly n dice of the batch 1s. The unit
+    // takes casualties but is never asked to take a morale test.
     [TestFixture]
     public class DangerousTerrainMoraleTests
     {
@@ -24,8 +25,9 @@ namespace FDG.Tests
         [Test]
         public async Task ReducedToHalfByDangerousTerrain_TakesNoMoraleTest_NotShaken()
         {
-            // 4 models: 2 cross the dangerous zone (and die to it), 2 move clear — leaving the unit at half
-            // strength. Half strength from shooting would force a morale test, but dangerous terrain never does.
+            // 4 models: 2 cross the dangerous zone, 2 move clear. The unit rolls its 4 dice and two come up 1:
+            // two wounds to the unit, which leaves it at half strength. Half strength from shooting would
+            // force a morale test, but dangerous terrain never does.
             var crossing1 = MakeModel(new Position(0, 0));
             var crossing2 = MakeModel(new Position(0, 1));
             var clear1 = MakeModel(new Position(0, 5));
@@ -40,21 +42,22 @@ namespace FDG.Tests
                 new ModelMoveEntry(clear2, new List<Position> { new Position(8, 6) }),
             };
 
-            await RunStage(unit, paths, dieValue: 1);
+            await RunStage(unit, paths, ones: 2);
 
             Assert.That(unit.GetValue().Models.Count(m => m.GetIsAlive()), Is.EqualTo(2),
-                "the two models that crossed dangerous terrain took a wound each and died.");
+                "two wounds to the unit kill two of its 1-wound models.");
             Assert.That(unit.GetValue().Tokens.HasToken(Rules.Foundation.TokenType.Shaken), Is.False,
                 "dangerous terrain never triggers a morale test, so the unit is not Shaken even at half strength.");
-            Assert.That(clear1.GetValue().GetIsAlive(), Is.True,
-                "a model that never crossed dangerous terrain is untouched.");
+            Assert.That(crossing1.GetValue().GetIsDead() && crossing2.GetValue().GetIsDead(), Is.True,
+                "the wounds fill the unit in assignment order (the first two models), not 'the model that crossed'.");
         }
 
         [Test]
         public async Task DangerousTerrainButStaysAboveHalf_NoMoraleTest_Survives()
         {
-            // 4 models: only 1 crosses the dangerous zone. No morale test either way (dangerous terrain never
-            // triggers one) — one model dies, the rest are untouched.
+            // 4 models: only 1 crosses the dangerous zone, and that is enough to put the whole unit to its
+            // 4-dice test. One die comes up 1: one wound, one model dies, no morale test either way
+            // (dangerous terrain never triggers one).
             var crossing = MakeModel(new Position(0, 0));
             var clear1 = MakeModel(new Position(0, 5));
             var clear2 = MakeModel(new Position(0, 6));
@@ -69,7 +72,7 @@ namespace FDG.Tests
                 new ModelMoveEntry(clear3, new List<Position> { new Position(8, 7) }),
             };
 
-            await RunStage(unit, paths, dieValue: 1);
+            await RunStage(unit, paths, ones: 1);
 
             Assert.That(unit.GetValue().GetIsAlive(), Is.True);
             Assert.That(unit.GetValue().Tokens.HasToken(Rules.Foundation.TokenType.Shaken), Is.False,
@@ -82,8 +85,9 @@ namespace FDG.Tests
         public async Task ProbabilisticRoller_DealsFractionalWoundsAcrossTheBatch()
         {
             // 3 models all cross the dangerous zone. Under the probabilistic roller a single batch of 3 d6
-            // yields the expected 3/6 = 0.5 ones, spread evenly (0.5/3 wound each) -- fractional wounds that
-            // don't kill a 1-wound model. This is exactly what N separate decisive per-model rolls could not
+            // (one per wound to destroy the unit) yields the expected 3/6 = 0.5 ones, spread across the
+            // models by their share of the unit's wounds (0.5/3 wound each for 1-wound models) --
+            // fractional wounds that don't kill a 1-wound model. This is exactly what N separate decisive per-model rolls could not
             // produce, and why batching matters for the probabilistic roller.
             var m1 = MakeModel(new Position(0, 0));
             var m2 = MakeModel(new Position(0, 1));
@@ -119,11 +123,11 @@ namespace FDG.Tests
         // The stage rolls the batch; ExecuteMoveStage lands it after the move beat (so a casualty falls at
         // its destination instead of vanishing off the start line). Both halves run here, which is what the
         // real movement flow does, so these assertions stay about the wounds and the morale consequence.
-        private async Task RunStage(DataBinding<UnitData> unit, List<ModelMoveEntry> paths, int dieValue)
+        private async Task RunStage(DataBinding<UnitData> unit, List<ModelMoveEntry> paths, int ones)
         {
-            // FixedFaceDiceRoller honors rollCount so the single batched Roll(6, N) reports N dice on the
-            // fixed face (FixedDiceRoller collapses every batch to a single die).
-            var ctx = new TestGameContext(_store, new FixedFaceDiceRoller(dieValue));
+            // FixedOnesDiceRoller honors rollCount so the single batched Roll(6, N) reports N dice with
+            // exactly `ones` of them 1s (FixedDiceRoller collapses every batch to a single die).
+            var ctx = new TestGameContext(_store, new FixedOnesDiceRoller(ones));
             var stage = new ApplyNonMovementTerrainEffectsStage(ctx, new NoOpLayer<IMovementActionContext>());
             stage.OnAppliedNonMovementTerrainEffects.Bind("done");
             var terrain = new List<ITerrain> { new TerrainData(ETerrainType.Dangerous, DangerZone) };

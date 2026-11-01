@@ -1,7 +1,7 @@
 namespace FDG.Stages
 {
     /// <summary>
-    /// Drives D3+2 alternating objective placement (GF Beginner's Guide v3.5.1 p.6).
+    /// Drives D3+2 alternating objective placement (GF Beginner's Guide v3.6.0 p.6, unchanged from v3.5.1).
     /// Reads the rolled count + starting team order from the surrounding
     /// <see cref="IMapSetupContext"/>, builds a per-turn context that owns
     /// the round-robin cursor and placement counter, and bounces between

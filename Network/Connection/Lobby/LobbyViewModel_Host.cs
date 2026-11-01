@@ -173,6 +173,11 @@ namespace FDG.Network.Connection.Lobby
 
         public bool IsResumeMode => _isResume;
 
+        // #444 D2: the loaded save's rules stamp (resume lobbies only; null = a pre-3.6 save, or a fresh lobby).
+        private readonly string? _saveRulesVersion;
+
+        public string? SaveRulesVersion => _saveRulesVersion;
+
         // #412: minted at launch (new game or resume), before OnLaunched fires and before the launch
         // message goes out carrying it. Written once on the launch path; read by the front end.
         private volatile string? _launchedGameId;
@@ -260,10 +265,14 @@ namespace FDG.Network.Connection.Lobby
         /// host can re-crew each slot (default: host plays the first slot, the rest become AI) before
         /// resuming. Networked re-crew (assigning connected clients to saved slots) is a follow-up.
         /// </summary>
+        /// <param name="saveRulesVersion">#444 D2: the save's <see cref="GameSaveFile.RulesVersion"/> stamp as
+        /// <see cref="GameSaveSerializer.Load(string, out string?)"/> reported it. Null (the default, and what every
+        /// pre-3.6 save carries) reads as a legacy save in the lobby's <see cref="LegacySaveNotice"/> line.</param>
         public LobbyViewModel_Host(string hostPlayerName, string serverName, string? password, INetworkHost host,
-            GameDataStore loadedGameDataStore)
+            GameDataStore loadedGameDataStore, string? saveRulesVersion = null)
         {
             _isResume = true;
+            _saveRulesVersion = saveRulesVersion;
             _gameDataStore = loadedGameDataStore;
             _messageBus = new MessageBusHost_Networked(host, _gameDataStore);
             _host = host;
@@ -511,7 +520,10 @@ namespace FDG.Network.Connection.Lobby
             {
                 ArmyListSummary? summary = fullInfo.ArmyListFile != null
                     ? new ArmyListSummary(true, fullInfo.ArmyListFile.Name, fullInfo.ArmyListFile.Faction,
-                    fullInfo.ArmyListFile.TotalPoints, fullInfo.ArmyListFile.GameSystem)
+                    fullInfo.ArmyListFile.TotalPoints, fullInfo.ArmyListFile.GameSystem,
+                    ArmyBuilding.LegacyArmyNotice.RulesVersionOf(fullInfo.ArmyListFile),
+                    // #441 F1: the caps read against the LOBBY's points limit, the size of game being agreed.
+                    SaveLoad.ForceOrgValidator.CompositionWarnings(fullInfo.ArmyListFile, ArmyPoints))
                     : new ArmyListSummary(false, "N/A", "N/A", 0);
                 infoSummaries.Add(new LobbyPlayerInfoSummary(fullInfo.PlayerName, summary, fullInfo.TeamNumber, fullInfo.PlayerType,
                     fullInfo.ConnectionID, fullInfo.PlayerID, fullInfo.ColorIndex));
@@ -942,6 +954,8 @@ namespace FDG.Network.Connection.Lobby
                 _settings_ArmyPoints.OnNext(armyPoints);
                 _gameSettings.ArmyPoints = armyPoints;
                 _messageBus.SendCommandToAllAsync(new LobbyGameSettingsUpdate(_gameSettings));
+                // #441 F1: the roster's force-org warnings are measured against this limit, so re-sync them.
+                UpdateInfoSummariesFromFullList();
 
             }
             else

@@ -9,7 +9,7 @@ using NUnit.Framework;
 namespace FDG.Tests
 {
     // #102 — the RangeModifier family. Increased Shooting Range (+6" to the bearer's own weapons, Actor seat)
-    // and Ranged Shrouding (enemies get -6" range shooting this unit, Subject seat) fold via
+    // and Ranged Shrouding (enemies get -4" range shooting this unit since 3.6, Subject seat) fold via
     // RangeRuleQueries.EffectiveRange into ChooseRangedAttackStage's target-eligibility check. Models are
     // base radius 0.5", so base-to-base distance = centre distance - 1.0"; a 12" rifle reaches 13" of centre.
     [TestFixture]
@@ -52,17 +52,17 @@ namespace FDG.Tests
         [Test]
         public void RangedShrouding_OnDefender_PushesAnInRangeTargetOutOfRange()
         {
-            // Enemy centre 8" → 7" base-to-base, comfortably within the 12" rifle.
+            // Enemy centre 10" → 9" base-to-base, within the 12" rifle.
             DataBinding<UnitData> attacker = MakeArmyUnit(_attackerPlayer, new Position(0, 0, 0), Rifle(12f));
-            DataBinding<UnitData> enemy = MakeArmyUnit(_enemyPlayer, new Position(8, 0, 0));
+            DataBinding<UnitData> enemy = MakeArmyUnit(_enemyPlayer, new Position(10, 0, 0));
 
             Assert.That(ChooseRangedAttackStage.HasAnyFireableTarget(attacker, _ctx), Is.True,
-                "7\" base-to-base is within the rifle's 12\" range.");
+                "9\" base-to-base is within the rifle's 12\" range.");
 
             Attach(enemy, "Ranged Shrouding", CoreRuleCatalog.RangedShrouding);
 
             Assert.That(ChooseRangedAttackStage.HasAnyFireableTarget(attacker, _ctx), Is.False,
-                "the defender's -6\" range (6\" effective) no longer reaches the 7\" target.");
+                "the defender's 3.6 -4\" range (8\" effective) no longer reaches the 9\" target.");
         }
 
         [Test]
@@ -82,7 +82,7 @@ namespace FDG.Tests
 
             Attach(defender, "Ranged Shrouding", CoreRuleCatalog.RangedShrouding);
             Assert.That(RangeRuleQueries.EffectiveRange(attacker.GetValue(), weapon, defender.GetValue(), ev),
-                Is.EqualTo(12f), "defender's -6 debuff (Subject seat) nets against the +6 buff.");
+                Is.EqualTo(14f), "defender's 3.6 -4 debuff (Subject seat) nets against the +6 buff.");
         }
 
         [Test]
@@ -93,58 +93,17 @@ namespace FDG.Tests
             Attach(defender, "Ranged Shrouding", CoreRuleCatalog.RangedShrouding);
             RuleEvaluator ev = _ctx.RuleEvaluator;
 
-            // 9" weapon: 9 - 6 = 3, but the rule floors the result at 6".
+            // 9" weapon: 9 - 4 = 5, but the rule floors the result at 6".
             Assert.That(RangeRuleQueries.EffectiveRange(attacker.GetValue(), Rifle(9f), defender.GetValue(), ev),
-                Is.EqualTo(6f), "the -6 reduction is floored at the rule's 6\" minimum.");
+                Is.EqualTo(6f), "the -4 reduction is floored at the rule's 6\" minimum.");
 
-            // 24" weapon: 24 - 6 = 18, comfortably above the floor.
+            // 24" weapon: 24 - 4 = 20, comfortably above the floor.
             Assert.That(RangeRuleQueries.EffectiveRange(attacker.GetValue(), Rifle(24f), defender.GetValue(), ev),
-                Is.EqualTo(18f), "the floor doesn't apply when the reduced range is already above it.");
-        }
+                Is.EqualTo(20f), "the floor doesn't apply when the reduced range is already above it.");
 
-        [Test]
-        public void DarkbornOffensive_AddsThreeToShootingRange()
-        {
-            DataBinding<UnitData> attacker = MakeArmyUnit(_attackerPlayer, new Position(0, 0, 0));
-            DataBinding<UnitData> defender = MakeArmyUnit(_enemyPlayer, new Position(8, 0, 0));
-            Attach(attacker, "Darkborn (Offensive)", CoreRuleCatalog.DarkbornOffensive);
-
-            Assert.That(RangeRuleQueries.EffectiveRange(attacker.GetValue(), Rifle(12f), defender.GetValue(), _ctx.RuleEvaluator),
-                Is.EqualTo(15f), "Offensive Darkborn's +3\" range applies at the Actor seat.");
-        }
-
-        [Test]
-        public void DarkbornOffensive_AddsThreeToChargeMoveOnly()
-        {
-            var baseline = new MovementActionContext(_ctx, MakeMovementUnit());
-
-            DataBinding<UnitData> unit = MakeMovementUnit();
-            Attach(unit, "Darkborn (Offensive)", CoreRuleCatalog.DarkbornOffensive);
-            var context = new MovementActionContext(_ctx, unit);
-
-            Assert.That(context.MaxChargeDistance, Is.EqualTo(baseline.MaxChargeDistance + 3f).Within(0.001f),
-                "Offensive Darkborn adds +3\" to the Charge budget (the live MovementBonus seam).");
-            Assert.That(context.MaxAdvanceDistance, Is.EqualTo(baseline.MaxAdvanceDistance).Within(0.001f),
-                "Darkborn's move bonus is Charge-only; Advance untouched.");
-            Assert.That(context.MaxRushDistance, Is.EqualTo(baseline.MaxRushDistance).Within(0.001f),
-                "Darkborn's move bonus is Charge-only; Rush untouched.");
-        }
-
-        [Test]
-        public void DarkbornDefensive_DebuffsEnemyRangeAndCharge()
-        {
-            DataBinding<UnitData> attacker = MakeArmyUnit(_attackerPlayer, new Position(0, 0, 0));
-            DataBinding<UnitData> defender = MakeArmyUnit(_enemyPlayer, new Position(8, 0, 0));
-            Attach(defender, "Darkborn (Defensive)", CoreRuleCatalog.DarkbornDefensive);
-
-            // Range half: enemy shooting the bearer loses 4" (24 -> 20).
-            Assert.That(RangeRuleQueries.EffectiveRange(attacker.GetValue(), Rifle(24f), defender.GetValue(), _ctx.RuleEvaluator),
-                Is.EqualTo(20f), "Defensive Darkborn's -4\" range applies at the Subject seat.");
-
-            // Charge half: enemy charging the bearer loses 2" (12 -> 10).
-            Assert.That(MovementRuleQueries.EffectiveChargeDistanceAgainst(
-                    attacker.GetValue(), defender.GetValue(), baseChargeInches: 12f, _ctx.RuleEvaluator),
-                Is.EqualTo(10f), "Defensive Darkborn's -2\" charge applies at the Subject seat.");
+            // #432: "to a min. of 6\"" limits the reduction - it never lengthens a gun already shorter than 6".
+            Assert.That(RangeRuleQueries.EffectiveRange(attacker.GetValue(), Rifle(4f), defender.GetValue(), ev),
+                Is.EqualTo(4f), "a 4\" weapon keeps its 4\" against the rule; the floor does not raise it to 6\".");
         }
 
         // The Army-Creator picker derives from CoreRuleCatalog.All; an uncatalogued rule is unpickable and a
@@ -154,7 +113,6 @@ namespace FDG.Tests
         {
             RuleResolver resolver = CoreRuleCatalog.CreateResolver();
             foreach (string name in new[] { "Increased Shooting Range", "Ranged Shrouding",
-                                            "Darkborn (Offensive)", "Darkborn (Defensive)",
                                             "Increased Shooting Range Aura", "Ranged Shrouding Aura" })
             {
                 Assert.That(CoreRuleCatalog.All.Any(r => r.Name == name), Is.True, $"{name} must be in All.");
@@ -162,7 +120,8 @@ namespace FDG.Tests
             }
         }
 
-        // --- #377 range-extension marks: "friendly units get +6\" range when shooting against it once" ---
+        // --- #377 range-extension marks: "friendly units get +6\" range when shooting against it once" (#439: the mark
+        // names Increased Shooting Range, the rule "+6\" range on their weapons when shooting" stands for) ---
 
         [Test]
         public void RangeMark_OnDefender_ExtendsRangeAgainstIt_WithoutSpendingTheMark()
@@ -175,7 +134,7 @@ namespace FDG.Tests
 
             marked.GetValue().Tokens.AddToken(new Token(TokenType.Mark, 1,
                 new TokenClearTrigger.ManualOnly(),
-                Payload: new TokenPayload.RuleGrant("+6\" range when shooting",
+                Payload: new TokenPayload.RuleGrant("Increased Shooting Range",
                     ELifetime.ThisAttack)));
 
             Assert.That(RangeRuleQueries.EffectiveRange(attacker.GetValue(), weapon, marked.GetValue(), ev),
@@ -199,7 +158,7 @@ namespace FDG.Tests
 
             enemy.GetValue().Tokens.AddToken(new Token(TokenType.Mark, 1,
                 new TokenClearTrigger.ManualOnly(),
-                Payload: new TokenPayload.RuleGrant("+6\" range when shooting",
+                Payload: new TokenPayload.RuleGrant("Increased Shooting Range",
                     ELifetime.ThisAttack)));
 
             Assert.That(ChooseRangedAttackStage.HasAnyFireableTarget(attacker, _ctx), Is.True,

@@ -1,9 +1,11 @@
 using FDG.Data;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
+using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
 using FDG.Rules.Tokens;
 using FDG.StageResolution.Requests;
+using FDG.Stages;
 using FDG.Utilities;
 
 namespace FDG.Ai.Tactician
@@ -87,13 +89,150 @@ namespace FDG.Ai.Tactician
 
         /// <summary>
         /// How far away the charger is genuinely DANGEROUS (#191 A5-6): its charge budget plus the
-        /// 2" horizontal melee cylinder (a charge only needs to END within melee range, not in
+        /// 3" horizontal melee cylinder (#417; a charge only needs to END within melee range, not in
         /// base contact). Centroid-based callers get a little extra slack on top.
         /// </summary>
         public static float MeleeThreatReach(IUnit charger, IUnit target, RuleEvaluator evaluator,
             IReadOnlyList<ITerrain>? terrain = null) =>
             ChargeDistanceAgainst(charger, target, evaluator, terrain)
             + GameWideConstants.MELEE_RANGE_INCHES_HORIZONTAL;
+
+        /// <summary>
+        /// #442 (#421 / #432 / #435): the chance <paramref name="unit"/> PASSES a Morale Test it would take now -
+        /// <see cref="MoraleUtilities.TakeMoraleTest(IGameContext, IUnit, MoraleUtilities.MoraleQuality, bool, float?, float?, EMoraleTestCause)"/>
+        /// priced instead of rolled: the Quality from <see cref="MoraleUtilities.ResolveMoraleQuality(ITableState, IUnit)"/>
+        /// (own, joined hero's, a Tough(9)+ Hero's 6" aura), the pre-test morale modifiers through the same
+        /// <see cref="PreMoraleTestContext"/> (Hive Bond / Hold the Line / Valiant's "+1 when shot/charged from over
+        /// 9"/6"", Banner's "+1 for a test shooting or melee triggered"), granted morale tokens (peeked, not spent),
+        /// the 2-6 clamp, then a Fearless re-roll's 4+ second chance. A Shaken unit always fails (0); a failure
+        /// a conversion rule turns into a pass (No Retreat) counts as a pass when the test's failure would Shake or
+        /// Rout (<paramref name="failureCausesShakenOrRout"/>).
+        /// </summary>
+        public static float MoralePassChance(ITableState tableState, RuleEvaluator evaluator, IUnit unit,
+            EMoraleTestCause cause, float? shotFromInches = null, float? chargedFromInches = null,
+            bool failureCausesShakenOrRout = true)
+        {
+            if (unit.Tokens.HasToken(TokenType.Shaken))
+                return failureCausesShakenOrRout && HasMoraleConversion(evaluator, unit) ? 1f : 0f;
+
+            int quality = MoraleUtilities.ResolveMoraleQuality(tableState, unit).Quality;
+            var modifiers = new RollModifierSink();
+            modifiers.ApplyFrom(evaluator.EvaluateAllNamed(
+                    new PreMoraleTestContext(unit, shotFromInches, chargedFromInches, cause), RuleParticipant.Actor(unit))
+                .Select(tagged => tagged.Op).ToList());
+            int rollNeeded = DiceUtilities.ClampSuccessRollNeeded(quality - modifiers.Net(ERollKind.Morale)
+                - GrantedRollModifiers.PeekNet(unit, ERollKind.Morale));
+            float pass = (7 - rollNeeded) / 6f;
+
+            // The read-only named query: EvaluateAll would log each op and spend one-shot grants.
+            List<RuleOperation> completeOps = evaluator.EvaluateAllNamed(new MoraleTestContext(unit),
+                    RuleParticipant.Actor(unit, models: HeroStatRules.LivingModels(unit)))
+                .Select(tagged => tagged.Op).ToList();
+            var reroll = new RerollSink();
+            reroll.ApplyFrom(completeOps);
+            if (reroll.RerollMoraleOnFailure)
+                pass += (1f - pass) * (7 - MoraleUtilities.FearlessRerollPassesOn) / 6f;
+            if (failureCausesShakenOrRout && completeOps.Any(op => op is RuleOperation.PassMoraleTest))
+                pass = 1f;
+            return pass;
+        }
+
+        private static bool HasMoraleConversion(RuleEvaluator evaluator, IUnit unit) =>
+            evaluator.EvaluateAllNamed(new MoraleTestContext(unit),
+                    RuleParticipant.Actor(unit, models: HeroStatRules.LivingModels(unit)))
+                .Any(tagged => tagged.Op is RuleOperation.PassMoraleTest);
+
+        /// <summary>
+        /// #442 (#446): whether <paramref name="unit"/> would END in Dangerous terrain - any living model's base, at the
+        /// end of its <paramref name="move"/> entry (or where it stands when it has none, a Hold), overlapping a
+        /// Dangerous piece: the "activates in it" test it then owes at the start of its next activation
+        /// (<c>MovementExecutor.RollActivationDangerousTerrain</c>, the same base-overlap test). Flying/Aircraft
+        /// ignore it, as there; the caller checks that.
+        /// </summary>
+        public static bool EndsInDangerousTerrain(IUnit unit, IReadOnlyList<ModelMoveEntry>? move,
+            IReadOnlyList<ITerrain> terrain)
+        {
+            List<ITerrain>? dangerous = null;
+            foreach (ITerrain piece in terrain)
+                if (piece.TerrainType.HasFlag(ETerrainType.Dangerous)) (dangerous ??= new()).Add(piece);
+            if (dangerous == null) return false;
+
+            Dictionary<IModel, Position>? ends = null;
+            if (move != null)
+            {
+                foreach (ModelMoveEntry entry in move)
+                    if (entry.Positions.Count > 0)
+                        (ends ??= new(ReferenceEqualityComparer.Instance))[entry.Model.GetValue()] = entry.Positions[^1];
+            }
+            foreach (IModel model in unit.Models)
+            {
+                if (!model.GetIsAlive()) continue;
+                Position at = ends != null && ends.TryGetValue(model, out Position end) ? end : model.Position;
+                var point = new Float2(at.x, at.z);
+                foreach (ITerrain piece in dangerous)
+                    if (SweptBaseGeometry.DoesSweptBaseIntersectZone(piece.Shape, point, point, model.BaseShape,
+                            model.Facing))
+                        return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// #442 (#425 Cumbersome, "may only use Hold or Advance actions"): whether the unit may declare a Charge at
+        /// all - the gate ChooseActionStage applies (<see cref="ActionRestrictionQueries.MayDeclare"/>). An ENEMY
+        /// that may not charge is no charge threat, however good its melee weapons are; it still strikes back.
+        /// </summary>
+        public static bool MayCharge(IUnit unit, RuleEvaluator evaluator) =>
+            ActionRestrictionQueries.MayDeclare(unit, evaluator, EActionType.Charge);
+
+        /// <summary>
+        /// #442 (#432's charge arms): the charge-origin distance the engine would record if
+        /// <paramref name="charger"/> charged <paramref name="target"/> from where they stand now - closest living
+        /// models base to base, vertical included, measured from the charger's transport while it is embarked
+        /// (<c>UnitActionContext.SnapshotDistancesToEnemies</c>, the snapshot <c>CombatMetadata</c> carries).
+        /// </summary>
+        public static float ChargeOriginDistance(ITableState tableState, IUnit charger, IUnit target)
+        {
+            IUnit measureFrom = charger;
+            if (TransportUtilities.GetTransportId(charger) is UnitID transportId)
+            {
+                foreach (IArmy army in tableState.Armies.Objects)
+                {
+                    if (army is not ArmyData data) continue;
+                    foreach (DataBinding<UnitData> unit in data.UnitBindings)
+                        if (unit.GetValue().ID == transportId) measureFrom = unit.GetValue();
+                }
+            }
+            return UnitCompareUtilities.MinDistanceBetweenUnits(measureFrom, target, out _, out _,
+                includeVertical: true);
+        }
+
+        /// <summary>
+        /// #442: how far the unit's footprint reaches from its centroid - the farthest living model's centre plus its
+        /// base radius. Turns a centroid distance into an approximate base-edge gap where only a hypothetical
+        /// centroid exists (a candidate endpoint). 0 for a unit with no living model.
+        /// </summary>
+        public static float Spread(IUnit unit)
+        {
+            float sumX = 0f, sumZ = 0f;
+            int count = 0;
+            foreach (IModel model in unit.Models)
+            {
+                if (!model.GetIsAlive()) continue;
+                sumX += model.Position.x;
+                sumZ += model.Position.z;
+                count++;
+            }
+            if (count == 0) return 0f;
+            float cx = sumX / count, cz = sumZ / count, spread = 0f;
+            foreach (IModel model in unit.Models)
+            {
+                if (!model.GetIsAlive()) continue;
+                float dx = model.Position.x - cx, dz = model.Position.z - cz;
+                spread = Math.Max(spread, MathF.Sqrt(dx * dx + dz * dz) + model.BaseRadiusInches);
+            }
+            return spread;
+        }
 
         /// <summary>
         /// The unit's charge move allowance including its movement rules - the same accumulation
@@ -119,6 +258,9 @@ namespace FDG.Ai.Tactician
                         RuleParticipant.Actor(unit))
                     .Select(tagged => tagged.Op));
             }
+            // #432: the unit's own charge range (Highborn's +2") is part of the charge move, as in
+            // MovementActionContext.
+            sink.Add(EActionType.Charge, RangeRuleQueries.OwnChargeRangeDelta(unit, evaluator));
             return GameWideConstants.CHARGE_DISTANCE_INCHES + sink.Net(EActionType.Charge);
         }
             finally { global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.MoveQuery, __probe); }
@@ -144,8 +286,9 @@ namespace FDG.Ai.Tactician
         {
             float shooting = MaxWeaponRange(unit, target, evaluator);
             float shootingThreat = shooting > 0f ? AdvanceDistance(unit, evaluator, terrain) + shooting : 0f;
-            // #355: a ramming vehicle threatens its charge reach even with no melee weapon.
-            float meleeThreat = ChargeContactRules.CanFightInMelee(unit)
+            // #355: a ramming vehicle threatens its charge reach even with no melee weapon. #442: a unit that may
+            // not charge (#425 Cumbersome) threatens nothing in melee.
+            float meleeThreat = ChargeContactRules.CanFightInMelee(unit) && MayCharge(unit, evaluator)
                 ? ChargeDistanceAgainst(unit, target, evaluator, terrain) : 0f;
             return Math.Max(shootingThreat, meleeThreat);
         }
@@ -200,12 +343,15 @@ namespace FDG.Ai.Tactician
             return budget;
         }
 
-        /// <summary>Expected shooting damage at a hypothetical distance/cover - CombatMath, positioned.</summary>
+        /// <summary>Expected shooting damage at a hypothetical distance/cover - CombatMath, positioned.
+        /// #459: <paramref name="defenderMoved"/> is the defender's hypothetical MovedThisRound state (null = as it
+        /// stands) - see <see cref="AttackContext.DefenderMoved"/>.</summary>
         public static AttackEstimate ExpectedShootingAt(RuleEvaluator evaluator,
             DataBinding<UnitData> attacker, DataBinding<UnitData> defender,
-            float distanceInches, bool defenderInCover = false, bool attackerMoved = false) =>
+            float distanceInches, bool defenderInCover = false, bool attackerMoved = false,
+            bool? defenderMoved = null) =>
             CombatMath.EstimateShooting(evaluator, attacker, defender,
-                new AttackContext(distanceInches, attackerMoved, defenderInCover));
+                new AttackContext(distanceInches, attackerMoved, defenderInCover, DefenderMoved: defenderMoved));
 
         // --- Objectives ---------------------------------------------------------------------------
 
@@ -347,7 +493,8 @@ namespace FDG.Ai.Tactician
                 if (!model.GetIsAlive()) continue;
                 foreach (Weapon weapon in model.Weapons)
                 {
-                    if (weapon.RangeInches <= 0f) continue;
+                    // #424: the seam, not the range - an Assault pistol is priced on both sides.
+                    if (!weapon.IsRanged()) continue;
                     int referenceSave = DiceUtilities.ClampSuccessRollNeeded(4 + weapon.ArmorPenetration);
                     output += weapon.Attacks * hitChance * (referenceSave - 1) / 6f;
                 }
@@ -369,7 +516,7 @@ namespace FDG.Ai.Tactician
                 if (!model.GetIsAlive()) continue;
                 foreach (Weapon weapon in model.Weapons)
                 {
-                    if (weapon.RangeInches > 0f) continue; // melee only
+                    if (!weapon.IsMelee()) continue; // #424: the seam - "range 0 or grants melee use"
                     int referenceSave = DiceUtilities.ClampSuccessRollNeeded(4 + weapon.ArmorPenetration);
                     output += weapon.Attacks * hitChance * (referenceSave - 1) / 6f;
                 }

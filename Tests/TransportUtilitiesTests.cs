@@ -625,7 +625,7 @@ namespace FDG.Tests
         }
 
         [Test]
-        public void Spillout_DangerousTest_DealsOneWoundPerModel_OnRollOfOne()
+        public void Spillout_DangerousTest_RollsOneDiePerWoundToDestroy_AndEachOneIsAWound()
         {
             PlayerID player = NewPlayer();
             UnitData transport = MakeTransport(player, capacity: 6);
@@ -635,16 +635,19 @@ namespace FDG.Tests
             // The roll leaves its wounds PENDING (the stage lands them one at a time so each casualty can
             // animate as it falls), so landing them is part of what this asserts.
             TransportUtilities.SpilloutRollResult rolls =
-                TransportUtilities.ApplySpilloutEffects(squad, new FixedFaceDiceRoller(1)); // every model rolls a 1
+                TransportUtilities.ApplySpilloutEffects(squad, new FixedFaceDiceRoller(1)); // every die a 1
 
+            Assert.That(rolls.DiceCount, Is.EqualTo(6),
+                "3.6 (#420): one die per wound it would take to destroy the occupant (3 x Tough(2) = 6), "
+                + "not one per model.");
             Assert.That(squad.RemainingWounds, Is.EqualTo(6f),
                 "the roll alone wounds nobody - every model is still whole until the wounds are landed.");
 
             CasualtyPresentation.ApplyOnly(rolls.PendingWounds
                 .Select(w => new PendingModelWound(w.Model, w.Wounds)).ToList());
 
-            Assert.That(squad.RemainingWounds, Is.EqualTo(3f),
-                "each of the three models takes one dangerous-terrain wound.");
+            Assert.That(squad.RemainingWounds, Is.EqualTo(0f),
+                "six dice, six 1s, six wounds to the unit - the squad is wiped out.");
         }
 
         [Test]

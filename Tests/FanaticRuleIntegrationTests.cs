@@ -16,7 +16,8 @@ using NUnit.Framework;
 namespace FDG.Tests
 {
     // Vertical-slice integration test for #197 P21 Fanatic: "after this model is deployed, it may be placed
-    // anywhere fully within 9in of its position." Vanguard's deploy-hook shape (an activated ability at
+    // anywhere fully within 9in of its position." (#426: Vanguard shares the shape and, since 3.6, the
+    // non-Vanguard enemy clause - see VanguardRuleIntegrationTests.) Vanguard's deploy-hook shape (an activated ability at
     // Deployment_OnUnitDeployed, once per game) but a PLACEMENT, not a move - the owner's
     // reposition-is-a-placement ruling. Proves: the effect emits a flat RepositionModels(9) op, the rule is
     // offered at the deploy hook and gated once-per-game, and - through the REAL DeployUnitStage - accepting

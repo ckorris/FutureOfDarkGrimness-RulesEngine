@@ -29,6 +29,7 @@ namespace FDG.SaveLoad
             GameSaveFile file = new GameSaveFile
             {
                 Version = CurrentVersion,
+                RulesVersion = OprRulesVersion.CurrentStamp,
                 TypeMap = store.GetTypeMapWithCapacities()
                     .Select(tc => new SavedTypeEntry(SaveTypeRegistry.GetIdOrFullName(tc.Type), tc.Capacity))
                     .ToList(),
@@ -38,13 +39,23 @@ namespace FDG.SaveLoad
             return JsonConvert.SerializeObject(file, Formatting.Indented);
         }
 
-        public static GameDataStore Load(string json)
+        public static GameDataStore Load(string json) => Load(json, out _);
+
+        /// <summary>
+        /// <see cref="Load(string)"/>, also reporting the save's <see cref="GameSaveFile.RulesVersion"/> stamp
+        /// (#444 D2): the ruleset it was written under, or null for a save from before the 3.6 upgrade. The stamp
+        /// is advisory - a mismatch never refuses the load - and the caller turns it into the amber
+        /// <see cref="LegacySaveNotice"/> line.
+        /// </summary>
+        public static GameDataStore Load(string json, out string? rulesVersion)
         {
             GameSaveFile? file = JsonConvert.DeserializeObject<GameSaveFile>(json);
             if (file == null)
             {
                 throw new InvalidOperationException("Save data could not be parsed.");
             }
+
+            rulesVersion = string.IsNullOrWhiteSpace(file.RulesVersion) ? null : file.RulesVersion.Trim();
 
             if (file.Version != CurrentVersion)
             {

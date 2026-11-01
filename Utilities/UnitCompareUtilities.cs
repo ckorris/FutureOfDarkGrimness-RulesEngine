@@ -43,5 +43,30 @@ namespace FDG.Utilities
 
             return closestDistance;
         }
+
+        /// <summary>
+        /// #421: the closest base-to-base distance from one model to any LIVING model of <paramref name="unit"/> -
+        /// <see cref="MinDistanceBetweenUnits"/> with one side narrowed to a single model, for rules measured from
+        /// one model of a unit (the 3.6 Hero's "units within 6\" of friendly Heroes"). Same measure, same
+        /// +infinity for a unit with no living models.
+        /// </summary>
+        public static float MinDistanceFromModelToUnit(IModel model, IUnit unit, bool includeVertical)
+        {
+            float closestDistance = float.PositiveInfinity;
+            foreach (IModel other in unit.Models)
+            {
+                if (!other.GetIsAlive()) continue;
+
+                float distance = includeVertical
+                    ? model.BaseDistanceToOtherModel_3D(other)
+                    : model.BaseDistanceToOtherModel_2D(other);
+                if (distance < closestDistance)
+                {
+                    closestDistance = distance;
+                }
+            }
+
+            return closestDistance;
+        }
     }
 }

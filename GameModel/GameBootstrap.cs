@@ -228,6 +228,8 @@ namespace FDG.GameModel
                 AttachToEveryWeapon(unitData, ruleEntry, resolved);
             }
 
+            AttachImpliedRules(unitData, ruleResolver);
+
             AttachModelGrants(unitData, unitEntry, ruleResolver);
 
             // #035: every unit carries the engine-internal Disembark + Embark abilities (slice C/D), each
@@ -238,10 +240,35 @@ namespace FDG.GameModel
             unitData.AttachRuleDefinition(new ResolvedRule(CoreRuleCatalog.EmbarkRuleName, CoreRuleCatalog.Embark));
         }
 
+        //#430: "counts as having" rules. A unit carrying Unique Hero ("Counts as having Hero ...") also gets the
+        //real Hero rule, so everything that asks whether a unit is a Hero - the #006 join, the transport ride cap,
+        //the resume snapshot - answers yes without knowing the 3.6 book rule exists. Runs after the whole entry
+        //list so a unit that names both Hero and Unique Hero ends up with one Hero, whichever came first. The
+        //implied rule is resolved through the army's resolver, so an army that embeds its own Hero is honoured.
+        private static void AttachImpliedRules(UnitData unitData, IRuleResolver ruleResolver)
+        {
+            foreach (ResolvedRule attached in unitData.RuleDefinitions.ToList())
+            {
+                string? impliedName = CoreRuleCatalog.ImpliedRuleName(attached.Definition.Name);
+                if (impliedName == null
+                    || unitData.RuleDefinitions.Any(rule => string.Equals(rule.Definition.Name, impliedName,
+                        StringComparison.Ordinal)))
+                {
+                    continue;
+                }
+
+                if (ruleResolver.TryResolve(impliedName, out ResolvedRule implied))
+                {
+                    unitData.AttachRuleDefinition(new ResolvedRule(impliedName, implied.Definition));
+                }
+            }
+        }
+
         //#407: rules only some models have (a one-model Weapon Team's Tough(3)) attach to the unit's LAST
         //models, so the automatic wound order (WoundAllocation.Order: unit-list order) reaches them last.
         //Which model it is matters for nothing else - weapons are not distributed per model either.
-        //UnitCreationRules then reads each model's own Tough. A grant naming more models than the unit has
+        //UnitCreationRules then reads each model's own Tough; #447's per-model Impact counts the living models
+        //carrying it, so a granted Impact leaves with its model. A grant naming more models than the unit has
         //is clamped; only unit-scoped rules are model-carried today, so anything else is warned and dropped.
         private static void AttachModelGrants(UnitData unitData, UnitFileEntry unitEntry, IRuleResolver ruleResolver)
         {

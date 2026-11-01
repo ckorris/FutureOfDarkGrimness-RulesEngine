@@ -66,7 +66,7 @@ namespace FDG.Stages
                     EModelRuleScope.AllOwners),
                 // #183: the defender's living models contribute their per-model defensive rules (a joined
                 // hero's relocated Evasive/Melee-Evasion/Artillery) under AnyOwner, so the merge no longer
-                // hides them; the rule's AllModelsHaveThisRule gate still decides whether it applies.
+                // hides them; the rule's MostModelsHaveThisRule gate still decides whether it applies.
                 RuleParticipant.Subject(defender, models: HeroStatRules.LivingModels(defender)));
 
             IReadOnlyList<RuleOperation> operations = named.Select(n => n.Op).ToList();
@@ -91,18 +91,6 @@ namespace FDG.Stages
             float attackCount = metaData.AttackCountOverride
                 ?? metaData.WeaponType.Attacks * metaData.WeaponCount;
 
-            // #197 P12 Regenerative Strength: the one attack-count modifier in the corpus. Stage code
-            // rather than a rule at EHookID.Shooting_OnPreHitRollCount because it prompts and is gated to
-            // one weapon per melee — see RegenerativeStrengthAttacks for why the hook stays dormant. The
-            // float is the point: the bonus is a marker total that the probabilistic roller makes
-            // fractional, and attackCount has always been a float. Not offered to a bonus batch — its
-            // pool is exactly what the blocks earned.
-            if (metaData.AttackCountOverride == null)
-            {
-                attackCount += await RegenerativeStrengthAttacks.Offer(GameContext, attacker,
-                    metaData.WeaponType, metaData.IsMelee);
-            }
-
             DetermineHitRollResults results = new DetermineHitRollResults(baseQuality, attackCount);
 
             RollModifierSink rollModifiers = new RollModifierSink();
@@ -121,7 +109,11 @@ namespace FDG.Stages
             int grantedNet = 0;
             if (!fatiguedInMelee)
             {
-                grantedNet = GrantedRollModifiers.ConsumeNet(metaData.AttackingUnit.GetValue(), ERollKind.Hit);
+                // #427 Unstoppable: the weapon ignores negative hit grants another unit placed (an enemy
+                // "-1 to hit" spell); the marker comes through the same evaluation that folded the rules above.
+                bool ignoresNegative = operations.OfType<RuleOperation.IgnoreNegativeWeaponModifiers>().Any();
+                grantedNet = GrantedRollModifiers.ConsumeNet(metaData.AttackingUnit.GetValue(), ERollKind.Hit,
+                    ignoreOtherUnitsNegative: ignoresNegative);
                 results.HitRollNeeded -= grantedNet;
             }
 
@@ -140,11 +132,13 @@ namespace FDG.Stages
             GameContext.Log($"Base hit roll required is {results.HitRollNeeded} based on attacker's quality.");
 
             // Override the computed threshold rather than stacking a modifier; the d6 comparison in
-            // RollToHitStage then admits only natural 6s.
+            // RollToHitStage then admits only natural 6s. #418: RollToHitStage also stops those 6s from
+            // counting as 6s for special rules (the hit context's SpecialRuleHitRolls view).
             if (fatiguedInMelee)
             {
                 results.HitRollNeeded = 6;
-                GameContext.Log($"{attacker.Name} is fatigued - hits only on unmodified 6s in melee.");
+                GameContext.Log($"{attacker.Name} is fatigued - hits only on unmodified 6s in melee, " +
+                    "and those don't count as 6s for special rules.");
             }
 
             results.ThresholdTags = ComposeThresholdTags(baseQuality, named, grantedNet, fatiguedInMelee,

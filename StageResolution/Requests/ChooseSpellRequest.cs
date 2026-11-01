@@ -27,9 +27,13 @@ namespace FDG.StageResolution.Requests
         /// <summary>One offered spell. <paramref name="Label"/> is the picker label ("Name (cost)");
         /// <paramref name="Description"/> summarizes the effect, shown as subtext. Non-castable entries
         /// (unaffordable, or no legal target) are display-only, with <paramref name="UnavailableReason"/>
-        /// saying why — replying with one is treated as a cancel.</summary>
+        /// saying why — replying with one is treated as a cancel. <paramref name="RequiresLineOfSight"/> (#429):
+        /// the spell's own "in line of sight" clause (Core Rules v3.6.0 moved LoS from Caster into each spell),
+        /// so the front ends can tag it ("(LoS)"); a LoS spell whose in-range targets are all out of sight is
+        /// disabled with <c>CastSpellStage.NoTargetInSightReason</c>. The label itself stays "Name (cost)" - the
+        /// Tactician matches spells by it.</summary>
         public record SpellOption(string Label, string Description, int Cost, bool Castable,
-            string? UnavailableReason);
+            string? UnavailableReason, bool RequiresLineOfSight = false);
 
         /// <summary>One Spell Conduit in range: whose it is and what it adds to the roll when a cast is
         /// made from its position.</summary>
@@ -46,8 +50,15 @@ namespace FDG.StageResolution.Requests
         /// <c>AvailableTokens - Cost</c> of the chosen spell.</summary>
         public int AvailableTokens { get; }
 
-        /// <summary>The unmodified cast success threshold (roll this or higher succeeds; base 4).</summary>
+        /// <summary>The caster's own cast success threshold before token boosts, assists and relays (roll this or
+        /// higher succeeds): the base 4+ less every modifier the caster itself carries into the roll - its passive
+        /// casting rules (#427 Spell Amplifier: "+1 to casting rolls" reads 3+) and its granted cast-roll tokens
+        /// (#429: a Casting Debuff's -1 reads one worse). The same sum and [2, 6] clamp the roll uses.</summary>
         public int BaseThreshold { get; }
+
+        /// <summary>#429 - where <see cref="BaseThreshold"/> came from, in the cast banner's words ("base 4+,
+        /// rules +1, granted -1"), or empty when it is the plain 4+. For the picker's "Roll needed" line.</summary>
+        public string BaseThresholdNote { get; }
 
         /// <summary>Total spell tokens held by enemy Casters within assist range of the caster right now —
         /// the most the roll can be hindered by (see class remarks).</summary>
@@ -74,7 +85,7 @@ namespace FDG.StageResolution.Requests
         [JsonConstructor]
         public ChooseSpellRequest(PlayerID targetPlayerID, TaskID taskID, DataBinding<UnitData> castingUnit,
             int availableTokens, int baseThreshold, int hinderTokensInRange, IReadOnlyList<SpellOption> spells,
-            IReadOnlyList<RelayOption>? relaysInRange = null)
+            IReadOnlyList<RelayOption>? relaysInRange = null, string? baseThresholdNote = null)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
@@ -84,14 +95,15 @@ namespace FDG.StageResolution.Requests
             HinderTokensInRange = hinderTokensInRange;
             Spells = spells;
             RelaysInRange = relaysInRange ?? Array.Empty<RelayOption>();
+            BaseThresholdNote = baseThresholdNote ?? string.Empty;
             TaskName = "Choosing a Spell";
         }
 
         public ChooseSpellRequest(PlayerID targetPlayerID, DataBinding<UnitData> castingUnit,
             int availableTokens, int baseThreshold, int hinderTokensInRange, IReadOnlyList<SpellOption> spells,
-            IReadOnlyList<RelayOption>? relaysInRange = null)
+            IReadOnlyList<RelayOption>? relaysInRange = null, string? baseThresholdNote = null)
             : this(targetPlayerID, new TaskID(Guid.NewGuid()), castingUnit, availableTokens, baseThreshold,
-                   hinderTokensInRange, spells, relaysInRange)
+                   hinderTokensInRange, spells, relaysInRange, baseThresholdNote)
         {
         }
 

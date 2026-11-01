@@ -10,6 +10,7 @@ using FDG.SaveLoad;
 using FDG.Stages;
 using FDG.StageResolution;
 using FDG.StageResolution.Requests;
+using FDG.Utilities;
 using NUnit.Framework;
 
 namespace FDG.Tests
@@ -164,7 +165,7 @@ namespace FDG.Tests
             Assert.That(routed, Is.True, "a caster with a castable spell is offered Cast and routes to the cast stage");
         }
 
-        // #234 — Caster(X) is "at any point before attacking" (GF v3.5.1), so once the unit has shot or
+        // #234 — Caster(X) casts "Once per activation, before attacking" (GF Core Rules v3.6.0), so once the unit has shot or
         // fought, Cast is no longer a valid option. HasAttacked is set by both ShootStage and MeleeStage,
         // so this one gate covers the charge-then-melee case the item was filed for and the shooting case.
         [Test]
@@ -428,7 +429,8 @@ namespace FDG.Tests
                 "Shielded must not modify spell saves; the face-4 roll fails the AP(1) save needing a 5");
         }
 
-        // #183 finding-2 — Resistance's spell facet end-to-end: "if the wounds were from a spell, they are
+        // #183 finding-2 — the spell facet end-to-end (3.5 Resistance's shape; since #436 driven by 3.6's Spell Resistance,
+        // which carries the same 2+ spell / 6+ other thresholds): "if the wounds were from a spell, they are
         // ignored on a 2+ instead" of the base 6+. Every roll is a fixed face 4: the cast (needs 2) succeeds,
         // the AP(1) save (needs 5) fails and deals 1 wound, and the wound-ignore roll's face 4 clears the
         // spell threshold 2 — but would fail the weapon threshold 6 — so the enemy survives only because
@@ -440,7 +442,7 @@ namespace FDG.Tests
             DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 2,
                 new[] { DamageSpell("Bolt", threshold: 2, hits: 1, armorPenetration: 1) }, new Position(10f, 10f));
             DataBinding<UnitData> enemy = MakeEnemyUnit(new PlayerID(System.Guid.NewGuid()), new Position(12f, 10f));
-            enemy.GetValue().AttachRuleDefinition(new ResolvedRule("Resistance", CoreRuleCatalog.Resistance));
+            enemy.GetValue().AttachRuleDefinition(new ResolvedRule("Spell Resistance", GdfSweep36Definitions.SpellResistance()));
 
             UnitActionContext unitCtx = NewActivation(ctx, caster);
             var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
@@ -450,7 +452,7 @@ namespace FDG.Tests
             Assert.That(caster.GetValue().Tokens.GetTokenCount(TokenType.SpellTokens), Is.EqualTo(0),
                 "the cast actually happened (tokens spent) - the survival below is the ignore, not a whiffed cast");
             Assert.That(enemy.GetValue().GetIsAlive(), Is.True,
-                "the face-4 ignore roll clears Resistance's 2+ spell threshold, so the spell wound is ignored");
+                "the face-4 ignore roll clears Spell Resistance's 2+ spell threshold, so the spell wound is ignored");
         }
 
         // #033 Slice A — pre-save hit rules now fire on spell damage. A Blast(3) spell multiplies its 2 base
@@ -654,6 +656,45 @@ namespace FDG.Tests
 
             Assert.That(enemy.GetValue().Tokens.HasToken(TokenType.Fatigued), Is.True,
                 "a failed morale test fatigues the target");
+        }
+
+        // #421 - OPR 3.6 Hero: "units within 6\" of friendly Heroes with Tough(9) or higher may use the Hero's
+        // Quality for Morale Tests". A spell's morale test reads the same seam as every other one
+        // (MoraleUtilities.ResolveMoraleQuality): the Quality-6 target fails a 4 on its own, but beside its own
+        // side's Tough(9) Quality-4 Hero the 4 passes. The Hero stands out of the spell's 18" so it is never the
+        // pick; at 7" from the target it is out of the aura and the target is Fatigued as before.
+        [TestCase(5f, false)]
+        [TestCase(7f, true)]
+        public async Task CastSpellStage_ConditionalSpell_TargetUsesAFriendlyToughNineHerosQuality(float heroGap,
+            bool expectFatigued)
+        {
+            var enemyPlayer = new PlayerID(System.Guid.NewGuid());
+            var ctx = new TriggeredMoveTestContext(_store, new CannedCastRequester(), new FixedFaceDiceRoller(4));
+
+            RuntimeSpell fury = new RuntimeSpell(
+                new SpellDefinition("Terrifying Fury", 1,
+                    new TargetSelector(18f, 1, 1, ETargetAffinity.Foe, RequireLineOfSight: false),
+                    new Effect.MoraleTestThen(new Effect.ApplyFatigue())),
+                System.Array.Empty<ResolvedRule>());
+            DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 2,
+                new[] { fury }, new Position(10f, 10f));
+            DataBinding<UnitData> enemy = MakeEnemyUnit(enemyPlayer, new Position(25f, 10f), quality: 6); // 14" edge
+            DataBinding<UnitData> hero = MakeEnemyUnitBinding(enemyPlayer, "Warlord",
+                new Position(25f + heroGap + 1f, 10f));                                                   // 19"+ from the caster
+            hero.GetValue().Quality = 4;
+            hero.GetValue().AttachRuleDefinition(new ResolvedRule("Hero", CoreRuleCatalog.Hero));
+            hero.GetValue().AttachRuleDefinition(new ResolvedRule("Tough", CoreRuleCatalog.Tough,
+                new RuleArgument[] { new RuleArgument.Int(9) }));
+            _store.Create(new ArmyData(enemyPlayer, new List<DataBinding<UnitData>> { hero }));
+
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(unitCtx);
+
+            Assert.That(hero.GetValue().Tokens.HasToken(TokenType.Fatigued), Is.False, "the Hero was never the target");
+            Assert.That(enemy.GetValue().Tokens.HasToken(TokenType.Fatigued), Is.EqualTo(expectFatigued),
+                $"the target's Tough(9) Hero is {heroGap}\" away");
         }
 
         // The on-fail effect lands ONLY on a failure: with a fixed face of 6 the Quality-6 target passes its
@@ -1530,6 +1571,219 @@ namespace FDG.Tests
             Assert.That(sink.Beats.OfType<BannerBeat>().Any(b => b.BannerText.Contains("grants Furious")),
                 Is.False, "a failed cast has no effect to report");
         }
+
+        // --- #429 Core Rules v3.6.0 Caster(X) ---------------------------------------------------------------
+        // 3.6 moved "target in line of sight" out of the Caster rule and into each spell's own text, so the
+        // engine reads LoS from the spell (TargetSelector.RequireLineOfSight) and from nowhere else: a spell
+        // whose text has no "in line of sight" clause (flag false - the importer's contract) may target a unit
+        // the caster cannot see. A Blocking wall sits squarely between caster and target, 10" apart.
+
+        [Test]
+        public async Task Cast36_ASpellWithoutALineOfSightClause_TargetsAUnitBehindAWall()
+        {
+            var ctx = new TriggeredMoveTestContext(_store, new CannedCastRequester(), new FixedDiceRoller(6));
+            DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 2,
+                new[] { LosDebuffSpell("Unseen Hex", requireLineOfSight: false) }, CasterBehindWall);
+            DataBinding<UnitData> target = MakeEnemyUnit(new PlayerID(System.Guid.NewGuid()), TargetBehindWall);
+            AddWallBetweenCasterAndTarget();
+
+            await RunCastStage(ctx, caster);
+
+            Assert.That(target.GetValue().Tokens.GetAllTokens(TokenType.RuleGrant), Is.Not.Empty,
+                "no 'in line of sight' clause, so the wall does not stop the spell (3.6: LoS is the spell's to demand)");
+        }
+
+        [Test]
+        public async Task Cast36_ASpellWithTheClause_CannotTargetThatSameUnit()
+        {
+            var ctx = new TriggeredMoveTestContext(_store, new CannedCastRequester(), new FixedDiceRoller(6));
+            DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 2,
+                new[] { LosDebuffSpell("Seen Hex", requireLineOfSight: true) }, CasterBehindWall);
+            DataBinding<UnitData> target = MakeEnemyUnit(new PlayerID(System.Guid.NewGuid()), TargetBehindWall);
+            AddWallBetweenCasterAndTarget();
+
+            await RunCastStage(ctx, caster);
+
+            Assert.That(target.GetValue().Tokens.GetAllTokens(TokenType.RuleGrant), Is.Empty,
+                "'within 18\" in line of sight' - the only target is behind the wall, so nothing is cast");
+            Assert.That(caster.GetValue().Tokens.GetTokenCount(TokenType.SpellTokens), Is.EqualTo(2),
+                "an uncastable spell is never attempted, so nothing is spent");
+        }
+
+        [Test]
+        public async Task Cast36_TheClauseIsWhatTheWallBlocks_WithoutTheWallTheSameSpellLands()
+        {
+            // Control for the two tests above: the LoS spell is otherwise castable at this range.
+            var ctx = new TriggeredMoveTestContext(_store, new CannedCastRequester(), new FixedDiceRoller(6));
+            DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 2,
+                new[] { LosDebuffSpell("Seen Hex", requireLineOfSight: true) }, CasterBehindWall);
+            DataBinding<UnitData> target = MakeEnemyUnit(new PlayerID(System.Guid.NewGuid()), TargetBehindWall);
+
+            await RunCastStage(ctx, caster);
+
+            Assert.That(target.GetValue().Tokens.GetAllTokens(TokenType.RuleGrant), Is.Not.Empty);
+        }
+
+        // The picker (#244 ChooseSpellRequest) carries each spell's LoS requirement for the front ends' "(LoS)" tag,
+        // and a LoS spell whose only in-range target is out of sight is greyed with that reason - not the generic
+        // "no valid target", because moving the caster fixes it.
+        [Test]
+        public async Task Cast36_ThePicker_TagsLineOfSightSpells_AndSaysWhyOneIsGreyed()
+        {
+            var requester = new CannedAssistRequester(tokensPerAssister: 0);
+            var ctx = new TriggeredMoveTestContext(_store, requester, new FixedDiceRoller(6));
+            DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 2,
+                new[]
+                {
+                    LosDebuffSpell("Seen Hex", requireLineOfSight: true),
+                    LosDebuffSpell("Unseen Hex", requireLineOfSight: false),
+                }, CasterBehindWall);
+            MakeEnemyUnit(new PlayerID(System.Guid.NewGuid()), TargetBehindWall);
+            AddWallBetweenCasterAndTarget();
+
+            await RunCastStage(ctx, caster);
+
+            ChooseSpellRequest pick = requester.CapturedSpellPick!;
+            Assert.That(pick.Spells[0].RequiresLineOfSight, Is.True, "Seen Hex is tagged");
+            Assert.That(pick.Spells[0].Castable, Is.False);
+            Assert.That(pick.Spells[0].UnavailableReason, Is.EqualTo(CastSpellStage.NoTargetInSightReason));
+            Assert.That(pick.Spells[1].RequiresLineOfSight, Is.False, "Unseen Hex is not");
+            Assert.That(pick.Spells[1].Castable, Is.True, "and reaches the same unit through the wall");
+            Assert.That(pick.Spells[0].Label, Is.EqualTo("Seen Hex (1)"),
+                "the label stays 'Name (cost)' - the Tactician finds spells by it; the tag is a separate field");
+        }
+
+        [Test]
+        public async Task Cast36_ALineOfSightSpellWithNothingInRange_KeepsTheGenericReason()
+        {
+            // The only enemy is 29" away AND behind the wall: range, not sight, is the problem, so the row must not
+            // claim otherwise. A self-buff keeps the picker open.
+            var requester = new CannedAssistRequester(tokensPerAssister: 0);
+            var ctx = new TriggeredMoveTestContext(_store, requester, new FixedDiceRoller(6));
+            DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 2,
+                new[]
+                {
+                    LosDebuffSpell("Seen Hex", requireLineOfSight: true),
+                    SelfBuffSpell("Self Ward", threshold: 1, grantedRule: "Furious"),
+                }, CasterBehindWall);
+            MakeEnemyUnit(new PlayerID(System.Guid.NewGuid()), new Position(10f, 40f));
+            AddWallBetweenCasterAndTarget();
+
+            await RunCastStage(ctx, caster);
+
+            ChooseSpellRequest pick = requester.CapturedSpellPick!;
+            Assert.That(pick.Spells[0].Castable, Is.False);
+            Assert.That(pick.Spells[0].UnavailableReason, Is.EqualTo("no valid target"));
+            Assert.That(pick.Spells[1].Castable, Is.True);
+        }
+
+        // 3.6: "Models within 18\" of the Caster may spend any number of spell tokens at the same time before
+        // rolling to give the Caster +1/-1 to the roll per token." Range only - no line of sight. A friendly
+        // Caster 15" away (base to base) with a Blocking wall squarely between still boosts: face 3 fails the base
+        // 4+ and clears the boosted 3+.
+        [Test]
+        public async Task Cast36_ABoosterBehindAWall_FifteenInchesAway_StillBoosts()
+        {
+            var requester = new CannedAssistRequester(tokensPerAssister: 1);
+            var ctx = new TriggeredMoveTestContext(_store, requester, new FixedDiceRoller(3));
+
+            DataBinding<UnitData> caster = MakeCasterBinding(_player, casterRating: 3, tokens: 1, CasterBehindWall);
+            DataBinding<UnitData> booster = MakeCasterBinding(_player, casterRating: 3, tokens: 2, BoosterBehindWall);
+            var army = new ArmyData(_player, new List<DataBinding<UnitData>> { caster, booster });
+            army.SetSpells(new[] { SelfBuffSpell("Bless", threshold: 1, grantedRule: "Furious") });
+            _store.Create(army);
+            _store.Create(new TerrainData(ETerrainType.Blocking, BoosterWall));
+
+            AssertBehindTheWallAtFifteenInches(ctx, caster, booster);
+
+            await RunCastStage(ctx, caster);
+
+            Assert.That(requester.AssistPromptCount, Is.EqualTo(1), "the booster out of sight is still offered the boost");
+            Assert.That(caster.GetValue().Tokens.GetAllTokens(TokenType.RuleGrant), Is.Not.Empty,
+                "its +1 turned face 3 into a success: boosters need only be within 18\"");
+            Assert.That(booster.GetValue().Tokens.GetTokenCount(TokenType.SpellTokens), Is.EqualTo(1));
+        }
+
+        // ...and the same for the other side: an enemy Caster behind the wall may still hinder (-1 per token).
+        [Test]
+        public async Task Cast36_AnEnemyHindererBehindAWall_StillHinders()
+        {
+            var requester = new CannedAssistRequester(tokensPerAssister: 1);
+            var ctx = new TriggeredMoveTestContext(_store, requester, new FixedDiceRoller(4));
+
+            DataBinding<UnitData> caster = MakeCasterBinding(_player, casterRating: 3, tokens: 1, CasterBehindWall);
+            var army = new ArmyData(_player, new List<DataBinding<UnitData>> { caster });
+            army.SetSpells(new[] { SelfBuffSpell("Bless", threshold: 1, grantedRule: "Furious") });
+            _store.Create(army);
+
+            var enemyPlayer = new PlayerID(System.Guid.NewGuid());
+            DataBinding<UnitData> hinderer = MakeCasterBinding(enemyPlayer, casterRating: 3, tokens: 2, BoosterBehindWall);
+            _store.Create(new ArmyData(enemyPlayer, new List<DataBinding<UnitData>> { hinderer }));
+            _store.Create(new TerrainData(ETerrainType.Blocking, BoosterWall));
+
+            AssertBehindTheWallAtFifteenInches(ctx, caster, hinderer);
+
+            await RunCastStage(ctx, caster);
+
+            Assert.That(caster.GetValue().Tokens.GetAllTokens(TokenType.RuleGrant), Is.Empty,
+                "the hidden enemy's -1 made face 4 miss the hindered 5+");
+            Assert.That(hinderer.GetValue().Tokens.GetTokenCount(TokenType.SpellTokens), Is.EqualTo(1));
+        }
+
+        // Centres 16" apart with 0.5" radius bases: 15" base to base, inside the 18" boost range.
+        private static readonly Position BoosterBehindWall = new Position(10f, 26f);
+        private static readonly RectangularZone BoosterWall = new RectangularZone(4f, 16f, 17f, 19f);
+
+        // Preconditions, so the boost tests cannot pass vacuously: the pair is 15" apart and the wall really
+        // blocks every sight line between them.
+        private static void AssertBehindTheWallAtFifteenInches(IGameContext ctx, DataBinding<UnitData> caster,
+            DataBinding<UnitData> other)
+        {
+            float distance = UnitCompareUtilities.MinDistanceBetweenUnits(caster.GetValue(), other.GetValue(),
+                out _, out _, includeVertical: true);
+            Assert.That(distance, Is.EqualTo(15f).Within(0.01f), "15\" base to base");
+            List<ITerrain> terrain = ctx.TableState.Terrain.Objects.ToList();
+            Assert.That(LineOfSightUtilities.HasLineOfSight(CasterBehindWall, BoosterBehindWall, terrain), Is.False,
+                "the wall blocks the sight line");
+        }
+
+        [Test]
+        public void Caster_CarriesTheCore360Wording_WithNoLineOfSightClause()
+        {
+            string description = CoreRuleCatalog.Caster.Description;
+
+            Assert.That(description, Is.EqualTo(
+                "Gets X spell tokens at the start of each round, but can't have more than 6 at once. Once per " +
+                "activation, before attacking, spend as many tokens as the spell's value to try casting one or more " +
+                "spells (only one try per spell). Pick a target and roll one die, and on 4+ resolve the spell's " +
+                "effect. Models within 18\" of the Caster may spend any number of spell tokens at the same time " +
+                "before rolling to give the Caster +1/-1 to the roll per token."));
+            Assert.That(description, Does.Not.Contain("line of sight"), "3.6 moved LoS into each spell's own text");
+            Assert.That(description.All(c => c < 128), Is.True, "game text is ASCII-only");
+        }
+
+        private static readonly Position CasterBehindWall = new Position(10f, 10f);
+        private static readonly Position TargetBehindWall = new Position(10f, 20f);
+
+        // A Blocking wall across the sight line between CasterBehindWall and TargetBehindWall.
+        private void AddWallBetweenCasterAndTarget() =>
+            _store.Create(new TerrainData(ETerrainType.Blocking, new RectangularZone(4f, 16f, 14f, 16f)));
+
+        private static async Task RunCastStage(IGameContext ctx, DataBinding<UnitData> caster)
+        {
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(NewActivation(ctx, caster));
+        }
+
+        // Foe-affinity, non-damage: the debuff lands as a RuleGrant token on the target, so "did the cast succeed"
+        // is one assertion with no wound pipeline in the way. 18" range, like the 3.6 spells.
+        private static RuntimeSpell LosDebuffSpell(string name, bool requireLineOfSight, int threshold = 1) =>
+            new RuntimeSpell(
+                new SpellDefinition(name, threshold,
+                    new TargetSelector(18f, 1, 1, ETargetAffinity.Foe, requireLineOfSight),
+                    new Effect.AddRule("Slow", ELifetime.NextTrigger)),
+                System.Array.Empty<ResolvedRule>());
 
         // The effect report is matched by its exact text rather than by tier: the cast result itself and
         // any morale banner the spell triggers are Notices too, so tier alone does not identify it. The

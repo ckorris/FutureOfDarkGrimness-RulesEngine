@@ -15,7 +15,7 @@ namespace FDG.Stages
     /// The post-shoot move is a passive <see cref="HookEntry"/> producing an
     /// <see cref="Effect.TriggeredMove"/> (optional, so a unit may decline), enacted through the
     /// movement subsystem via <see cref="OperationExecutor"/> — the same chain
-    /// <see cref="DeployUnitStage"/> uses for Vanguard's deploy-time reposition.
+    /// <see cref="DeployUnitStage"/> uses for a deploy-time triggered move.
     /// </summary>
     public class PostShootStage : StageBase<ICombatActionContext>
     {

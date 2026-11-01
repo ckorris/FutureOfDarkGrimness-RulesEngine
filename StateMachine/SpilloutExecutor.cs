@@ -118,8 +118,9 @@ namespace FDG.Stages
             return occupants.Count;
         }
 
-        // Present the occupant's dangerous-terrain test as ONE row of dice (2+ safe, a 1 wounds — the same
-        // batched beat MovementExecutor uses for dangerous terrain), then LAND each pending wound, its hurt
+        // Present the occupant's dangerous-terrain test as ONE row of dice (2+ safe, a 1 wounds - one die per
+        // wound it would take to destroy the occupant, #420; the same batched beat MovementExecutor uses for
+        // dangerous terrain), then LAND each pending wound, its hurt
         // flinch or death animation playing as the wound lands. Sound falls out via PresentationSoundCues.CueFor.
         //
         // The wounds are applied here rather than back in ApplySpilloutEffects on purpose: the front-end hides
@@ -135,14 +136,15 @@ namespace FDG.Stages
                 ? "All safe"
                 : $"{result.Wounds:0.##} wound{(result.Wounds == 1f ? "" : "s")}!";
             await gameContext.Presenter.Present(DiceRolledBeat.From(result.Roll!, successThreshold: 2,
-                gameContext.Settings.RandomnessType, "Dangerous Terrain", summary));
+                gameContext.Settings.RandomnessType, "Dangerous Terrain", summary,
+                context: MovementExecutor.DescribeDice(occupant, result.DiceCount)));
 
             List<PendingModelWound> pending = result.PendingWounds
                 .Select(w => new PendingModelWound(w.Model, w.Wounds)).ToList();
 
             bool wasAlive = occupant.GetIsAlive();
 
-            await CasualtyPresentation.ApplyAndPresent(gameContext, pending, occupant.ID, occupant.Name);
+            await CasualtyPresentation.ApplyAndPresent(gameContext, pending, occupant);
 
             // The spillout's own dangerous test can finish off a battered occupant. That is a destruction
             // like any other and takes the same seam: its OwnerDestroyed marks clear, and an occupant that

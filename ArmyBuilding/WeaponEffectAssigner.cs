@@ -73,28 +73,40 @@ namespace FDG.ArmyBuilding
             (Sets.PlasmaBolt,      new[] { "plasma" }),
             (Sets.FusionMelta,     new[] { "fusion", "melta", "fuser" }),
             (Sets.FlameJet,        new[] { "flame" }),
-            (Sets.GravityPulse,    new[] { "gravity" }),
+            // #438: OPR 3.6 renamed the gravity guns "Anti-Matter" / "Dark-Matter" (Gravity Rifle -> Anti-Matter Rifle).
+            (Sets.GravityPulse,    new[] { "gravity", "anti-matter", "dark-matter" }),
             (Sets.MissileRocket,   new[] { "missile", "rocket", "rpg" }),
             (Sets.MortarArtillery, new[] { "mortar", "artillery", "grenade", "bomb", "siege", "demolition", "frag" }),
-            (Sets.BioOrganic,      new[] { "bio", "spit", "spore", "acid", "venom", "toxin", "toxic", "vomit", "miasma" }),
-            (Sets.GaussParticle,   new[] { "gauss", "flux", "atom", "shock", "reaper" }),
+            (Sets.BioOrganic,      new[] { "bio", "spit", "spore", "acid", "venom", "toxin", "toxic", "vomit", "miasma", "chem-" }),
+            // #438: 3.6's electrical "Arc-Charger" guns and "Taser" cannons.
+            (Sets.GaussParticle,   new[] { "gauss", "flux", "atom", "shock", "reaper", "arc-charger", "taser" }),
             (Sets.LaserBeam,       new[] { "laser", "beam", "photon", "pulse", "monolith" }),
             // Before storm/ballistic so "Magic Bolt"-style names read as arcane, not tracer fire.
-            (Sets.ArcanePsychic,   new[] { "magic", "psychic", "hex", "curse", "ritual", "chakram", "fireball" }),
-            (Sets.StormTracer,     new[] { "storm", "bolt" }),
+            (Sets.ArcanePsychic,   new[] { "magic", "psychic", "psy-", "hex", "curse", "ritual", "chakram", "fireball" }),
+            // #438: "cyclic" is 3.6's storm rifle (Storm Rifle -> Burst Cyclic Rifle).
+            (Sets.StormTracer,     new[] { "storm", "bolt", "cyclic" }),
             (Sets.BallisticSlug,   new[] { "bullet", "slug", "buckshot", "revolver" }),
+            // #438: 3.6 generic launcher / payload words - LAST, so a payload row above still wins ("Acid Launcher" stays
+            // bio-organic, "Radium Pulse Gun" laser, "Phosphor Spitters" bio): "HE-Launcher", "Cluster-Nade Launcher",
+            // "Mini-GL", "Rapid GL-Cannon", "Demo Charge", "Phosphor Sprayers", "Radium Cannon".
+            (Sets.MortarArtillery, new[] { "launcher", "nade", "mini-gl", "gl-", "demo charge" }),
+            (Sets.FlameJet,        new[] { "phosphor" }),
+            (Sets.GaussParticle,   new[] { "radium" }),
         };
 
         private static readonly (string Set, string[] Keywords)[] MeleeKeywords =
         {
-            (Sets.EnergyBlade,       new[] { "energy", "plasma", "relic", "hyper" }),
-            (Sets.TitanImpact,       new[] { "titan", "walker", "stomp", "hull", "crushing" }),
+            // #438: 3.6 renamed the plasma blades "Magma" (Plasma Sword -> Magma Sword).
+            (Sets.EnergyBlade,       new[] { "energy", "plasma", "relic", "hyper", "magma" }),
+            // #438: "Overrun" is 3.6's range-0 vehicle/monster ram (144 GDF refs).
+            (Sets.TitanImpact,       new[] { "titan", "walker", "stomp", "hull", "crushing", "overrun" }),
             (Sets.ShockMelee,        new[] { "shock", "electro", "taser", "stun" }),
             (Sets.ChainBlade,        new[] { "chain", "saw", "buzz" }),
             (Sets.ToxicMelee,        new[] { "venom", "toxin", "toxic", "plague", "acid", "infected", "poison", "putrid", "fungal", "miasma" }),
             // "power" belongs to the Wormhole Daemons' Power Staff/Spear/Claw family — the rare
             // non-daemonic "Power X" gets a (faction, name) override below instead of a keyword change.
-            (Sets.DaemonArcaneMelee, new[] { "cursed", "hexed", "power", "ritual", "perfect", "exalted", "daemon" }),
+            // #438: the 3.6 psychic staffs ("Psy-Witch Staff", "Archivist Staff", "Warlock Staff").
+            (Sets.DaemonArcaneMelee, new[] { "cursed", "hexed", "power", "ritual", "perfect", "exalted", "daemon", "staff", "psy-" }),
             (Sets.SpearPierce,       new[] { "spear", "lance", "pike", "halberd", "glaive", "scythe" }),
             (Sets.ClawRend,          new[] { "claw", "fang", "bite", "jaw", "talon", "razor", "whip", "slash", "serrated", "rend", "swarm" }),
             (Sets.CrudeMelee,        new[] { "fist", "club", "mace", "flail", "hammer", "bash", "axe", "knuckle", "gauntlet", "crew", "pick", "maul" }),
@@ -112,16 +124,21 @@ namespace FDG.ArmyBuilding
             (Sets.BallistaBolt,    new[] { "ballista", "bolt thrower" }),
             (Sets.CrossbowBolt,    new[] { "crossbow", "handbow" }),
             (Sets.ArrowLoose,      new[] { "bow" }),
-            (Sets.ThrownSpear,     new[] { "javelin", "throwing", "harpoon" }),
+            (Sets.ThrownSpear,     new[] { "javelin", "throwing", "harpoon", "barbed net", "trapper net" }),
             (Sets.BioOrganic,      new[] { "venom", "toxin", "toxic", "spit", "acid", "spore", "plague", "blowpipe", "dart" }),
             (Sets.BreathFlame,     new[] { "flame", "breath", "lava", "spout", "blaze", "scorcher" }),
             // "stare"/"gaze"/"shriek"/"screech": psychic attacks with no magic word in the name
             // (Death Stare, Mind-Piercer Screech) must not fall to a faction's crossbow/javelin
             // default (#379 audit).
             (Sets.ArcaneBolt,      new[] { "magic", "arcane", "hex", "curse", "fireball", "staff", "wand", "banish", "summon", "stare", "gaze", "shriek", "screech" }),
-            (Sets.SlingStone,      new[] { "sling", "throw rock", "throw stone", "hurl", "stone thrower", "catapult" }),
+            // #438: the 3.6 Giant Tribes throws ("Fling Rocks", "Throw Giant Boulders", "Toss Logs").
+            (Sets.SlingStone,      new[] { "sling", "throw rock", "throw stone", "hurl", "stone thrower", "catapult", "rocks", "boulder", "toss" }),
             (Sets.MortarArtillery, new[] { "bomb", "grenade", "firework", "rocket", "mortar", "siege" }),
             (Sets.BallisticSlug,   new[] { "rifle", "pistol", "gun", "cannon", "blunderbuss", "gatling", "firepowder", "musket" }),
+            // #438: the 3.6 caster attacks - LAST, so an established match above still wins ("Soul Cannon" stays a
+            // cannon): "Fire / Ice / Soul / Jade Blast", "Spirit Strike", "Serpent-God Strike", "Banshee Cry",
+            // "Haunting Howl", "Shockwave".
+            (Sets.ArcaneBolt,      new[] { "blast", "spirit", "soul", "god strike", "banshee", "howl", "shockwave" }),
         };
 
         private static readonly (string Set, string[] Keywords)[] AofMeleeKeywords =
@@ -131,14 +148,18 @@ namespace FDG.ArmyBuilding
             (Sets.DaemonArcaneMelee, new[] { "power", "ritual", "hexed", "cursed", "daemon", "exalted", "perfect", "mutated", "pain" }),
             (Sets.EnergyBlade,      new[] { "flame", "magma", "fire", "holy", "blessed", "runic", "celestial", "magic" }),
             (Sets.GreatWeaponSmash, new[] { "great weapon", "greatsword", "great hammer", "great axe", "great mace", "great glaive" }),
-            (Sets.BeastMaw,         new[] { "jaws", "jaw", "bite", "fang", "maw", "tusk", "tentacle", "pincer", "beak", "horn" }),
-            (Sets.SpearPierce,      new[] { "spear", "lance", "pike", "halberd", "glaive", "scythe", "trident" }),
+            (Sets.BeastMaw,         new[] { "jaws", "jaw", "bite", "fang", "maw", "tusk", "tentacle", "pincer", "beak", "horn", "teeth" }),
+            (Sets.SpearPierce,      new[] { "spear", "lance", "pike", "halberd", "glaive", "scythe", "trident", "sickle" }),
             (Sets.ClawRend,         new[] { "claw", "talon", "rend", "swarm", "razor", "whip", "slash", "serrated" }),
             // "hoof"/"hooves": 41 refs across 13 factions were kicking as sword-slashes (#379 audit);
             // a mount's trample is a blunt impact.
-            (Sets.TitanImpact,      new[] { "stomp", "hull", "crushing", "hooves", "hoof" }),
+            // #438: 3.6's "Overrun" ram and the "Heavy / Sweeping Titan Strike" monster attacks.
+            (Sets.TitanImpact,      new[] { "stomp", "hull", "crushing", "hooves", "hoof", "overrun", "titan strike" }),
             (Sets.CrudeMelee,       new[] { "fist", "club", "mace", "flail", "hammer", "axe", "pick", "maul", "drill", "chain", "bash" }),
             (Sets.BladeStandard,    new[] { "sword", "blade", "dagger", "knife", "falchion" }),
+            // #438: the 3.6 caster staffs ("Sorcerer / Shaman / Priest / Mage Staff") swing as magic - LAST, so
+            // "Sword & Staff" stays a sword and "Blightfang Staff" a maw.
+            (Sets.EnergyBlade,      new[] { "staff" }),
         };
 
         // #379 melee form upgrades, applied AFTER the keyword tables so payload rows keep their
@@ -173,12 +194,14 @@ namespace FDG.ArmyBuilding
 
         // #379: aerial bombing runs are range-0 weapons carrying Strafing (Bombing Run, Drop Bombs,
         // Fire Bombs... 21 AoF + 12 GDF refs). No name keyword unites them and their payload words
-        // would misread ("Flame Bombs" is not a flame sword) - the RULE is the signature.
+        // would misread ("Flame Bombs" is not a flame sword) - the RULE is the signature. #438: OPR 3.6 renamed
+        // the rule "Crossing Strike" (#431); "Strafing" stays for 3.5 army files.
         private static bool CarriesStrafing(WeaponFileEntry weapon)
         {
             static bool IsStrafing(SpecialRuleEntry rule) => rule switch
             {
-                SpecialRuleEntry_Core core   => core.Name.Equals("Strafing", StringComparison.OrdinalIgnoreCase),
+                SpecialRuleEntry_Core core   => core.Name.Equals("Crossing Strike", StringComparison.OrdinalIgnoreCase)
+                                                || core.Name.Equals("Strafing", StringComparison.OrdinalIgnoreCase),
                 SpecialRuleEntry_Alias alias => IsStrafing(alias.AliasedRule),
                 _                            => false,
             };
@@ -188,15 +211,17 @@ namespace FDG.ArmyBuilding
         }
 
         // Exact (faction, weapon name) overrides for the handful of names the keywords misread in a
-        // specific book's context. Checked before the keyword tables.
+        // specific book's context. Checked before the keyword tables. Keyed by the book's CURRENT OPR name
+        // (#437: lookups go through OprBookNames.Current, so a pre-rename faction still finds its row).
         private static readonly Dictionary<(string Faction, string Name), string> NameOverrides = new()
         {
             // A lizard's gauntlet, not a daemon relic ("power" would route it to daemon-arcane-melee).
-            [("Saurian Starhost", "Power Claw")] = Sets.ClawRend,
+            [("Saurian Starhosts", "Power Claw")] = Sets.ClawRend,
         };
 
         // Per-faction default sets (ranged, melee) — the fallback look for a weapon no keyword
-        // claims, chosen per book (#239 survey, 2026-07-16). Keys are the books' Faction strings.
+        // claims, chosen per book (#239 survey, 2026-07-16). Keys are the books' CURRENT OPR names (#437:
+        // FactionDefaults maps a pre-3.6 name such as "Wormhole Daemons of War" through OprBookNames first).
         private static readonly Dictionary<string, (string Ranged, string Melee)> FactionDefaultsTable = new(StringComparer.OrdinalIgnoreCase)
         {
             ["Alien Hives"]                  = (Sets.BioOrganic, Sets.ClawRend),
@@ -230,7 +255,7 @@ namespace FDG.ArmyBuilding
             ["Ratmen Clans"]                 = (Sets.BallisticSlug, Sets.ShockMelee),
             ["Rebel Guerrillas"]             = (Sets.BallisticSlug, Sets.EnergyBlade),
             ["Robot Legions"]                = (Sets.GaussParticle, Sets.TitanImpact),
-            ["Saurian Starhost"]             = (Sets.GaussParticle, Sets.ClawRend),
+            ["Saurian Starhosts"]            = (Sets.GaussParticle, Sets.ClawRend),
             ["Soul-Snatcher Cults"]          = (Sets.BallisticSlug, Sets.CrudeMelee),
             ["Titan Lords"]                  = (Sets.FusionMelta, Sets.TitanImpact),
             ["Titan Lords Change Disciples"] = (Sets.FusionMelta, Sets.TitanImpact),
@@ -242,10 +267,13 @@ namespace FDG.ArmyBuilding
             ["Watch Prime Brothers"]         = (Sets.StormTracer, Sets.EnergyBlade),
             ["Wolf Brothers"]                = (Sets.StormTracer, Sets.EnergyBlade),
             ["Wolf Prime Brothers"]          = (Sets.StormTracer, Sets.EnergyBlade),
-            ["Wormhole Daemons of Change"]   = (Sets.ArcanePsychic, Sets.DaemonArcaneMelee),
-            ["Wormhole Daemons of Lust"]     = (Sets.BallisticSlug, Sets.DaemonArcaneMelee),
-            ["Wormhole Daemons of Plague"]   = (Sets.BioOrganic, Sets.ToxicMelee),
-            ["Wormhole Daemons of War"]      = (Sets.BioOrganic, Sets.BladeStandard),
+            // OPR 3.6's "Daemons of X" (3.5 "Wormhole Daemons of X"; the rows carried over unchanged, #437).
+            ["Daemons of Change"]            = (Sets.ArcanePsychic, Sets.DaemonArcaneMelee),
+            ["Daemons of Lust"]              = (Sets.BallisticSlug, Sets.DaemonArcaneMelee),
+            ["Daemons of Plague"]            = (Sets.BioOrganic, Sets.ToxicMelee),
+            ["Daemons of War"]               = (Sets.BioOrganic, Sets.BladeStandard),
+            // #438: new in OPR 3.6 ("Space Horrors"): trench guns / autoguns and mutant claws.
+            ["Voidspace Stalkers"]           = (Sets.BallisticSlug, Sets.ClawRend),
         };
 
         // Per-faction default sets for the 40 Age of Fantasy books (#378 survey, 2026-08-23). A separate
@@ -257,6 +285,12 @@ namespace FDG.ArmyBuilding
             ["Beastmen"]                     = (Sets.ArrowLoose, Sets.BeastMaw),
             ["Change Disciples"]             = (Sets.ArcaneBolt, Sets.BladeStandard),
             ["Chivalrous Kingdoms"]          = (Sets.ArrowLoose, Sets.BladeStandard),
+            // #435: OPR 3.6 renamed the four "Rift Daemons of X" books "Daemons of X"; #437 dropped the 3.5 rows - a
+            // "Rift Daemons of X" faction (a bundled 3.5 book, an old army) reaches these through OprBookNames.
+            ["Daemons of Change"]            = (Sets.ArcaneBolt, Sets.DaemonArcaneMelee),
+            ["Daemons of Lust"]              = (Sets.ArcaneBolt, Sets.DaemonArcaneMelee),
+            ["Daemons of Plague"]            = (Sets.BioOrganic, Sets.ToxicMelee),
+            ["Daemons of War"]               = (Sets.ArcaneBolt, Sets.DaemonArcaneMelee),
             ["Dark Elves"]                   = (Sets.CrossbowBolt, Sets.BladeStandard),
             ["Deep-Sea Elves"]               = (Sets.ThrownSpear, Sets.SpearPierce),
             ["Dragon Empire"]                = (Sets.ArrowLoose, Sets.BladeStandard),
@@ -283,10 +317,6 @@ namespace FDG.ArmyBuilding
             ["Ossified Undead"]              = (Sets.ArrowLoose, Sets.BladeStandard),
             ["Plague Disciples"]             = (Sets.ArcaneBolt, Sets.ToxicMelee),
             ["Ratmen"]                       = (Sets.SlingStone, Sets.BladeStandard),
-            ["Rift Daemons of Change"]       = (Sets.ArcaneBolt, Sets.DaemonArcaneMelee),
-            ["Rift Daemons of Lust"]         = (Sets.ArcaneBolt, Sets.DaemonArcaneMelee),
-            ["Rift Daemons of Plague"]       = (Sets.BioOrganic, Sets.ToxicMelee),
-            ["Rift Daemons of War"]          = (Sets.ArcaneBolt, Sets.DaemonArcaneMelee),
             ["Saurians"]                     = (Sets.ThrownSpear, Sets.ClawRend),
             ["Shadow Stalkers"]              = (Sets.ThrownSpear, Sets.ClawRend),
             ["Sky-City Dwarves"]             = (Sets.BallisticSlug, Sets.CrudeMelee),
@@ -302,7 +332,7 @@ namespace FDG.ArmyBuilding
         public static (string? Ranged, string? Melee) FactionDefaults(string faction, string? gameSystem = null)
         {
             var table = IsAof(gameSystem) ? AofFactionDefaultsTable : FactionDefaultsTable;
-            return table.TryGetValue(faction ?? string.Empty, out var d) ? (d.Ranged, d.Melee) : (null, null);
+            return table.TryGetValue(OprBookNames.Current(faction, gameSystem), out var d) ? (d.Ranged, d.Melee) : (null, null);
         }
 
         private static bool IsAof(string? gameSystem) =>
@@ -325,7 +355,7 @@ namespace FDG.ArmyBuilding
         {
             if (string.IsNullOrWhiteSpace(weaponName)) return null;
 
-            if (NameOverrides.TryGetValue((faction ?? string.Empty, weaponName.Trim()), out string? overridden))
+            if (NameOverrides.TryGetValue((OprBookNames.Current(faction, gameSystem), weaponName.Trim()), out string? overridden))
                 return overridden;
 
             (string Set, string[] Keywords)[] table = IsAof(gameSystem)

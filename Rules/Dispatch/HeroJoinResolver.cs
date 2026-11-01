@@ -117,9 +117,10 @@ public static class HeroJoinResolver
             // structural (no hooks); weapon-scoped rules already ride the hero's weapon and need no move.
             // #183: DEFENSIVE (Subject-seat) rules relocated here (Evasive/Resistance/Fortified/...) are now
             // visible at every Subject dispatch site, which passes the defender's living models (AnyOwner).
-            // Their AllModelsHaveThisRule gate then governs both directions: a hero that lacks a rule the
-            // host has breaks it for the unit, and a rule only the hero has fires only once the hero is the
-            // sole survivor (matching the last-model-Defense philosophy). Before #183 these silently vanished.
+            // Their MostModelsHaveThisRule gate (#428) then governs both directions: the hero is one model of
+            // the unit, so a hero that lacks a rule the host has breaks it only if the host is down to one
+            // living model, and a rule only the hero has fires only once the hero is the sole survivor
+            // (matching the last-model-Defense philosophy). Before #183 these silently vanished.
             foreach (ResolvedRule rule in hero.RuleDefinitions)
             {
                 if (rule.Definition == CoreRuleCatalog.Hero)

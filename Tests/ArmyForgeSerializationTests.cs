@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using FDG.Rules.Definitions;
 using FDG.Rules.Serialization;
@@ -380,6 +382,108 @@ public class ArmyForgeSerializationTests
         Assert.That(solve.Units[0].IsCombinedPair, Is.True);
         Assert.That(solve.Selections!.Units, Has.Count.EqualTo(2), "a pair solves to two list entries");
         Assert.That(solve.Selections.Units[1].CombinedWithId, Is.EqualTo(solve.Selections.Units[0].Id));
+    }
+
+    // #440: a new edition renamed the weapon, so no pick-set reproduces the saved loadout exactly and the exact
+    // search gives up - but the same roster unit, with the pick the caller's score rates closest, is still the answer.
+    [Test]
+    public void SolveNearest_PicksTheHighestScoringPickSet_WhenNoExactMatchExists()
+    {
+        BookFile book = MakeBook();
+        var target = new UnitFileEntry
+        {
+            Name = "Warriors", ModelCount = 5, PointCost = 70,
+            Weapons =
+            {
+                new WeaponFileEntry { Name = "Rifle", Quantity = 4, RangeInches = 24, Attacks = 1 },
+                new WeaponFileEntry { Name = "Heavy Rifle Mk I", Quantity = 1, RangeInches = 36, Attacks = 1 }, // old name
+            },
+        };
+        var plain = new ArmyListFile { Faction = "Demo" };
+        plain.Units.Add(target);
+        Assume.That(SelectionSolver.Solve(book, plain).Complete, Is.False, "the profile no longer exists exactly");
+
+        // Score: one point per weapon whose profile range the target also carries.
+        double Score(UnitFileEntry u) => u.Weapons.Count(w => target.Weapons.Any(t => t.RangeInches == w.RangeInches));
+        UnitSolve nearest = SelectionSolver.SolveNearest(book, target, book.Units.Where(u => u.Name == "Warriors").ToList(), Score);
+
+        Assert.That(nearest.Solved, Is.True, nearest.Failure);
+        Assert.That(nearest.Selection.Single().Choices.Single().OptionId, Is.EqualTo("heavy-rifle"));
+    }
+
+    [Test]
+    public void SolveNearest_TriesTheCombinedReading_WhenNoSingleCopyReachesTheSize()
+    {
+        BookFile book = MakeBook();
+        var target = new UnitFileEntry
+        {
+            Name = "Warriors", Id = "w", ModelCount = 10, PointCost = 130,
+            Weapons = { new WeaponFileEntry { Name = "Old Rifle", Quantity = 10, RangeInches = 24, Attacks = 1 } },
+        };
+
+        double Score(UnitFileEntry u) => -Math.Abs(u.ModelCount - target.ModelCount);
+        UnitSolve nearest = SelectionSolver.SolveNearest(book, target, book.Units.Where(u => u.Name == "Warriors").ToList(), Score);
+
+        Assert.That(nearest.IsCombinedPair, Is.True, "ten models from a five-model unit with no add-models section is a pair");
+        Assert.That(nearest.Selection[1].CombinedWithId, Is.EqualTo("w"));
+    }
+
+    // Two candidates: a six-model unit that reaches the size alone (so it wins the single-copy search), and a
+    // three-model one whose loadout is the target's. The pair of the closer unit must still be considered, not skipped because the other fit the size.
+    [Test]
+    public void SolveNearest_ConsidersAPairOfACloserSmallerCandidate()
+    {
+        BookFile book = MakeBook();
+        book.Units.Add(new RosterUnit
+        {
+            Id = "mob", Name = "Mob", Quality = 5, Defense = 5, BaseModelCount = 6, MinModels = 6, MaxModels = 6,
+            BasePointCost = 60,
+            Weapons = { new WeaponFileEntry { Name = "Club", Quantity = 6, RangeInches = 0, Attacks = 1 } },
+        });
+        var target = new UnitFileEntry
+        {
+            Name = "Old Gunners", Id = "g", ModelCount = 6, PointCost = 240,
+            Weapons = { new WeaponFileEntry { Name = "Heavy Rifle", Quantity = 6, RangeInches = 36, Attacks = 1 } },
+        };
+        List<RosterUnit> candidates = book.Units.Where(u => u.Name is "Heavy Gunners" or "Mob").ToList();
+
+        double Score(UnitFileEntry u) =>
+            -2 * Math.Abs(u.ModelCount - target.ModelCount) + u.Weapons.Where(w => w.Name == "Heavy Rifle").Sum(w => w.Quantity);
+        UnitSolve nearest = SelectionSolver.SolveNearest(book, target, candidates, Score);
+
+        Assert.That(nearest.IsCombinedPair, Is.True, nearest.Failure);
+        Assert.That(nearest.Selection[0].RosterUnitId, Is.EqualTo("gunners"));
+    }
+
+    // #440: an Army Forge import's units often carry no id. A recovered pair must still link its two halves, or the
+    // compiler leaves them as two separate five-model units and the rebuilt list is not the saved army.
+    [Test]
+    public void ARecoveredPair_LinksItsHalves_EvenWhenTheSavedUnitHadNoId()
+    {
+        BookFile book = MakeBook();
+        BuiltArmyFile compiled = ListCompiler.Compile(book, new BuilderList
+        {
+            BookName = book.Name,
+            Units =
+            {
+                new BuilderUnit { RosterUnitId = "warriors", ModelCount = 5, Id = "a" },
+                new BuilderUnit { RosterUnitId = "warriors", ModelCount = 5, Id = "b", CombinedWithId = "a" },
+            },
+        });
+        var plain = new ArmyListFile { Faction = "Demo" };
+        plain.Units.AddRange(compiled.Units);
+        plain.Units[0].Id = null;
+
+        ArmySolve exact = SelectionSolver.Solve(book, plain);
+        UnitSolve nearest = SelectionSolver.SolveNearest(book, plain.Units[0], book.Units.Where(u => u.Name == "Warriors").ToList(),
+            u => -Math.Abs(u.ModelCount - 10));
+
+        foreach (IReadOnlyList<BuilderUnit> picks in new[] { exact.Units[0].Selection, nearest.Selection })
+        {
+            BuiltArmyFile rebuilt = ListCompiler.Compile(book, new BuilderList { BookName = book.Name, Units = picks.ToList() });
+            Assert.That(rebuilt.Units, Has.Count.EqualTo(1), "the two halves merge again");
+            Assert.That(rebuilt.Units[0].ModelCount, Is.EqualTo(10));
+        }
     }
 
     [Test]

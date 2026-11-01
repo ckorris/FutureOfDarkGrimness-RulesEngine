@@ -191,7 +191,7 @@ namespace FDG.Tests
             => MakeUnit(new PlayerID(System.Guid.NewGuid()), modelPositions);
 
         // A blade (melee) + rifle (ranged) so the action menu has real choices: Move + Shoot when an
-        // enemy sits in range, Charge grayed out past 2". Every player gets their own team — the
+        // enemy sits in range, Charge grayed out past 3". Every player gets their own team — the
         // shoot gate resolves the attacker's team to screen out allies.
         private DataBinding<UnitData> MakeUnit(PlayerID playerID, params Position[] modelPositions)
         {

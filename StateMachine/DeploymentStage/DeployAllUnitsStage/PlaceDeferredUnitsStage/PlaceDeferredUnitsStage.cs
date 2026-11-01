@@ -11,6 +11,14 @@ namespace FDG.Stages
     /// whose timing is <see cref="EDeferTiming.AfterNormalDeployment"/>: each is placed within a
     /// forward-expanded version of its owner's deployment zone (extended toward table center by the
     /// rule's range), reusing the normal <see cref="PlaceObjectsRequest{T}"/> flow.
+    /// <para>#426 (Core Rules v3.6.0): "anywhere fully within 9" of their deployment zone, over 9" away from
+    /// non-Scout enemy units". The zone half is the forward extension; the enemy half is keep-out discs
+    /// (<see cref="Rules.Dispatch.EnemyKeepOutRules"/>) around every enemy unit that was NOT set aside by this
+    /// pass, so an enemy Scout already placed does not push back. Both halves are read from the rule's
+    /// <see cref="RuleOperation.DeferDeployment"/>, and the request carries them, so the CLI, GUI and AI
+    /// resolvers judge the same numbers.</para>
+    /// <para>#426: the players alternate, one Scout unit per turn, starting with the player that activates
+    /// next (<see cref="PlacementAlternation"/>).</para>
     /// </summary>
     public class PlaceDeferredUnitsStage : StageBase<IDeploymentTurnContext>
     {
@@ -29,44 +37,98 @@ namespace FDG.Stages
             // Only Scout-style (AfterNormalDeployment) units reach the deferred pool. Ambush units are
             // held interactively at selection time (ChooseUnitToDeployStage) and stay off-table until a
             // later round, so they never appear here.
+            //
+            // #426: "Players alternate in placing Scout units, starting with the player that activates next"
+            // (3.5 and 3.6 alike; this pass used to place them in list order). One unit per turn, players in
+            // the deployment roll order - the order round 1 activates in - and each player's own Scouts in
+            // army-list order.
+            var queues = new Dictionary<PlayerID, Queue<DeferredUnitEntry>>();
+            var participants = new List<PlayerID>();
             foreach (DeferredUnitEntry entry in context.DeferredUnits)
             {
                 if (entry.Defer.Timing != EDeferTiming.AfterNormalDeployment) continue;
 
-                UnitData unit = entry.Unit.GetValue();
-                RectangularZone forwardZone = BuildForwardZone(context, unit, entry.Defer.PlacementRangeInches);
-
-                var request = new PlaceObjectsRequest<ModelData>(unit.PlayerID, "Place Scout Unit",
-                    forwardZone, unit.ModelBindings,
-                    displayName: $"Deploying {unit.Name} (Scout)");
-
-                // #282: commit-time overlap check, same as normal deployment.
-                List<PlacedObjectEntry<ModelData>> placements = await PlacementCommitGuard
-                    .RequestClearPlacement(GameContext, request);
-
-                // On the table is the negation of in reserve (a Scout defers within deployment, so it never
-                // carries the token; a legacy save's bootstrap may have stamped it). #309: cleared BEFORE
-                // the positions so a networked client never captures an on-table position paired with a
-                // still-reserved unit state.
-                Rules.Dispatch.ReserveRules.ClearReserve(unit);
-
-                foreach (PlacedObjectEntry<ModelData> placement in placements)
+                PlayerID owner = entry.Unit.GetValue().PlayerID;
+                if (!queues.TryGetValue(owner, out Queue<DeferredUnitEntry>? queue))
                 {
-                    placement.Binding.GetValue().SetPosition(placement.Position);
-                    if (placement.Facing.HasValue) placement.Binding.GetValue().SetFacing(placement.Facing.Value);
+                    queues[owner] = queue = new Queue<DeferredUnitEntry>();
+                    participants.Add(owner);
                 }
-
-                context.Log($"{unit.Name} deployed via Scout.");
+                queue.Enqueue(entry);
             }
+
+            await PlacementAlternation.RunAsync(context.FirstDeploymentRollOrder, participants,
+                player => queues.TryGetValue(player, out Queue<DeferredUnitEntry>? queue) && queue.Count > 0,
+                player => PlaceOne(context, queues[player].Dequeue()));
 
             await OnFinish.Activate(context);
         }
 
+        private async Task PlaceOne(IDeploymentTurnContext context, DeferredUnitEntry entry)
+        {
+            UnitData unit = entry.Unit.GetValue();
+            // Built at the unit's own turn, so the keep-out sees every unit placed before it.
+            PlaceObjectsRequest<ModelData> request = BuildRequest(context, entry);
+
+            // #282: commit-time overlap check, same as normal deployment.
+            List<PlacedObjectEntry<ModelData>> placements = await PlacementCommitGuard
+                .RequestClearPlacement(GameContext, request);
+
+            // On the table is the negation of in reserve (a Scout defers within deployment, so it never
+            // carries the token; a legacy save's bootstrap may have stamped it). #309: cleared BEFORE
+            // the positions so a networked client never captures an on-table position paired with a
+            // still-reserved unit state.
+            Rules.Dispatch.ReserveRules.ClearReserve(unit);
+
+            foreach (PlacedObjectEntry<ModelData> placement in placements)
+            {
+                placement.Binding.GetValue().SetPosition(placement.Position);
+                if (placement.Facing.HasValue) placement.Binding.GetValue().SetFacing(placement.Facing.Value);
+            }
+
+            context.Log($"{unit.Name} deployed via Scout.");
+        }
+
+        /// <summary>The literal TaskName of a Scout placement (the Tactician's discriminator).</summary>
+        public const string ScoutTaskName = "Place Scout Unit";
+
+        /// <summary>
+        /// The placement request for one set-aside unit: the forward zone, plus - when the rule has an enemy
+        /// clause (<see cref="RuleOperation.DeferDeployment.EnemyClearanceInches"/>) - keep-out discs around
+        /// every enemy unit that is not itself one of this pass's set-aside units, with the reason worded
+        /// from the same number.
+        /// </summary>
+        public static PlaceObjectsRequest<ModelData> BuildRequest(IDeploymentTurnContext context,
+            DeferredUnitEntry entry)
+        {
+            UnitData unit = entry.Unit.GetValue();
+            RectangularZone forwardZone = BuildForwardZone(context, unit, entry.Defer.PlacementRangeInches);
+
+            float clearance = entry.Defer.EnemyClearanceInches;
+            var setAside = new HashSet<IUnit>(context.DeferredUnits
+                    .Where(other => other.Defer.Timing == EDeferTiming.AfterNormalDeployment)
+                    .Select(other => (IUnit)other.Unit.GetValue()),
+                ReferenceEqualityComparer.Instance);
+            IReadOnlyList<PlacementDisc> keepOut = Rules.Dispatch.EnemyKeepOutRules.Discs(unit,
+                context.GameContext.TableState, clearance, setAside.Contains);
+
+            return new PlaceObjectsRequest<ModelData>(unit.PlayerID, ScoutTaskName,
+                forwardZone, unit.ModelBindings,
+                enemyKeepOutDiscs: keepOut,
+                displayName: $"Deploying {unit.Name} (Scout)",
+                enemyKeepOutNote: clearance > 0f
+                    ? $"Too close to a non-Scout enemy unit - Scout units must be set up over " +
+                      $"{clearance:0.##}\" away from them."
+                    : "");
+        }
+
         /// <summary>
         /// The owner's deployment zone extended toward the table center (in Z) by
-        /// <paramref name="rangeInches"/>, clamped at center so a Scout can't cross midfield.
+        /// <paramref name="rangeInches"/>, clamped at center so a Scout can't cross midfield. The whole
+        /// base must fit inside it (every resolver tests the base footprint), which is the rule's
+        /// "fully within".
         /// </summary>
-        private RectangularZone BuildForwardZone(IDeploymentTurnContext context, UnitData unit, float rangeInches)
+        private static RectangularZone BuildForwardZone(IDeploymentTurnContext context, UnitData unit, float rangeInches)
         {
             ITeam ownerTeam = context.PlayerDeploymentZones!.Keys
                 .First(team => team.Players.Contains(unit.PlayerID));

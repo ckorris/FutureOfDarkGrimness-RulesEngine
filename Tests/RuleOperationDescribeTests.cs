@@ -117,7 +117,7 @@ namespace FDG.Tests
                 RuleParticipant.Actor(unit, weapon: null, models: unit.Models));
 
             Assert.That(log.Lines, Has.Count.EqualTo(1));
-            Assert.That(log.Lines[0], Is.EqualTo("P1-unit's Dread added 2 to its melee wound tally."),
+            Assert.That(log.Lines[0], Is.EqualTo("P1-unit's Dread made enemies count as having taken +2 wounds in the melee result."),
                 "the whole sentence: the evaluator supplies bearer + rule + full stop around Describe().");
         }
 
@@ -152,8 +152,13 @@ namespace FDG.Tests
             yield return Case(new RuleOperation.StrikeFirst(), "struck first");
             yield return Case(new RuleOperation.StrikeLast(), "struck last");
             yield return Case(new RuleOperation.AllowShootAfterRush(), "could still shoot after Rushing");
+            yield return Case(new RuleOperation.ForbidShootingAfterMoving(), "could not shoot after moving");
             yield return Case(new RuleOperation.IgnoreEnemyMovementBlock(), "moved through enemy units");
-            yield return Case(new RuleOperation.ExtraMeleeWoundCount(1), "added 1 to its melee wound tally");
+            // #419: Fear(X) 3.6 polarity - the bonus lands on the enemy's taken total. Singular at 1.
+            yield return Case(new RuleOperation.ExtraMeleeWoundCount(1),
+                "made enemies count as having taken +1 wound in the melee result");
+            yield return Case(new RuleOperation.ExtraMeleeWoundCount(2),
+                "made enemies count as having taken +2 wounds in the melee result");
 
             // Counts agree in number with what is printed. The float-carrying ops are fractional under
             // the probabilistic roller, so agreement follows the rendered value, not the raw number.
@@ -166,6 +171,8 @@ namespace FDG.Tests
             yield return Case(new RuleOperation.InflictSelfWounds(1.5f),
                 "took 1.5 wounds from its own attack");
             yield return Case(new RuleOperation.RepositionModels(3f), "repositioned its models up to 3\"");
+            yield return Case(new RuleOperation.RepositionModels(9f, 9f, "Vanguard"),
+                "repositioned its models up to 9\", over 9\" from non-Vanguard enemy units");
             yield return Case(new RuleOperation.PassMoraleTest(1),
                 "passed a failed morale test, self-wounding on rolls of 1 or less");
 
@@ -173,11 +180,30 @@ namespace FDG.Tests
             yield return Case(new RuleOperation.ChargeImpactHits(3, ArmorPenetration: 1),
                 "rolled 3 impact dice on the charge at AP(1)");
             yield return Case(new RuleOperation.ChargeImpactHits(1), "rolled 1 impact die on the charge");
-            // Counter cancels a charger's Impact dice through the same op, with a negative count.
+            // Brace cancels a charger's Impact dice through the same op, with a negative count (#422).
             yield return Case(new RuleOperation.ChargeImpactHits(-1),
                 "cancelled 1 impact die from the charge");
             yield return Case(new RuleOperation.ChargeImpactHits(-3),
                 "cancelled 3 impact dice from the charge");
+            // #447: Impact (and Brace) sum X over the models carrying them, and say so.
+            yield return Case(new RuleOperation.ChargeImpactHits(5, Models: 5),
+                "rolled 5 impact dice on the charge (5 models x 1)");
+            yield return Case(new RuleOperation.ChargeImpactHits(3, ArmorPenetration: 1, Models: 1),
+                "rolled 3 impact dice on the charge at AP(1) (1 model x 3)");
+            yield return Case(new RuleOperation.ChargeImpactHits(-6, Models: 3),
+                "cancelled 6 impact dice from the charge (3 models x 2)");
+            // #447 D1: carriers out of melee reach roll nothing, and the op says how many stood out.
+            yield return Case(new RuleOperation.ChargeImpactHits(2, Models: 2, Carriers: 5, PerModel: 1),
+                "rolled 2 impact dice on the charge (2 of 5 models in melee range x 1)");
+            yield return Case(new RuleOperation.ChargeImpactHits(0, Models: 0, Carriers: 5, PerModel: 2),
+                "rolled 0 impact dice on the charge (0 of 5 models in melee range x 2)");
+            yield return Case(new RuleOperation.ChargeImpactHits(5, Models: 5, Carriers: 5, PerModel: 1),
+                "rolled 5 impact dice on the charge (5 models x 1)");
+            // #423 Parry(X): the defender's hit-ignore dice, X per carrying model.
+            yield return Case(new RuleOperation.ParryDice(1, new[] { new ModelID(Guid.Empty), new ModelID(Guid.Empty) }),
+                "may roll 1 Parry die per model when hit in melee (2 models)");
+            yield return Case(new RuleOperation.ParryDice(3, new[] { new ModelID(Guid.Empty) }),
+                "may roll 3 Parry dice per model when hit in melee (1 model)");
 
             // Both branches of each operation that reads differently per mode.
             yield return Case(new RuleOperation.IgnoreTerrainEffects(ETerrainIgnoreScope.DifficultOnly),
@@ -195,8 +221,13 @@ namespace FDG.Tests
                 "left it unable to act");
             yield return Case(
                 new RuleOperation.DeferDeployment(EDeferTiming.AfterNormalDeployment,
-                    PlacementRangeInches: 12f),
-                "deployed after everything else, up to 12\" forward of its zone");
+                    PlacementRangeInches: 9f),
+                "deployed after everything else, within 9\" of its zone");
+            yield return Case(
+                new RuleOperation.DeferDeployment(EDeferTiming.AfterNormalDeployment,
+                    PlacementRangeInches: 9f, EnemyClearanceInches: 9f),
+                "deployed after everything else, within 9\" of its zone and over 9\" from enemies that " +
+                "deployed normally");
             yield return Case(
                 new RuleOperation.DeferDeployment(EDeferTiming.LaterRound, PlacementRangeInches: 9f,
                     MinArrivalRound: 2),
@@ -238,6 +269,17 @@ namespace FDG.Tests
             Assert.That(new RuleOperation.InvokeWeaponAttack(target, Weapon: null).Describe(),
                 Is.EqualTo("had no weapon to attack P2-unit with"),
                 "Weapon is null when the bearing rule was not weapon-scoped; the stage reports the same gap.");
+        }
+
+        // #436 (from #442's smokes): a token reads by its display name, not the TokenType record - the log said
+        // "Peasant Levy's Vale Oath clears TokenType { Id = Shaken } on a 4+." before.
+        [Test]
+        public void TokenOperations_NameTheTokenByItsDisplayName()
+        {
+            string clears = new RuleOperation.ClearTokenOnRoll(TokenType.Shaken, 4).Describe();
+
+            Assert.That(clears, Is.EqualTo("clears Shaken on a 4+"));
+            Assert.That(clears, Does.Not.Contain("TokenType"));
         }
 
         [Test]

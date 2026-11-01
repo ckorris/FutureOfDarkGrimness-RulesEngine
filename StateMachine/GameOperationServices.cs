@@ -117,10 +117,12 @@ namespace FDG.Stages
             }
 
             // Land the dangerous-terrain test now the models are in place, same as the normal-move stage —
-            // a triggered move (Vanguard, forced move, etc.) that crosses dangerous terrain shows the roll
+            // a triggered move (Harassing, forced move, etc.) that crosses dangerous terrain shows the roll
             // and animates its casualties, not just the wound.
             await MovementExecutor.ResolveDangerousTerrain(_gameContext, dangerResult);
         }
+
+        public void Log(string message) => _gameContext.Log(message);
 
         public Task ApplyFatigue(IUnit unit)
         {
@@ -171,8 +173,10 @@ namespace FDG.Stages
                 return;
             }
 
+            // #421: the best Quality on offer (own, joined hero's, a Tough(9)+ Hero's within 6") - the 3.6 Hero
+            // text covers every Morale Test, so a rule-forced one (Spell Drain's victim) gets the aura too.
             MoraleUtilities.MoraleTestOutcome outcome = await MoraleUtilities.TakeMoraleTest(
-                _gameContext, unitData, HeroStatRules.GetMoraleQuality(unitData));
+                _gameContext, unitData, MoraleUtilities.ResolveMoraleQuality(_gameContext, unitData));
 
             if (outcome.Passed)
             {
@@ -369,6 +373,12 @@ namespace FDG.Stages
             // adopts units carrying this marker at its own query seams and clears it.
             unit.Tokens.AddToken(TokenDefinitionCatalog.Create(
                 Rules.Foundation.TokenType.JoinsRoundInProgress));
+            // #426 (Core Rules v3.6.0 Spawn / Split): "Units placed via Spawn/Split can't seize or contest
+            // objectives on the round they are placed." Exactly Ambush's lockout, so the same marker:
+            // ReconcileObjectivesStage skips the unit this round and the RoundEnd sweep clears it after that
+            // check. Both rules (the only users of this service) carry the clause.
+            unit.Tokens.AddToken(TokenDefinitionCatalog.Create(
+                Rules.Foundation.TokenType.ArrivedFromReserve));
 
             await _gameContext.Announce($"{placer.Name} spawns {unit.Name}!", RecoveryBannerColor);
         }

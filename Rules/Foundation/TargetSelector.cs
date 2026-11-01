@@ -56,6 +56,18 @@ namespace FDG.Rules.Foundation;
 /// <see cref="MaxCount"/> = 1. Default false → the normal whole-unit allocation. Only meaningful for
 /// damage (<c>Effect.DealHits</c>) spells; ignored by buff/debuff effects.
 /// </param>
+/// <param name="MaxCountFromArgument">
+/// #434: the most targets is the offering rule's first argument (its X) instead of <see cref="MaxCount"/> - OPR 3.6
+/// Piercing / Precision Target(X) "pick X enemy units", Tag(X) "... or one token on X enemy units". Read through
+/// <see cref="EffectiveMaxCount"/>. False (the default, what old data parses to) keeps <see cref="MaxCount"/>.
+/// </param>
 public record TargetSelector(float RangeInches, int MinCount, int MaxCount, ETargetAffinity TargetAffinity,
     bool RequireLineOfSight, TokenType? RequiredToken = null, bool SingleModel = false,
-    string? RequiredRule = null);
+    string? RequiredRule = null, bool MaxCountFromArgument = false)
+{
+    /// <summary>The most targets the player may pick, given the offering rule's arguments (#434).</summary>
+    public int EffectiveMaxCount(IReadOnlyList<RuleArgument> arguments) =>
+        MaxCountFromArgument && arguments.Count > 0 && arguments[0] is RuleArgument.Int x && x.Value > 0
+            ? x.Value
+            : MaxCount;
+}

@@ -92,7 +92,11 @@ namespace FDG.ArmyBuilding
                 }
             }
 
-            result.OurTotalPoints = ListCompiler.Compile(book, selections).TotalPoints;
+            BuiltArmyFile compiled = ListCompiler.Compile(book, selections);
+            result.OurTotalPoints = compiled.TotalPoints;
+            // #438 D3: the Replace purchases our compile could not land, by name - Army Forge still bills each, so
+            // every one is a known reason for the totals below to disagree.
+            result.UnappliedReplaces.AddRange(compiled.UnappliedReplaces);
             result.TheirTotalPoints = list.ListPoints is int lp && lp > 0 ? lp : included.Sum(d => d.Cost);
             result.TheirTotalIsAuthoritative = list.ListPoints is int v && v > 0;
 
@@ -202,6 +206,11 @@ namespace FDG.ArmyBuilding
         public List<string> Warnings { get; } = new();
         public List<(string Name, int Points)> ExcludedUnits { get; } = new();
         public List<(string Name, int OurPoints, int TheirPoints)> UnitPointsDeltas { get; } = new();
+
+        /// <summary>#438 D3: Replace purchases our ListCompiler could not apply (no target left on the unit), one
+        /// per starved pick with the scarce gear named. Army Forge charges them; we neither apply nor charge, so
+        /// each explains part of a total that falls short of theirs.</summary>
+        public List<UnappliedReplace> UnappliedReplaces { get; } = new();
         public int OurTotalPoints { get; set; }
 
         /// <summary>Army Forge's total. Authoritative when <see cref="TheirTotalIsAuthoritative"/> (taken

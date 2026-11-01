@@ -33,6 +33,26 @@ namespace FDG.Tests
             Assert.That(RuleFireLint.Check(rule), Is.Empty);
         }
 
+        // #432: every shape of the OPR 3.6 range-conditional family lints clean - the hit/save variants already carry
+        // far shots and long charges, and the pre-morale hook now has a shot-from and a charged-from variant (without
+        // them Hive Bond's attackedFromOver could never fire there, and the lint would flag it).
+        [Test]
+        public void RangeConditionalFamily_LintsClean()
+        {
+            foreach (SpecialRuleDefinition rule in new[]
+                     {
+                         RangeConditional36Definitions.ExtraHit(), RangeConditional36Definitions.ApPlusOne(),
+                         RangeConditional36Definitions.ExtraWound(), RangeConditional36Definitions.PickPiercing(),
+                         RangeConditional36Definitions.PickPrecision(), RangeConditional36Definitions.MinusHit(),
+                         RangeConditional36Definitions.PlusDefense(), RangeConditional36Definitions.Ward(),
+                         RangeConditional36Definitions.Shroud(), RangeConditional36Definitions.Morale(),
+                         RangeConditional36Definitions.Reach(), RangeConditional36Definitions.Move(),
+                     })
+            {
+                Assert.That(RuleFireLint.Check(rule), Is.Empty, rule.Name);
+            }
+        }
+
         [Test]
         public void MarkerRule_WithNoEntries_IsFlagged()
         {
@@ -78,7 +98,7 @@ namespace FDG.Tests
             // operation, so every other check passes — but the hit dice are already rolled by then, and only
             // Save deltas fold from that hook. Core Stealth, the identical shape, sits at the modifier hook.
             var rule = Passive("Lint Deaf Hook", new HookEntry(EHookID.Shooting_OnHitRollComplete,
-                new Condition.AllModelsHaveThisRule(),   // RuleValidator requires this of Subject-seat rules
+                new Condition.MostModelsHaveThisRule(),   // RuleValidator requires this of Subject-seat rules
                 new Effect.RollModifier(ERollKind.Hit, Delta: -1),
                 ELifetime.ThisAttack,
                 ERuleSeat.Subject));
@@ -96,7 +116,7 @@ namespace FDG.Tests
             // The other half of the pair: Shielded's +1 to defense, same hook and seat, and read. Pins that
             // the consumption map keys on the operation's roll kind rather than its type.
             var rule = Passive("Lint Heard Hook", new HookEntry(EHookID.Shooting_OnHitRollComplete,
-                new Condition.AllModelsHaveThisRule(),   // RuleValidator requires this of Subject-seat rules
+                new Condition.MostModelsHaveThisRule(),   // RuleValidator requires this of Subject-seat rules
                 new Effect.RollModifier(ERollKind.Save, Delta: 1),
                 ELifetime.ThisAttack,
                 ERuleSeat.Subject));
@@ -169,6 +189,20 @@ namespace FDG.Tests
                     new Condition.TokenPresent(TokenType.SpellTokens)),
                 new Effect.MovementBonus(EActionType.Advance, DistanceInches: 2f),
                 ELifetime.ThisActivation));
+
+            Assert.That(RuleFireLint.Check(rule), Is.Empty);
+        }
+
+        [Test]
+        public void ATokenSizedStrikePool_IsSeeded_AndLintsClean()
+        {
+            // #434: 3.6 Regenerative Strength rolls "as many dice as tokens on it" - on the empty lint container the
+            // pool would be zero dice and read as a no-op; the lint seeds the tokens the value source reads.
+            var rule = Passive("Lint Token Pool", new HookEntry(EHookID.Melee_OnChargeContact,
+                new Condition.Not(new Condition.CountsAsFatiguedInMelee()),
+                new Effect.DealAutoWounds(new ValueSource.TokenTotal(TokenType.RegenerativeStrengthMarker),
+                    SuccessThreshold: 4, PerModel: false),
+                ELifetime.ThisAttack));
 
             Assert.That(RuleFireLint.Check(rule), Is.Empty);
         }

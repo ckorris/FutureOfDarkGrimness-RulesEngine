@@ -99,63 +99,8 @@ namespace FDG.Tests
                 "a strike-back is not charging, so Thrust's AP modifier does not apply.");
         }
 
-        // --- Piercing Assault: Thrust's AP facet alone (same charge gate, no +1 to hit) ---
-
-        [Test]
-        public async Task PiercingAssaultCharging_AppliesSaveModifier()
-        {
-            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
-            attacker.GetValue().AttachRuleDefinition(
-                new ResolvedRule("Piercing Assault", CoreRuleCatalog.PiercingAssault));
-
-            RollToHitResults result = await RunRollToHit(attacker, MakeUnit(DefenderPos),
-                isMelee: true, isCharging: true);
-
-            Assert.That(result.SaveModifier, Is.EqualTo(-1),
-                "Piercing Assault gives AP(+1) (a -1 save modifier) when charging in melee.");
-        }
-
-        [Test]
-        public async Task PiercingAssaultStrikeBack_NoSaveModifier()
-        {
-            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
-            attacker.GetValue().AttachRuleDefinition(
-                new ResolvedRule("Piercing Assault", CoreRuleCatalog.PiercingAssault));
-
-            RollToHitResults result = await RunRollToHit(attacker, MakeUnit(DefenderPos),
-                isMelee: true, isCharging: false);
-
-            Assert.That(result.SaveModifier, Is.EqualTo(0), "not charging → no AP.");
-        }
-
-        // --- Piercing Hunter: AP(+1) when shooting beyond 9" (distance gate instead of charge) ---
-
-        [Test]
-        public async Task PiercingHunter_BeyondNine_AppliesSaveModifier()
-        {
-            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
-            attacker.GetValue().AttachRuleDefinition(
-                new ResolvedRule("Piercing Hunter", CoreRuleCatalog.PiercingHunter));
-
-            RollToHitResults result = await RunRollToHit(attacker, MakeUnit(new Position(20, 5)),
-                isMelee: false, isCharging: false);
-
-            Assert.That(result.SaveModifier, Is.EqualTo(-1),
-                "Piercing Hunter gives AP(+1) when shooting beyond 9\".");
-        }
-
-        [Test]
-        public async Task PiercingHunter_WithinNine_NoSaveModifier()
-        {
-            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
-            attacker.GetValue().AttachRuleDefinition(
-                new ResolvedRule("Piercing Hunter", CoreRuleCatalog.PiercingHunter));
-
-            RollToHitResults result = await RunRollToHit(attacker, MakeUnit(DefenderPos),
-                isMelee: false, isCharging: false);
-
-            Assert.That(result.SaveModifier, Is.EqualTo(0), "within 9\" the distance gate fails.");
-        }
+        // (#436: the 3.5 Piercing Assault / Piercing Hunter cases were retired with their catalog rules; 3.6's
+        // Piercing Charge / Piercing Marksman are pinned in GdfSweep36RuleIntegrationTests.)
 
         // --- Shielded: a DEFENDER (Subject) save bonus, folded at the new hit-complete seam ---
 
@@ -198,7 +143,7 @@ namespace FDG.Tests
                 isMelee: true, isCharging: false);
 
             Assert.That(result.SaveModifier, Is.EqualTo(-1),
-                "\"AP(+1) in melee\" applies on any melee swing - no charge gate, unlike Piercing Assault.");
+                "\"AP(+1) in melee\" applies on any melee swing - no charge gate, unlike Thrust.");
         }
 
         [Test]
@@ -241,19 +186,21 @@ namespace FDG.Tests
             Assert.That(result.SaveModifier, Is.EqualTo(0), "the shooting gate fails in melee.");
         }
 
-        // --- #377 Slayer: AP(+2) vs a majority-Tough(3)+ target, when shooting >9" OR charging ---
+        // --- #377 Slayer: AP(+2) vs a majority-Tough(3)+ target. #434 (OPR 3.6): "When using Hold actions and shooting,
+        // or when charging" - the shooting arm is a Hold (the unit did not move), at any range (3.5: over 9") ---
 
-        [Test]
-        public async Task Slayer_ShootingBeyondNine_ToughTarget_AppliesSaveModifier()
+        [TestCase(20f)]
+        [TestCase(1f)]
+        public async Task Slayer_ShootingOnAHold_ToughTarget_AppliesSaveModifier_AtAnyRange(float z)
         {
             DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
             attacker.GetValue().AttachRuleDefinition(new ResolvedRule("Slayer", CoreRuleCatalog.Slayer));
-            DataBinding<UnitData> tough = MakeToughUnit(new Position(20, 5));
+            DataBinding<UnitData> tough = MakeToughUnit(new Position(z, 5));
 
             RollToHitResults result = await RunRollToHit(attacker, tough, isMelee: false, isCharging: false);
 
             Assert.That(result.SaveModifier, Is.EqualTo(-2),
-                "Slayer gives AP(+2) shooting a majority-Tough(3)+ target from beyond 9\".");
+                "Slayer gives AP(+2) shooting a majority-Tough(3)+ target on a Hold - no range clause in 3.6.");
         }
 
         [Test]
@@ -270,7 +217,7 @@ namespace FDG.Tests
         }
 
         [Test]
-        public async Task Slayer_ShootingBeyondNine_SoftTarget_NoSaveModifier()
+        public async Task Slayer_ShootingOnAHold_SoftTarget_NoSaveModifier()
         {
             DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
             attacker.GetValue().AttachRuleDefinition(new ResolvedRule("Slayer", CoreRuleCatalog.Slayer));
@@ -283,16 +230,17 @@ namespace FDG.Tests
         }
 
         [Test]
-        public async Task Slayer_ShootingWithinNine_NotCharging_ToughTarget_NoSaveModifier()
+        public async Task Slayer_ShootingAfterMoving_NotCharging_ToughTarget_NoSaveModifier()
         {
             DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
             attacker.GetValue().AttachRuleDefinition(new ResolvedRule("Slayer", CoreRuleCatalog.Slayer));
-            DataBinding<UnitData> tough = MakeToughUnit(DefenderPos);
+            DataBinding<UnitData> tough = MakeToughUnit(new Position(20, 5));
 
-            RollToHitResults result = await RunRollToHit(attacker, tough, isMelee: false, isCharging: false);
+            RollToHitResults result = await RunRollToHit(attacker, tough, isMelee: false, isCharging: false,
+                attackerMoved: true);
 
             Assert.That(result.SaveModifier, Is.EqualTo(0),
-                "within 9\" and not charging, neither Slayer arm applies.");
+                "an Advance-and-shoot is not a Hold, and it is not a charge: neither Slayer arm applies.");
         }
 
         private async Task<DetermineHitRollResults> RunHitStage(
@@ -311,13 +259,14 @@ namespace FDG.Tests
         }
 
         private async Task<RollToHitResults> RunRollToHit(
-            DataBinding<UnitData> attacker, DataBinding<UnitData> defender, bool isMelee, bool isCharging)
+            DataBinding<UnitData> attacker, DataBinding<UnitData> defender, bool isMelee, bool isCharging,
+            bool attackerMoved = false)
         {
             var layer = new NoOpLayer<ICombatMetadata>();
             var stage = new RollToHitStage<ICombatMetadata>(_ctx, layer);
             stage.NextStage.Bind("done");
 
-            var metadata = MakeMetadata(attacker, defender, isMelee, isCharging);
+            var metadata = MakeMetadata(attacker, defender, isMelee, isCharging, attackerMoved);
             metadata.AddResult(new DetermineHitRollResults(4, attackCount: 1));
 
             await stage.Enter(metadata);
@@ -328,11 +277,11 @@ namespace FDG.Tests
         }
 
         private CombatMetadata MakeMetadata(DataBinding<UnitData> attacker, DataBinding<UnitData> defender,
-            bool isMelee, bool isCharging)
+            bool isMelee, bool isCharging, bool attackerMoved = false)
         {
             var weapon = new Weapon("Test", rangeInches: 48f, attacks: 1, armorPenetration: 0);
             return new CombatMetadata(_ctx, attacker, defender, weapon, weaponCount: 1,
-                attackerMoved: false, isMelee: isMelee, isCharging: isCharging);
+                attackerMoved: attackerMoved, isMelee: isMelee, isCharging: isCharging);
         }
 
         private static void AttachThrust(DataBinding<UnitData> unit) =>

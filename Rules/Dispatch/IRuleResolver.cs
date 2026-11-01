@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using FDG.Rules.Definitions;
 
 namespace FDG.Rules.Dispatch;
@@ -31,4 +32,11 @@ public interface IRuleResolver
     /// exceptions as control flow.
     /// </summary>
     bool TryResolve(string rule, out ResolvedRule resolved);
+
+    /// <summary>
+    /// Every registered definition (an alias repeats the definition it renames). #441 F7: the set a rule-to-rule
+    /// question is answered against - <see cref="EnhancedRuleGate.GrantingRule"/> asks which rule's activation
+    /// pick grants a helper name - where a by-name lookup cannot.
+    /// </summary>
+    IEnumerable<SpecialRuleDefinition> Definitions { get; }
 }

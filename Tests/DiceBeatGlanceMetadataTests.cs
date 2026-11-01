@@ -222,5 +222,18 @@ namespace FDG.Tests
             List<string>? tags = MoraleUtilities.ComposeMoraleTags(4, named, -1);
             Assert.That(tags, Is.EqualTo(new[] { "Quality 4+", "Terrifying -1", "buff -1" }));
         }
+
+        [Test]
+        public void MoraleTags_AHeroSourcedQuality_NamesTheHero_AndAlwaysShows()
+        {
+            // #421: the borrowed Quality is the modifier worth reading, so it shows even on an otherwise bare roll.
+            var aura = new MoraleUtilities.MoraleQuality(3, MoraleUtilities.EMoraleQualitySource.HeroAura, "Lord");
+            Assert.That(MoraleUtilities.ComposeMoraleTags(aura, new List<(RuleOperation, string)>(), 0),
+                Is.EqualTo(new[] { "Quality 3+ (Hero aura: Lord)" }));
+
+            var joined = new MoraleUtilities.MoraleQuality(2, MoraleUtilities.EMoraleQualitySource.JoinedHero, "Captain");
+            Assert.That(MoraleUtilities.ComposeMoraleTags(joined, new List<(RuleOperation, string)>(), 1),
+                Is.EqualTo(new[] { "Quality 2+ (joined Hero: Captain)", "buff +1" }));
+        }
     }
 }

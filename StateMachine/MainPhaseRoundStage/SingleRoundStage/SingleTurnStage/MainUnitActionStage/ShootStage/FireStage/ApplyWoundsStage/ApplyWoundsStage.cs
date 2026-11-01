@@ -1,5 +1,6 @@
 using FDG.Presentation;
 using FDG.Presentation.Beats;
+using FDG.Rules.Dispatch;
 using FDG.Utilities;
 
 namespace FDG.Stages
@@ -78,6 +79,11 @@ namespace FDG.Stages
                 }
             }
 
+            // #419: every attacker-caused wound lands here, so this is where the activation's wound ledger learns
+            // what the defender took (read by the melee result: "the number of wounds each unit took during this
+            // activation").
+            WoundsTakenThisActivation.Add(defendingUnit, totalWoundsApplied);
+
             if(metaData.DefendingUnit.GetIsAlive())
             {
                 GameContext.Log($"Applying {totalWoundsApplied} wounds killed {modelsKilled} models.");
@@ -124,7 +130,10 @@ namespace FDG.Stages
             GameContext.Log($"{attacker.Name} takes {hitResults.SelfWounds:0.##} " +
                 $"wound{(hitResults.SelfWounds == 1f ? "" : "s")} from its own {metaData.WeaponType.Name}.");
 
-            await CasualtyPresentation.ApplyUnitWounds(GameContext, attacker, hitResults.SelfWounds);
+            // #434 (3.6 Hazardous): "this MODEL takes one wound, or X wounds ..." - the models that fired the weapon
+            // take them, one die's worth per model, not the unit's assignment order.
+            await CasualtyPresentation.ApplyCarrierWounds(GameContext, attacker, metaData.WeaponType,
+                hitResults.SelfWounds, hitResults.SelfWoundsPerDie);
         }
     }
 }

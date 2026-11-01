@@ -8,7 +8,7 @@ using NUnit.Framework;
 
 namespace FDG.Tests
 {
-    // #021 / GF v3.5.1 — "Shaken units always fail morale tests." TakeMoraleTest must short-circuit to a
+    // #021 / GF Core Rules v3.6.0 (as in v3.5.1) — a Shaken unit "always fails Morale Tests". TakeMoraleTest must short-circuit to a
     // failure for an already-Shaken unit without rolling, which is what escalates a Shaken unit that
     // loses a later melee at half strength into a Rout. Quality is 4; FixedDiceRoller(6) would pass a
     // real roll, so a failure here proves the auto-fail fired rather than the die.

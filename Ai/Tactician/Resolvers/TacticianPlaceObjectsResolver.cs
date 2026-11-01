@@ -20,8 +20,9 @@ namespace FDG.Ai.Tactician.Resolvers
         /// <summary>DeployUnitStage's literal TaskName - the deployment discriminator.</summary>
         public const string DeploymentTaskName = "Place Unit Models";
         /// <summary>PlaceDeferredUnitsStage's literal - Scout placement into the forward-extended
-        /// zone works exactly like deployment (#191 A5-2).</summary>
-        public const string ScoutTaskName = "Place Scout Unit";
+        /// zone works exactly like deployment (#191 A5-2). #426: the request also carries keep-out discs
+        /// (over 9" from non-Scout enemies), which the base class's block search honours like any other.</summary>
+        public const string ScoutTaskName = Stages.PlaceDeferredUnitsStage.ScoutTaskName;
         /// <summary>StartOfRoundExtraActionStage's literal - Ambush arrival over the whole table.</summary>
         public const string AmbushTaskName = "Ambush Deploy";
 
@@ -247,7 +248,10 @@ namespace FDG.Ai.Tactician.Resolvers
                 if (TacticalAnalysis.MeleeThreatReach(arriver.GetValue(), victim.GetValue(), _evaluator,
                         Terrain) >= distance)
                 {
-                    MeleeEstimate melee = CombatMath.EstimateMelee(_evaluator, arriver, victim);
+                    // #442: the next activation's charge launches from about here (arriver not yet on the table:
+                    // the victim's spread and a base off the centroid distance).
+                    MeleeEstimate melee = CombatMath.EstimateMelee(_evaluator, arriver, victim,
+                        chargeOriginInches: Math.Max(0f, distance - TacticalAnalysis.Spread(victim.GetValue()) - 1f));
                     damage = Math.Max(damage,
                         ValueFraction(melee.AttackerAttack.ExpectedWounds, victim.GetValue())
                         - ValueFraction(melee.DefenderReturn.ExpectedWounds, arriver.GetValue()));
@@ -306,11 +310,14 @@ namespace FDG.Ai.Tactician.Resolvers
                     new AttackContext(reach, AttackerMoved: true));
                 float value = ValueFraction(incoming.ExpectedWounds, arriver.GetValue());
                 if (enemy.GetValue().GetMeleeWeapons().Count > 0
+                    && TacticalAnalysis.MayCharge(enemy.GetValue(), _evaluator) // #442 (#425)
                     && TacticalAnalysis.MeleeThreatReach(enemy.GetValue(), arriver.GetValue(), _evaluator,
                         Terrain) >= distance - 1f)
                 {
                     value = Math.Max(value, 0.5f * ValueFraction(
-                        CombatMath.EstimateMelee(_evaluator, enemy, arriver).AttackerAttack.ExpectedWounds,
+                        CombatMath.EstimateMelee(_evaluator, enemy, arriver,
+                            chargeOriginInches: Math.Max(0f, distance - TacticalAnalysis.Spread(enemy.GetValue()) - 1f))
+                            .AttackerAttack.ExpectedWounds,
                         arriver.GetValue()));
                 }
                 worst = Math.Max(worst, value);

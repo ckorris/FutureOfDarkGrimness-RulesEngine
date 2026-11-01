@@ -77,7 +77,8 @@ public static class TokenDefinitionCatalog
 
             new(TokenType.FATIGUED_ID, "Fatigued", EValence.Negative, ETokenProminence.FirstClass,
                 DefaultClearTrigger: new TokenClearTrigger.RoundEnd(),
-                Description: "Fatigued - hits only on unmodified 6s in melee for the rest of the round."),
+                Description: "Fatigued - hits only on unmodified 6s in melee for the rest of the round, " +
+                             "and those don't count as 6s for special rules."),
 
             // #197 Inquisitorial Agent's per-round army quota counter. Normal prominence: it explains why
             // a sibling unit is no longer being offered its second activation, which is otherwise invisible.
@@ -107,7 +108,7 @@ public static class TokenDefinitionCatalog
                 ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.RoundEnd(),
                 Description: "Has already activated this round."),
 
-            // #197 Mobile Artillery. VisibleOnlyWhenRead (#308): the movement stage stamps this on EVERY
+            // #197 MovedThisRound (3.6 Artillery / Entrenched; 3.5 Mobile Artillery). VisibleOnlyWhenRead (#308): the movement stage stamps this on EVERY
             // unit that moves, so shown unconditionally it was a chip on most of the table that meant
             // nothing on any of them. It is still the only visible explanation for why an artillery piece
             // is suddenly easier to shoot this round - so it stays Normal for a bearer that actually
@@ -159,6 +160,15 @@ public static class TokenDefinitionCatalog
                 DefaultClearTrigger: new TokenClearTrigger.ManualOnly(),
                 Description: "Attackers may spend these markers before this unit rolls to block: AP(+1) per marker removed."),
 
+            // #434: 3.6 Tag tokens - one removed per attack.
+            new(TokenType.SINGLE_SPEND_HIT_BONUS_ID, "Hit tag", EValence.Negative, ETokenProminence.Normal,
+                DefaultClearTrigger: new TokenClearTrigger.ManualOnly(),
+                Description: "An attacker may remove one of these before rolling to hit: +1 to hit rolls."),
+
+            new(TokenType.SINGLE_SPEND_AP_BONUS_ID, "AP tag", EValence.Negative, ETokenProminence.Normal,
+                DefaultClearTrigger: new TokenClearTrigger.ManualOnly(),
+                Description: "An attacker may remove one of these before this unit rolls to block: AP(+1)."),
+
             new(TokenType.PERSISTENT_HIT_BONUS_ID, "Targeted (hit)", EValence.Negative, ETokenProminence.Normal,
                 DefaultClearTrigger: new TokenClearTrigger.ManualOnly(),
                 Description: "Attackers get +1 to hit rolls per marker while these sit on this unit."),
@@ -180,6 +190,11 @@ public static class TokenDefinitionCatalog
             new(TokenType.POST_COMBAT_MOVE_USED_ID, "Post-combat move used", EValence.Neutral,
                 ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.RoundEnd()),
 
+            // #434: Ravage / Regenerative Strength's "once per round" pre-strike dice. Stamped by
+            // ResolveRavageWoundsStage, swept by the round-end pass.
+            new(TokenType.STRIKE_DICE_USED_ID, "Strike dice used", EValence.Neutral,
+                ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.RoundEnd()),
+
             // #381: "fought in melee this round", either role - the data-readable gate for
             // "after being in melee" rules (AoF Retreating Strike). Stamped by ApplyFatigueStage.
             new(TokenType.WAS_IN_MELEE_THIS_ROUND_ID, "Was in melee", EValence.Neutral,
@@ -187,6 +202,30 @@ public static class TokenDefinitionCatalog
 
             new(TokenType.DELAYED_ACTION_USED_ID, "Delayed Action used", EValence.Neutral,
                 ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.RoundEnd()),
+
+            // #431 Scourge: bookkeeping between the save roll and the melee result / morale check of the same
+            // activation - consumed there, swept table-wide at activation end; RoundEnd is only the backstop.
+            new(TokenType.COUNTED_WOUNDS_TAKEN_ID, "Counted wounds taken", EValence.Negative,
+                ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.RoundEnd(),
+                Description: "Counts as having taken extra wounds this activation (melee result and morale only)."),
+
+            // #419: the activation's wound ledger - real wounds landed on this unit this activation, read by the
+            // melee result. Swept table-wide at the start and end of every activation; RoundEnd is the backstop.
+            new(TokenType.WOUNDS_TAKEN_THIS_ACTIVATION_ID, "Wounds taken this activation", EValence.Neutral,
+                ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.RoundEnd(),
+                Description: "Wounds this unit has taken during the current activation (used by the melee result)."),
+
+            // #446: one Dangerous Terrain Test per activation, on either trigger (activating in it / moving across
+            // it). Swept table-wide at the start and end of every activation; RoundEnd is the backstop.
+            new(TokenType.DANGEROUS_TERRAIN_TESTED_THIS_ACTIVATION_ID, "Tested Dangerous terrain", EValence.Neutral,
+                ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.RoundEnd(),
+                Description: "Has taken its Dangerous Terrain Test this activation - it does not test again until its next one."),
+
+            // #435: a teleport actually moved this unit's models this activation (Ethereal's "if you do"). Stamped by
+            // TeleportStage; the activated unit's flag, so the end-of-activation sweep clears it.
+            new(TokenType.TELEPORTED_THIS_ACTIVATION_ID, "Teleported", EValence.Neutral,
+                ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.ActivationEnd(),
+                Description: "This unit teleported this activation."),
 
             new(TokenType.OFF_TABLE_FROM_FORCED_MOVE_ID, "Off table (forced move)", EValence.Neutral,
                 ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.ManualOnly()),
@@ -205,7 +244,7 @@ public static class TokenDefinitionCatalog
                 ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.ManualOnly()),
             new(TokenType.PENDING_REINFORCEMENT_ARRIVAL_ID, "Reinforcements inbound", EValence.Neutral,
                 ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.ManualOnly(),
-                Description: "A fresh copy of this unit deploys within 12\" of any table edge at the start of the next round."),
+                Description: "A fresh copy of this unit deploys within 9\" of any table edge, over 9\" away from enemy units, at the start of the next round."),
         };
 
         var dict = new Dictionary<string, TokenDefinition>(StringComparer.Ordinal);

@@ -1,3 +1,4 @@
+using System.Linq;
 using FDG.Data;
 using FDG.Players;
 using FDG.Rules.Dispatch;
@@ -7,9 +8,10 @@ using NUnit.Framework;
 
 namespace FDG.Tests
 {
-    // #021 Fear(X) — vertical slice through the REAL DetermineMeleeWinnerStage. Fear makes a unit count
-    // as dealing +X extra wounds for the who-won-melee check only (no real wounds), so it can pull a loss
-    // back to a tie or push a tie into a win — which flips who must then test morale. The stage fires
+    // #021 Fear(X) — vertical slice through the REAL DetermineMeleeWinnerStage. #419, Core Rules v3.6.0: "When
+    // in melee with this model, enemies count as having taken +X wounds when checking who won." Fear adds X to
+    // the ENEMY's taken total for the who-won-melee check only (no real wounds), so it can pull a loss back to a
+    // tie or push a tie into a win — which flips who must then test morale. The stage fires
     // Melee_OnMeleeResolution per side; this attaches the catalog Fear rule and drives the stage directly,
     // mirroring DetermineMeleeWinnerStageTests (build context at full health, then deal wounds).
     [TestFixture]
@@ -36,7 +38,7 @@ namespace FDG.Tests
             var (needsRoll, doesntNeedRoll, result) = await RunDetermineWinner(combat);
 
             Assert.That(result.Winner, Is.EqualTo(DetermineMeleeWinnerResults.EMeleeWinnerResult.AttackerWon),
-                "attacker's +1 (Fear) makes 3 vs 2 — it wins.");
+                "attacker's Fear(1): the defender counts as having taken 3 vs 2 — it loses.");
             Assert.That(needsRoll, Is.True);
             Assert.That(doesntNeedRoll, Is.False);
         }
@@ -45,14 +47,14 @@ namespace FDG.Tests
         public async Task FearOnDefender_PullsLossBackToTie()
         {
             var (combat, attacker, defender) = BuildMelee();
-            defender.GetValue().ModelBindings[0].GetValue().DealWounds(2); // attacker dealt 2
-            attacker.GetValue().ModelBindings[0].GetValue().DealWounds(1); // defender dealt 1 — attacker wins without Fear
+            defender.GetValue().ModelBindings[0].GetValue().DealWounds(2); // defender took 2
+            attacker.GetValue().ModelBindings[0].GetValue().DealWounds(1); // attacker took 1 — attacker wins without Fear
             AttachFear(defender, 1);
 
             var (needsRoll, doesntNeedRoll, result) = await RunDetermineWinner(combat);
 
             Assert.That(result.Winner, Is.EqualTo(DetermineMeleeWinnerResults.EMeleeWinnerResult.Tie),
-                "defender's +1 (Fear) makes 2 vs 2 — a tie, so no loser tests morale.");
+                "defender's Fear(1): the attacker counts as having taken 2 vs 2 — a tie, so no loser tests morale.");
             Assert.That(doesntNeedRoll, Is.True);
             Assert.That(needsRoll, Is.False);
         }
@@ -61,9 +63,9 @@ namespace FDG.Tests
         public async Task FearAmountComesFromArgument()
         {
             var (combat, attacker, defender) = BuildMelee();
-            defender.GetValue().ModelBindings[0].GetValue().DealWounds(3); // attacker dealt 3
-            attacker.GetValue().ModelBindings[0].GetValue().DealWounds(1); // defender dealt 1
-            AttachFear(defender, 2); // +2 → 3 vs 3, a tie. Proves X is read from the rule's argument.
+            defender.GetValue().ModelBindings[0].GetValue().DealWounds(3); // defender took 3
+            attacker.GetValue().ModelBindings[0].GetValue().DealWounds(1); // attacker took 1
+            AttachFear(defender, 2); // the attacker counts +2 → 3 vs 3, a tie. Proves X is read from the rule's argument.
 
             var (_, doesntNeedRoll, result) = await RunDetermineWinner(combat);
 
@@ -86,7 +88,7 @@ namespace FDG.Tests
                 "Fear adjusts only the who-won comparison — it must not deal real wounds.");
         }
 
-        // ── #175: Fear(X) is per-MODEL ("this model counts as having dealt +X wounds"), and a joined
+        // ── #175: Fear(X) is per-MODEL ("When in melee with this model, enemies count as..."), and a joined
         // hero's rules ride the hero MODEL (#006 slice F). Before #175 this stage dispatched with no
         // models list, so a hero-only Fear contributed nothing at all. ──────────────────────────────
 
@@ -111,8 +113,8 @@ namespace FDG.Tests
         public async Task FearOnHostUnitAndOnJoinedHero_BothCount()
         {
             var (combat, attacker, defender) = BuildMelee(attackerModelCount: 3);
-            defender.GetValue().ModelBindings[0].GetValue().DealWounds(2); // attacker dealt 2
-            attacker.GetValue().ModelBindings[0].GetValue().DealWounds(5); // defender dealt 5
+            defender.GetValue().ModelBindings[0].GetValue().DealWounds(2); // defender took 2
+            attacker.GetValue().ModelBindings[0].GetValue().DealWounds(5); // attacker took 5
             AttachFear(attacker, 1);                          // host unit
             AttachFearToModel(attacker, modelIndex: 2, x: 2); // joined hero
 
@@ -130,8 +132,8 @@ namespace FDG.Tests
         public async Task UnitLevelFear_CountsOnce_NotPerModel()
         {
             var (combat, attacker, defender) = BuildMelee(attackerModelCount: 3);
-            defender.GetValue().ModelBindings[0].GetValue().DealWounds(2); // attacker dealt 2
-            attacker.GetValue().ModelBindings[0].GetValue().DealWounds(3); // defender dealt 3
+            defender.GetValue().ModelBindings[0].GetValue().DealWounds(2); // defender took 2
+            attacker.GetValue().ModelBindings[0].GetValue().DealWounds(3); // attacker took 3
             AttachFear(attacker, 1);
 
             var (_, doesntNeedRoll, result) = await RunDetermineWinner(combat);
@@ -147,15 +149,58 @@ namespace FDG.Tests
         public async Task FearOnDeadHeroModel_ContributesNothing()
         {
             var (combat, attacker, defender) = BuildMelee(attackerModelCount: 3);
-            defender.GetValue().ModelBindings[0].GetValue().DealWounds(4); // attacker dealt 4
+            defender.GetValue().ModelBindings[0].GetValue().DealWounds(4); // defender took 4
             AttachFearToModel(attacker, modelIndex: 2, x: 2);
-            attacker.GetValue().ModelBindings[2].GetValue().DealWounds(5); // the Fear carrier dies; defender dealt 5
+            attacker.GetValue().ModelBindings[2].GetValue().DealWounds(5); // the Fear carrier dies; attacker took 5
 
             var (needsRoll, _, result) = await RunDetermineWinner(combat);
 
             Assert.That(result.Winner, Is.EqualTo(DetermineMeleeWinnerResults.EMeleeWinnerResult.DefenderWon),
                 "the dead carrier's +2 must not apply: 4 vs 5 stands (with it, the attacker would win 6 vs 5).");
             Assert.That(needsRoll, Is.True);
+        }
+
+        // ── #419: the 3.6 wording reaches the player ─────────────────────────────────────────────────
+
+        // The log names the ENEMY as the one that "counts as having taken" the Fear wounds, and the result line
+        // states what each side took.
+        [Test]
+        public async Task FearLog_SaysTheEnemyCountsAsHavingTakenTheWounds()
+        {
+            var log = new RecordingTextOutput();
+            _ctx = new TestGameContext(_store, new FixedDiceRoller(4), textOutput: log);
+            var (combat, attacker, defender) = BuildMelee();
+            defender.GetValue().ModelBindings[0].GetValue().DealWounds(1);
+            attacker.GetValue().ModelBindings[0].GetValue().DealWounds(1);
+            AttachFear(attacker, 2);
+
+            await RunDetermineWinner(combat);
+
+            var lines = log.Entries.Select(entry => entry.Message).ToList();
+            Assert.That(lines, Has.Member("Defender counts as having taken +2 wounds (Attacker's Fear)."));
+            Assert.That(lines, Has.Member(
+                "Melee result: Attacker took 1 wound, Defender took 3 wounds - Defender took more and loses the melee."));
+            Assert.That(lines.All(line => line.All(c => c <= '\u00FF')), Is.True, "game text is ASCII/Latin-1 only");
+        }
+
+        // Fear on BOTH sides lands on both opponents: equal Fear on an even exchange stays a tie.
+        [Test]
+        public async Task EqualFearOnBothSides_EvenExchange_StaysATie()
+        {
+            var log = new RecordingTextOutput();
+            _ctx = new TestGameContext(_store, new FixedDiceRoller(4), textOutput: log);
+            var (combat, attacker, defender) = BuildMelee();
+            defender.GetValue().ModelBindings[0].GetValue().DealWounds(1);
+            attacker.GetValue().ModelBindings[0].GetValue().DealWounds(1);
+            AttachFear(attacker, 1);
+            AttachFear(defender, 1);
+
+            var (_, doesntNeedRoll, result) = await RunDetermineWinner(combat);
+
+            Assert.That(result.Winner, Is.EqualTo(DetermineMeleeWinnerResults.EMeleeWinnerResult.Tie));
+            Assert.That(doesntNeedRoll, Is.True);
+            Assert.That(log.Entries.Select(entry => entry.Message), Has.Member(
+                "Melee result: Attacker took 2 wounds, Defender took 2 wounds - a tie, nobody tests morale."));
         }
 
         // Helpers

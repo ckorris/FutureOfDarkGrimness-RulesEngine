@@ -39,7 +39,7 @@ namespace FDG.Tests
                     new TargetSelector(RangeInches: 0f, MinCount: 1, MaxCount: 1, ETargetAffinity.Self,
                         RequireLineOfSight: false),
                     new Effect.RepositionAtActivation(new DiceExpression.D3(), PlusInches: 1),
-                    new Condition.AllModelsHaveThisRule(),
+                    new Condition.MostModelsHaveThisRule(),
                     Label: RuleName),
             });
 
@@ -120,8 +120,8 @@ namespace FDG.Tests
         [Test]
         public async Task AUnitWhereNotEveryModelHasTheRule_IsNotOffered()
         {
-            // #267: a unit-wide reposition must gate on AllModelsHaveThisRule, or one joined hero's copy
-            // would move the whole squad. The offer is gathered from the carrying MODEL, so only the
+            // #267: a unit-wide reposition must gate on rule ownership (MostModelsHaveThisRule since #428),
+            // or one joined hero's copy would move the whole squad. The offer is gathered from the carrying MODEL, so only the
             // ability's availability condition can stop it.
             DataBinding<UnitData> unit = MakeUnit(new Position(10f, 10f), onAllModels: false);
             var requester = new DashRequester { Destination = new Position(12f, 10f), ThrowOnYesNo = true };
@@ -129,7 +129,7 @@ namespace FDG.Tests
             await RunEndOfActivation(unit, requester);
 
             Assert.That(requester.PlaceAsked, Is.EqualTo(0),
-                "'a unit where all models have this rule' - one model's copy does not move the squad");
+                "'a unit where most models have this rule' - one model's copy does not move the squad");
         }
 
         private async Task RunEndOfActivation(DataBinding<UnitData> unit, DashRequester requester)

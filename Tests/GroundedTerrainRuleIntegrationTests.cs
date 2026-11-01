@@ -32,7 +32,7 @@ namespace FDG.Tests
                 new[]
                 {
                     new HookEntry(EHookID.Shooting_OnHitRollModifier,
-                        new Condition.And(new Condition.AllModelsHaveThisRule(),
+                        new Condition.And(new Condition.MostModelsHaveThisRule(),
                             new Condition.MostModelsWithinInchesOfTerrain(Within)),
                         new Effect.RollModifier(ERollKind.Hit, -1), ELifetime.ThisAttack,
                         ERuleSeat.Subject),

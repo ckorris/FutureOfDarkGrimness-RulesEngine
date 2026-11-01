@@ -116,7 +116,9 @@ namespace FDG.Stages
             RollModifierSink hitModifiers = new RollModifierSink();
             hitModifiers.ApplyFrom(hitOps);
 
-            int grantedHit = GrantedRollModifiers.PeekNet(attacker, ERollKind.Hit);
+            // #427 Unstoppable: the same ignore the stage applies to a granted negative hit token.
+            int grantedHit = GrantedRollModifiers.PeekNet(attacker, ERollKind.Hit,
+                ignoreOtherUnitsNegative: hitOps.OfType<RuleOperation.IgnoreNegativeWeaponModifiers>().Any());
             int persistentHitMarkers = defender.Tokens.GetTokenCount(TokenType.PersistentHitBonus);
 
             int hitNeeded = baseQuality - hitModifiers.Net(ERollKind.Hit) - grantedHit
@@ -127,29 +129,36 @@ namespace FDG.Stages
             // --- RollToHitStage's whole-attack fold, evaluated against an EMPTY histogram:
             // unconditional save modifiers (Shielded, Fortified, a defensive aura) contribute; a
             // face-triggered op reads zero natural 6s and contributes nothing - which is exactly what
-            // a pre-roll number wants.
+            // a pre-roll number wants. The #418 fatigue flag goes through the engine's own decision for
+            // parity, though a shooting forecast is never Fatigued (it is always true here).
             IReadOnlyList<(RuleOperation Op, string RuleName)> completeNamed =
                 gameContext.RuleEvaluator.EvaluateAllNamed(
                     new HitRollCompleteContext(attacker, defender, EmptyRolls(), distance,
-                        TerrainPieces: terrain),
+                        TerrainPieces: terrain,
+                        SixesCountForSpecialRules: FatigueUtilities.SixesCountForSpecialRules(attacker,
+                            isMelee: false),
+                        AttackerMoved: attackerMoved,
+                        // #433: parity with the stage; an empty histogram has no 5s to gate anyway.
+                        HitRollNeeded: DiceUtilities.ClampSuccessRollNeeded(hitNeeded)),
                     actor, subject);
             List<RuleOperation> completeOps = completeNamed.Select(n => n.Op).ToList();
 
-            RollModifierSink saveModifiers = new RollModifierSink();
-            saveModifiers.ApplyFrom(completeOps);
+            // #431 Pierce: the same fold as the stage, positive Defense modifiers dropped when ignored.
+            int saveNet = RollToHitStage<ICombatMetadata>.WholeAttackSaveModifier(completeOps,
+                out bool ignoresPositiveDefense);
             int apReduction = completeOps.OfType<RuleOperation.ReduceArmorPenetration>()
                 .Sum(op => op.Amount);
             List<string>? saveModifierTags =
-                RollToHitStage<ICombatMetadata>.ComposeSaveModifierTags(completeNamed);
+                RollToHitStage<ICombatMetadata>.ComposeSaveModifierTags(completeNamed, ignoresPositiveDefense);
 
             // --- DetermineSaveRollsNeededStage mirror (line-for-line sign conventions).
             int baseDefense = HeroStatRules.GetSaveDefense(defender);
             int ap = Math.Max(0, weapon.ArmorPenetration - apReduction);
-            int coverBonus = hasCover && !ignoresCover ? 1 : 0;
-            int grantedDefense = GrantedRollModifiers.PeekNet(defender, ERollKind.Save);
+            int coverBonus = hasCover && !ignoresCover && !ignoresPositiveDefense ? 1 : 0;
+            int grantedDefense = GrantedRollModifiers.PeekNet(defender, ERollKind.Save, ignoresPositiveDefense);
             int persistentApMarkers = defender.Tokens.GetTokenCount(TokenType.PersistentApBonus);
 
-            int saveNeeded = baseDefense + ap - coverBonus - saveModifiers.Net(ERollKind.Save)
+            int saveNeeded = baseDefense + ap - coverBonus - saveNet
                 - grantedDefense + persistentApMarkers;
             List<string>? saveTags = DetermineSaveRollsNeededStage<ICombatMetadata>.ComposeThresholdTags(
                 baseDefense, ap, coverBonus, saveModifierTags, grantedDefense, persistentApMarkers);
@@ -178,6 +187,19 @@ namespace FDG.Stages
             {
                 notes.Add($"Target carries {spendableAp} spendable marker(s): up to " +
                     $"AP(+{spendableAp}), claimed at roll time.");
+            }
+
+            // #434: 3.6 Tag tokens - one removable per attack.
+            int tagHit = defender.Tokens.GetTokenCount(TokenType.SingleSpendHitBonus);
+            if (tagHit > 0)
+            {
+                notes.Add($"Target carries {tagHit} Tag token(s): remove one for +1 to hit, claimed at roll time.");
+            }
+
+            int tagAp = defender.Tokens.GetTokenCount(TokenType.SingleSpendApBonus);
+            if (tagAp > 0)
+            {
+                notes.Add($"Target carries {tagAp} Tag token(s): remove one for AP(+1), claimed at roll time.");
             }
 
             if (defender.Tokens.GetAllTokens(TokenType.Mark).Any())

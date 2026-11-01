@@ -153,10 +153,10 @@ namespace FDG.Tests
             Assert.That(LimitedRules.IsSpent(attacker.GetValue(), spike), Is.False);
         }
 
-        // #318: "Models within 2in horizontally and 4in vertically of enemies must strike with all melee
-        // weapons" - there is no general opting out of a swing, so an ordinary weapon gets no hold-back at
-        // all. Limited's once-per-game clause is the only thing that implies a choice about whether to use
-        // a weapon, so the exception is scoped to weapons carrying it.
+        // #318: "Models within 3in of enemies must strike with all melee weapons" (v3.6.0; 4in vertically is
+        // our #022 convention) - there is no general opting out of a swing, so an ordinary weapon gets no
+        // hold-back at all. Limited's once-per-game clause is the only thing that implies a choice about
+        // whether to use a weapon, so the exception is scoped to weapons carrying it.
         [Test]
         public async Task MeleeChoose_OrdinaryWeapons_AreNotOfferedAHoldBackAtAll()
         {

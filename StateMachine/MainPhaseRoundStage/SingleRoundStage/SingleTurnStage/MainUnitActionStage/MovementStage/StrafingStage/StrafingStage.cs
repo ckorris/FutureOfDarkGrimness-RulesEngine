@@ -11,8 +11,10 @@ using FDG.Utilities;
 namespace FDG.Stages
 {
     /// <summary>
-    /// Strafing (#042, reworked #197): "Once per activation, when this model moves through enemy units, pick
-    /// one of them and attack it with this weapon as if it was shooting." Runs as a movement sub-stage AFTER
+    /// Crossing Strike (3.6; 3.5's Strafing, #042, reworked #197, renamed #431 - the catalog Strafing was deleted by
+    /// #436): "Once per activation, when this model moves through enemy units, pick one of them and attack it with
+    /// this weapon as if it was shooting." The stage keeps its old name; it serves any weapon rule whose ability is
+    /// <see cref="Effect.AttackWithThisWeapon"/> (the supplement's Crossing Strike, or a 3.5 copy an army embeds). Runs as a movement sub-stage AFTER
     /// the path is defined but BEFORE it is committed, so the path segments are read from the moving models'
     /// start positions.
     ///
@@ -163,7 +165,7 @@ namespace FDG.Stages
             var request = new CancellableSelectionRequest<UnitData>(mover.PlayerID,
                 $"{offer.RuleName}: pick one unit moved through to attack with {weaponName}",
                 options, System.Array.Empty<CancellableSelectionRequest<UnitData>.InvalidOption>(),
-                displayName: "Choosing a Strafing Target");
+                displayName: $"Choosing a {offer.RuleName} Target");
 
             CancellableResult<DataBinding<UnitData>> reply = await GameContext.PlayerRequester
                 .RequestDecision<CancellableSelectionRequest<UnitData>, CancellableResult<DataBinding<UnitData>>>(
@@ -173,9 +175,8 @@ namespace FDG.Stages
         }
 
         /// <summary>
-        /// A strafe weapon is only ever usable by a unit that can move through enemies, and Strafing itself
-        /// no longer grants that permission (the source rule never did - its carriers all have Aircraft or
-        /// Flying). A bearer without it would carry a weapon it can never fire, which is exactly the kind of
+        /// A strafe weapon is only ever usable by a unit that can move through enemies, and Crossing Strike
+        /// does not grant that permission (the source rule never did - its carriers have Aircraft or Flying). A bearer without it would carry a weapon it can never fire, which is exactly the kind of
         /// silent no-op #197 keeps finding, so say so once.
         /// </summary>
         private void WarnIfStrafeWeaponCannotReachAnEnemy(IUnit mover)
@@ -184,9 +185,9 @@ namespace FDG.Stages
             if (MovementRuleQueries.CanMoveThroughEnemies(mover, GameContext.RuleEvaluator)) return;
 
             RuleDiagnostics.WarnOnce($"strafe-no-flyover:{mover.Name}",
-                $"{mover.Name} carries a Strafing weapon but cannot move through enemy units, so the " +
+                $"{mover.Name} carries a Crossing Strike weapon but cannot move through enemy units, so the " +
                 "attack can never trigger and the weapon can never be used. Give the unit Flying or " +
-                "Aircraft (every corpus Strafing carrier has one).");
+                "Aircraft.");
         }
 
         protected override ICombatMetadata GetNewChildContext(IMovementActionContext contextSelf)

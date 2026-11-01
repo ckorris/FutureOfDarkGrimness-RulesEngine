@@ -19,12 +19,12 @@ namespace FDG.Tests
             GameDataStore store = GameDataStore.GameDataStoreBuilder.GetDefault();
 
             // 1" wide × 4" tall bases, 5" apart along the narrow (X) axis: real edge-to-edge gap is 4" —
-            // outside the 2" melee range. The circumscribing circle (radius ≈ 2.06") would put them ~0.88"
-            // apart, i.e. inside 2" — the approximation the shape-aware path must NOT use.
+            // outside the 3" melee range. The circumscribing circle (radius ≈ 2.06") would put them ~0.88"
+            // apart, i.e. inside 3" — the approximation the shape-aware path must NOT use.
             IModel rectA = ModelAt(store, new RectangleBase(1f, 4f), new Position(0f, 0f));
             IModel rectB = ModelAt(store, new RectangleBase(1f, 4f), new Position(5f, 0f));
             Assert.That(MeleeRangeUtilities.AreModelsInMeleeRange(rectA, rectB), Is.False,
-                "narrow rectangles 4\" edge-to-edge are not in 2\" melee range.");
+                "narrow rectangles 4\" edge-to-edge are not in 3\" melee range.");
 
             // Same centres, but circular bases of the rectangle's CIRCUMSCRIBING radius (half-diagonal ≈ 2.06")
             // → would be in range. That's the over-reach the exact rectangle geometry avoids.

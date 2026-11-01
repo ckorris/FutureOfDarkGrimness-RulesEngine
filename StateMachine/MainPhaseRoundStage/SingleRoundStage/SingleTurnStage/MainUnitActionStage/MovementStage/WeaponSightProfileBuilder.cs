@@ -21,10 +21,15 @@ namespace FDG.Stages
                 if (!seenNames.Add(weapon.Name)) continue;
                 // The *Source variants return the responsible rule's display name (or null), so the movement
                 // overlay can attribute the effect; non-logging, safe to call while building the request.
-                string? coverRule = SightRuleQueries.CoverIgnoreSource(unit, weapon, evaluator);
-                string? losRule = SightRuleQueries.LineOfSightIgnoreSource(unit, weapon, evaluator);
+                // #425: the movement overlay previews the shot AFTER the move, so the queries are asked with
+                // attackerMoved: true - Indirect's Hold-only line-of-sight bypass is off there (Quick Throw's is
+                // not), and so is its Sight-Blocker-cover bypass.
+                string? coverRule = SightRuleQueries.CoverIgnoreSource(unit, weapon, evaluator, attackerMoved: true);
+                string? losRule = SightRuleQueries.LineOfSightIgnoreSource(unit, weapon, evaluator, attackerMoved: true);
+                bool ignoresBlockerCover = SightRuleQueries.SightBlockerCoverFor(unit, weapon, evaluator,
+                    attackerMoved: true) == ESightBlockerCover.Ignored;
                 profiles.Add(new WeaponSightProfile(weapon,
-                    coverRule != null, losRule != null, coverRule, losRule));
+                    coverRule != null, losRule != null, coverRule, losRule, ignoresBlockerCover));
             }
             return profiles;
         }

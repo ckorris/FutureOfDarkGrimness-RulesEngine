@@ -145,6 +145,41 @@ namespace FDG.Tests
                 "'once' - a second charge is unaffected.");
         }
 
+        // #431: OPR 3.6 prints Unwieldy as a WEAPON rule ("Strikes last when charging." on a Great Heat Axe), so
+        // the charger's melee weapons must reach this evaluation as carriers, the way the defender's do for
+        // Counter. Before #431 the charger joined as a bare unit and a weapon-scoped Unwieldy was invisible.
+        [Test]
+        public async Task AChargerWhoseMeleeWeaponIsUnwieldy_LetsTheChargedUnitStrikeFirst()
+        {
+            DataBinding<UnitData> charger = MakeUnit(modelCount: 3, meleeWeapon: UnwieldyAxe());
+            DataBinding<UnitData> defender = MakeUnit(modelCount: 5);
+
+            CombatActionContext context = await RunStage(charger, defender);
+
+            Assert.That(context.AttackingUnit.GetValue(), Is.SameAs(defender.GetValue()),
+                "the weapon-scoped 3.6 Unwieldy swaps the melee like the unit-scoped grant does");
+            Assert.That(StrikeOrderBanner()!.BannerText, Does.Contain("unwieldy"));
+        }
+
+        [Test]
+        public async Task AnUnwieldyWeaponOnTheDefender_DoesNothing()
+        {
+            // "when charging" - the hook only fires for a charge, and the rule sits on the Actor seat.
+            DataBinding<UnitData> charger = MakeUnit(modelCount: 3);
+            DataBinding<UnitData> defender = MakeUnit(modelCount: 5, meleeWeapon: UnwieldyAxe());
+
+            CombatActionContext context = await RunStage(charger, defender);
+
+            Assert.That(context.AttackingUnit.GetValue(), Is.SameAs(charger.GetValue()), "the control");
+        }
+
+        private static Weapon UnwieldyAxe()
+        {
+            var axe = new Weapon("Great Heat Axe", rangeInches: 0f, attacks: 2, armorPenetration: 1);
+            axe.AttachRuleDefinition(new ResolvedRule("Unwieldy", WeaponRules36Definitions.Unwieldy));
+            return axe;
+        }
+
         private async Task<CombatActionContext> RunStage(DataBinding<UnitData> charger,
             DataBinding<UnitData> defender)
         {
@@ -166,10 +201,10 @@ namespace FDG.Tests
                 new TokenClearTrigger.FirstTrigger(),
                 Payload: new Rules.Tokens.TokenPayload.RuleGrant(ruleName, ELifetime.NextTrigger)));
 
-        private DataBinding<UnitData> MakeUnit(int modelCount, bool withMeleeWeapon = true)
+        private DataBinding<UnitData> MakeUnit(int modelCount, bool withMeleeWeapon = true, Weapon? meleeWeapon = null)
         {
             var weapons = withMeleeWeapon
-                ? new List<Weapon> { new Weapon("Blade", rangeInches: 0f, attacks: 1, armorPenetration: 0) }
+                ? new List<Weapon> { meleeWeapon ?? new Weapon("Blade", rangeInches: 0f, attacks: 1, armorPenetration: 0) }
                 : new List<Weapon>();
             var modelBindings = new List<DataBinding<ModelData>>(modelCount);
             for (int i = 0; i < modelCount; i++)

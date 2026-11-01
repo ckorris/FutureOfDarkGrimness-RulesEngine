@@ -83,6 +83,9 @@ public sealed class RuleResolver : IRuleResolver
     }
 
     /// <inheritdoc />
+    public IEnumerable<SpecialRuleDefinition> Definitions => _rules.Values;
+
+    /// <inheritdoc />
     public ResolvedRule Resolve(string rule)
     {
         return _rules.TryGetValue(rule, out SpecialRuleDefinition? result)

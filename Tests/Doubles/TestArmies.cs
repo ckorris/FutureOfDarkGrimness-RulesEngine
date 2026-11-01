@@ -33,9 +33,10 @@ namespace FDG.Tests
             },
         };
 
-        // The FdgLab builtin army's rule spread: movement rules (Very Fast/Vanguard/Scout), deferred
+        // The FdgLab builtin army's rule spread: movement rules (Fast/Vanguard/Scout), deferred
         // deployment (Ambush), melee reactions (Counter/Thrust/Impact/Furious), weapon rules
-        // (Surge/Blast/Takedown), Strafing, Martial Prowess - the paths the simple armies never touch.
+        // (Surge/Blast/Takedown), Martial Prowess - the paths the simple armies never touch. (#440: Very Fast
+        // and Strafing are not 3.6 rules - Fast stands in for the first, the second has no successor here.)
         public static ArmyListFile MakeRichArmy(string name) => new ArmyListFile
         {
             Name = name,
@@ -47,12 +48,11 @@ namespace FDG.Tests
                     SpecialRules = new()
                     {
                         new SpecialRuleEntry_Core("Stealth"),
-                        new SpecialRuleEntry_Core("Very Fast"),
+                        new SpecialRuleEntry_Core("Fast"),
                         new SpecialRuleEntry_Core("Vanguard"),
                         new SpecialRuleEntry_Core("Thrust"),
                         new SpecialRuleEntry_CoreNumeric("Impact", 2),
                         new SpecialRuleEntry_Core("Furious"),
-                        new SpecialRuleEntry_Core("Strafing"),
                     },
                     Weapons = new()
                     {

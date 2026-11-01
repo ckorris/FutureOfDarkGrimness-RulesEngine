@@ -37,7 +37,12 @@ namespace FDG.Stages
             // mirroring the hit stage's `HitRollNeeded -= Net(Hit)` convention.
             // #033 granted "+X to defense" buffs on the defender (one-shot / duration) lower the threshold,
             // same sign as cover; one-shot ("next time") grants are consumed by this attack's saves.
-            int grantedDefense = GrantedRollModifiers.ConsumeNet(metaData.DefendingUnit.GetValue(), ERollKind.Save);
+            // #431 Pierce: an attack that ignores positive Defense modifiers drops the positive grants here, and
+            // cover's +1 below (the defender's own positive Save deltas were already left out at hit-roll-complete).
+            bool ignoresPositiveDefense = rollToHitResults.IgnoresPositiveDefenseModifiers;
+            int grantedDefense = GrantedRollModifiers.ConsumeNet(metaData.DefendingUnit.GetValue(), ERollKind.Save,
+                ignorePositive: ignoresPositiveDefense);
+            int coverBonus = ignoresPositiveDefense ? 0 : coverResults.DefenseRollBonus;
 
             // #100 #14b: AP-side attacker-bonus markers on the defender — persistent (Piercing Target)
             // counted, spendable (Piercing Tag/Spotter) claimed via a prompt to the attacking player
@@ -45,10 +50,10 @@ namespace FDG.Stages
             int markerNet = await TargetMarkerSpend.ConsumeNet(GameContext,
                 metaData.AttackingUnit.PlayerID(), metaData.DefendingUnit.GetValue(), ERollKind.Save);
 
-            int baseDefenseWithAP = baseDefense + ap - coverResults.DefenseRollBonus - rollToHitResults.SaveModifier
+            int baseDefenseWithAP = baseDefense + ap - coverBonus - rollToHitResults.SaveModifier
                 - grantedDefense + markerNet;
 
-            GameContext.Log($"Base roll to save is {baseDefense}, AP {ap}, cover -{coverResults.DefenseRollBonus}, " +
+            GameContext.Log($"Base roll to save is {baseDefense}, AP {ap}, cover -{coverBonus}, " +
                 $"Rending/save mods {rollToHitResults.SaveModifier}, markers +{markerNet}, " +
                 $"effective threshold {baseDefenseWithAP} (not yet clamped).");
 
@@ -64,7 +69,7 @@ namespace FDG.Stages
             }
 
             DetermineSaveRollNeededResults results = new DetermineSaveRollNeededResults(pendingSaveRollsList);
-            results.ThresholdTags = ComposeThresholdTags(baseDefense, ap, coverResults.DefenseRollBonus,
+            results.ThresholdTags = ComposeThresholdTags(baseDefense, ap, coverBonus,
                 rollToHitResults.SaveModifierTags, grantedDefense, markerNet);
             await onFinished(results);
         }

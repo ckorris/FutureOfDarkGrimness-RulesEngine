@@ -128,6 +128,23 @@ public class LaunchGateTests
         Assert.That(problems, Has.Count.EqualTo(2), "points and system are separate lines");
     }
 
+    // #460: the lobby's Import popup judges a list before it is assigned through SettingsProblems, so the
+    // popup's confirm and the LAUNCH gate must be the same check - one army's blocking lines are exactly its
+    // settings lines with the player's name in front.
+    [Test]
+    public void SettingsProblems_AreTheBlockingLinesWithoutThePlayerName()
+    {
+        ArmyListFile fat = PlainArmy(GameSystems.AgeOfFantasy, pointCost: 3000);
+
+        IReadOnlyList<string> settings = LaunchGate.SettingsProblems(fat, 2000, EAllowedGameSystems.GrimdarkFuture);
+
+        Assert.That(settings, Has.Count.EqualTo(2));
+        Assert.That(Blocking(("Alice", fat), 2000, EAllowedGameSystems.GrimdarkFuture),
+            Is.EqualTo(settings.Select(p => "Alice: " + p)));
+        Assert.That(LaunchGate.SettingsProblems(PlainArmy(null), 2000, EAllowedGameSystems.All), Is.Empty,
+            "an army that fits the settings has nothing to confirm");
+    }
+
     [Test]
     public void ArmyWireRoundTrip_PreservesEmbeddedBookAndSelections()
     {

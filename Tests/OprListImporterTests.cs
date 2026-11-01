@@ -312,7 +312,7 @@ public class OprListImporterTests
         var ex = Assert.Throws<OprVersionMismatchException>(() => OprListImporter.Import(ListJson, newerBooks));
         Assert.That(ex!.BookName, Is.EqualTo("Legion Alpha"));
         Assert.That(ex.FoundVersion, Is.EqualTo("3.7.0"));
-        Assert.That(ex.Message, Does.Contain("is at OPR version 3.7.0; this game supports 3.6.x"));
+        Assert.That(ex.Message, Does.Contain("is at OPR version 3.7.0. This game supports 3.6.x"));
         Assert.That(ex.Message, Does.Contain("game's data needs an update"), "a newer book: our data trails OPR");
     }
 
@@ -327,7 +327,7 @@ public class OprListImporterTests
         };
         var ex = Assert.Throws<OprVersionMismatchException>(() => OprListImporter.Import(ListJson, olderBooks));
         Assert.That(ex!.BookName, Is.EqualTo("Legion Beta"));
-        Assert.That(ex.Message, Does.StartWith("Army book 'Legion Beta' is at OPR version 3.5.3; this game supports 3.6.x."));
+        Assert.That(ex.Message, Does.StartWith("Army book 'Legion Beta' is at OPR version 3.5.3. This game supports 3.6.x."));
         Assert.That(ex.Message, Does.Contain("has not been updated"));
         Assert.That(ex.Message.All(c => c <= 127), Is.True, "game text is ASCII-only");
     }

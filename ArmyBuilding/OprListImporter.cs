@@ -562,8 +562,8 @@ namespace FDG.ArmyBuilding
         public string FoundVersion { get; }
 
         public OprVersionMismatchException(string bookName, string foundVersion)
-            : base($"Army book '{bookName}' is at OPR version {(string.IsNullOrEmpty(foundVersion) ? "(unknown)" : foundVersion)}; " +
-                   $"this game supports {OprListImporter.SupportedVersionPrefix}.x. " +
+            : base($"Army book '{bookName}' is at OPR version {(string.IsNullOrEmpty(foundVersion) ? "(unknown)" : foundVersion)}. " +
+                   $"This game supports {OprListImporter.SupportedVersionPrefix}.x. " +
                    Remedy(foundVersion))
         {
             BookName = bookName;

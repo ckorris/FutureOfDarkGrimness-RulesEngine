@@ -23,6 +23,8 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(Literal), "literal")]
 [JsonDerivedType(typeof(Arg), "arg")]
 [JsonDerivedType(typeof(RuleCarrierCount), "ruleCarrierCount")]
+[JsonDerivedType(typeof(TokenTotal), "tokenTotal")]
+[JsonDerivedType(typeof(ArgIfSoleTarget), "argIfSoleTarget")]
 public abstract record ValueSource
 {
     public abstract int Resolve(RuleInvocation invocation);
@@ -62,12 +64,12 @@ public abstract record ValueSource
     /// <summary>
     /// How many LIVING models of the bearer's unit carry the rule that is firing — Caster Group's
     /// "Caster(X), where X is the total number of models with this rule in this unit". Self-referential in
-    /// the same way <see cref="Condition.AllModelsHaveThisRule"/> is: it reads the firing rule's own
+    /// the same way <see cref="Condition.MostModelsHaveThisRule"/> is: it reads the firing rule's own
     /// identity, so one value source serves every count-your-carriers rule.
     ///
     /// <para>Counts a model as a carrier if it holds the rule itself OR the unit does (a unit-scoped rule
     /// covers every model), and counts unit-held GRANTS for every model, matching
-    /// <see cref="Condition.AllModelsHaveThisRule"/>'s accounting. Living only: the count is read at each
+    /// <see cref="Condition.MostModelsHaveThisRule"/>'s accounting. Living only: the count is read at each
     /// firing, so a unit that has taken casualties funds a smaller pool next round, which is what
     /// "the total number of models with this rule" means once models start dying.</para>
     /// </summary>
@@ -90,5 +92,32 @@ public abstract record ValueSource
             return unit.Models.Count(model => model.GetIsAlive()
                 && (unitWide || model.RuleDefinitions.Any(rule => rule.Definition == definition)));
         }
+    }
+
+    /// <summary>
+    /// #434: how many tokens of <see cref="TType"/> the bearer holds - the MAGNITUDE when the tokens carry one
+    /// (Regenerative Strength's ignored-wound markers accumulate fractionally under the probabilistic roller),
+    /// otherwise the token count - rounded to the nearest whole number, since a value source is an int. 3.6
+    /// Regenerative Strength: "roll as many dice as tokens on it".
+    /// </summary>
+    public sealed record TokenTotal(TokenType TType) : ValueSource
+    {
+        public override int Resolve(RuleInvocation invocation)
+        {
+            float magnitude = invocation.Bearer.Tokens.GetTokenMagnitude(TType);
+            float total = magnitude > 0f ? magnitude : invocation.Bearer.Tokens.GetTokenCount(TType);
+            return (int)System.MathF.Round(total, System.MidpointRounding.AwayFromZero);
+        }
+    }
+
+    /// <summary>
+    /// #434: the bearing rule's argument at <see cref="Index"/> when the activated ability was resolved against ONE
+    /// unit, else 1 - OPR 3.6 Piercing / Precision Tag(X): "place X tokens on one enemy unit ..., or one token on X enemy
+    /// units". Paired with <see cref="Foundation.TargetSelector.MaxCountFromArgument"/> (pick up to X units).
+    /// </summary>
+    public sealed record ArgIfSoleTarget(int Index) : ValueSource
+    {
+        public override int Resolve(RuleInvocation invocation) =>
+            invocation.TargetCount <= 1 ? new Arg(Index).Resolve(invocation) : 1;
     }
 }

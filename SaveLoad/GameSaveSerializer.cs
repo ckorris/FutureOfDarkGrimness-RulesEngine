@@ -35,6 +35,7 @@ namespace FDG.SaveLoad
             GameSaveFile file = new GameSaveFile
             {
                 Version = CurrentVersion,
+                RulesVersion = OprRulesVersion.CurrentStamp,
                 TypeMap = store.GetTypeMapWithCapacities()
                     .Select(tc => new SavedTypeEntry(SaveTypeRegistry.GetIdOrFullName(tc.Type), tc.Capacity))
                     .ToList(),
@@ -52,7 +53,20 @@ namespace FDG.SaveLoad
             return JsonConvert.SerializeObject(file, Formatting.Indented);
         }
 
-        public static GameDataStore Load(string json) => Load(json, stampLegacyReserves: true);
+        public static GameDataStore Load(string json) => Load(json, out _);
+
+        /// <summary>
+        /// <see cref="Load(string)"/>, also reporting the save's <see cref="GameSaveFile.RulesVersion"/> stamp
+        /// (#444 D2): the ruleset it was written under, or null for a save from before the 3.6 upgrade. The stamp
+        /// is advisory - a mismatch never refuses the load - and the caller turns it into the amber
+        /// <see cref="LegacySaveNotice"/> line.
+        /// </summary>
+        public static GameDataStore Load(string json, out string? rulesVersion)
+        {
+            GameSaveFile file = Parse(json);
+            rulesVersion = RulesVersionOf(file);
+            return Build(file, stampLegacyReserves: true);
+        }
 
         /// <summary>
         /// #453: <see cref="Load(string)"/>, plus the replay the save carries - the gzip bytes of its
@@ -61,9 +75,14 @@ namespace FDG.SaveLoad
         /// failing the load: the resume must never depend on the replay, and Continue reports the bad bytes and
         /// starts the recording afresh at the resume.
         /// </summary>
-        public static (GameDataStore Store, byte[]? ReplayGzip) LoadWithReplay(string json)
+        public static (GameDataStore Store, byte[]? ReplayGzip) LoadWithReplay(string json) => LoadWithReplay(json, out _);
+
+        /// <summary><see cref="LoadWithReplay(string)"/>, also reporting the rules-version stamp as
+        /// <see cref="Load(string, out string?)"/> does (#444 D2) - the resume path wants both.</summary>
+        public static (GameDataStore Store, byte[]? ReplayGzip) LoadWithReplay(string json, out string? rulesVersion)
         {
             GameSaveFile file = Parse(json);
+            rulesVersion = RulesVersionOf(file);
             byte[]? replay = null;
             if (file.Replay != null)
             {
@@ -88,6 +107,9 @@ namespace FDG.SaveLoad
         /// </summary>
         internal static GameDataStore Load(string json, bool stampLegacyReserves) =>
             Build(Parse(json), stampLegacyReserves);
+
+        private static string? RulesVersionOf(GameSaveFile file) =>
+            string.IsNullOrWhiteSpace(file.RulesVersion) ? null : file.RulesVersion.Trim();
 
         private static GameSaveFile Parse(string json)
         {

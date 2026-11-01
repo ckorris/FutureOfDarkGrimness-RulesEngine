@@ -87,13 +87,13 @@ namespace FDG.Stages
 
             // #333: a 0" move is not a move. "Skip all" (and a Done with no waypoints placed) submits a
             // real path of zero length, so it leaves through OnFinishedMovement rather than the back-out
-            // above - and stamping there would switch a Mobile Artillery piece's defensive bonus off for
+            // above - and stamping there would switch an Artillery piece's defensive bonus off for
             // the round without it having moved an inch. The same false positive the MoveCancelled guard
             // prevents, reached through the other exit. The Move ACTION is still spent (RegisterMoveFinished
             // ran above): declining to move is a choice the unit made with its move, not a free hold.
             if (distance <= MOVED_TOKEN_MIN_DISTANCE_INCHES) return;
 
-            // #197 Mobile Artillery: the same fact, but round-scoped and on the UNIT, so a rule can read it
+            // #197 MovedThisRound (built for 3.5 Mobile Artillery; read by 3.6 Artillery / Entrenched): the same fact, but round-scoped and on the UNIT, so a rule can read it
             // from the far side of the table during someone else's activation (HasMoved above is
             // per-activation and only legible to the mover's own stages). This is the one seam a declared
             // move has actually resolved at - the back-out returned above, so a cancelled move never

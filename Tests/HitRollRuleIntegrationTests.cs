@@ -82,94 +82,27 @@ namespace FDG.Tests
             Assert.That(result.HitRollNeeded, Is.EqualTo(4), "no rules → just the attacker's quality.");
         }
 
-        // Artillery is an attacker-seat (Actor) rule: +1 to hit beyond 9", which LOWERS the
-        // threshold (easier). It reuses the distance the stage already computes — pure attach,
-        // no new wiring beyond Stealth's.
+        // Artillery's two seats (3.6: Hold + over 12" / unmoved + most models + over 12") moved to
+        // ArtilleryRuleIntegrationTests with #425.
+
+        // #425 - replaces IndirectAttacker_AfterMoving_RaisesHitThreshold. Core Rules v3.6.0 dropped Indirect's
+        // "-1 to hit when shooting after moving": the rule now only grants its line-of-sight and Sight-Blocker-cover
+        // facets on a Hold (IndirectLineOfSightRuleIntegrationTests). Shooting after an Advance is therefore at the
+        // plain threshold - through the REAL stage with AttackerMoved threaded in, so a reintroduced penalty on any
+        // hook this stage reads would show here. Melee (a charge also sets HasMoved) is unaffected either way.
         [Test]
-        public async Task ArtilleryAttacker_BeyondNine_LowersHitThreshold()
-        {
-            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
-            DataBinding<UnitData> defender = MakeUnit(FarPos);
-            AttachArtillery(attacker);
-
-            DetermineHitRollResults result = await RunStage(attacker, defender);
-
-            Assert.That(result.HitRollNeeded, Is.EqualTo(3),
-                "base 4, lowered by 1 because Artillery gives +1 to hit beyond 9\".");
-        }
-
-        [Test]
-        public async Task ArtilleryAttacker_WithinNine_NoChange()
-        {
-            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
-            DataBinding<UnitData> defender = MakeUnit(NearPos);
-            AttachArtillery(attacker);
-
-            DetermineHitRollResults result = await RunStage(attacker, defender);
-
-            Assert.That(result.HitRollNeeded, Is.EqualTo(4),
-                "Artillery's distance condition fails within 9\", so no modifier is applied.");
-        }
-
-        // Artillery's defensive facet: as a TARGET, enemies shooting it from beyond 9" take -2 to
-        // hit (Subject seat), which RAISES the threshold. Mirrors Stealth's defender-seat distance
-        // modifier on the same OnHitRollModifier evaluation — proves Artillery's second HookEntry fires.
-        [Test]
-        public async Task ArtilleryDefender_BeyondNine_RaisesAttackerHitThreshold()
-        {
-            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
-            DataBinding<UnitData> defender = MakeUnit(FarPos);
-            AttachArtillery(defender);
-
-            DetermineHitRollResults result = await RunStage(attacker, defender);
-
-            Assert.That(result.HitRollNeeded, Is.EqualTo(6),
-                "base 4, raised by 2 because Artillery gives enemies -2 to hit it from beyond 9\".");
-        }
-
-        [Test]
-        public async Task ArtilleryDefender_WithinNine_NoChange()
-        {
-            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
-            DataBinding<UnitData> defender = MakeUnit(NearPos);
-            AttachArtillery(defender);
-
-            DetermineHitRollResults result = await RunStage(attacker, defender);
-
-            Assert.That(result.HitRollNeeded, Is.EqualTo(4),
-                "Artillery's distance condition fails within 9\", so the -2 defensive modifier is not applied.");
-        }
-
-        // Both facets at once: an Artillery attacker (+1 → -1 threshold) shooting an Artillery defender
-        // (-2 → +2 threshold) from beyond 9". The Actor and Subject entries both fire and stack: 4 - 1 + 2 = 5.
-        [Test]
-        public async Task ArtilleryBothSeats_BeyondNine_StackActorAndSubject()
-        {
-            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
-            DataBinding<UnitData> defender = MakeUnit(FarPos);
-            AttachArtillery(attacker);
-            AttachArtillery(defender);
-
-            DetermineHitRollResults result = await RunStage(attacker, defender);
-
-            Assert.That(result.HitRollNeeded, Is.EqualTo(5),
-                "Artillery attacker +1 (−1 threshold) and Artillery defender −2 (+2 threshold) stack: 4 − 1 + 2 = 5.");
-        }
-
-        // Indirect is an attacker-seat rule: -1 to hit when the unit moved this activation,
-        // which RAISES the threshold. The condition reads AttackerMoved off the metadata —
-        // this exercises the HasMoved → CombatMetadata threading, not just a distance check.
-        [Test]
-        public async Task IndirectAttacker_AfterMoving_RaisesHitThreshold()
+        public async Task IndirectAttacker_AfterMoving_NoHitPenalty()
         {
             DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
             DataBinding<UnitData> defender = MakeUnit(FarPos);
             AttachIndirect(attacker);
 
-            DetermineHitRollResults result = await RunStage(attacker, defender, attackerMoved: true);
+            DetermineHitRollResults shot = await RunStage(attacker, defender, attackerMoved: true);
+            Assert.That(shot.HitRollNeeded, Is.EqualTo(4),
+                "3.6: no -1 to hit after moving - an Indirect weapon that Advanced hits on the plain 4+.");
 
-            Assert.That(result.HitRollNeeded, Is.EqualTo(5),
-                "base 4, raised by 1 because Indirect applies -1 to hit after the attacker moved.");
+            DetermineHitRollResults swing = await RunStage(attacker, defender, attackerMoved: true, isMelee: true);
+            Assert.That(swing.HitRollNeeded, Is.EqualTo(4), "and nothing in melee either.");
         }
 
         [Test]
@@ -182,23 +115,7 @@ namespace FDG.Tests
             DetermineHitRollResults result = await RunStage(attacker, defender, attackerMoved: false);
 
             Assert.That(result.HitRollNeeded, Is.EqualTo(4),
-                "Indirect's AfterMoving condition fails when the attacker held, so no modifier is applied.");
-        }
-
-        // Indirect's -1 is gated on Not(IsMelee): a charge sets HasMoved, so without the gate an Indirect
-        // carrier would wrongly take -1 on its melee swings. In melee (even after moving) the penalty must
-        // not apply — it's a shooting rule.
-        [Test]
-        public async Task IndirectAttacker_InMelee_NoPenalty()
-        {
-            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
-            DataBinding<UnitData> defender = MakeUnit(FarPos);
-            AttachIndirect(attacker);
-
-            DetermineHitRollResults result = await RunStage(attacker, defender, attackerMoved: true, isMelee: true);
-
-            Assert.That(result.HitRollNeeded, Is.EqualTo(4),
-                "Indirect is a shooting rule; its -1-after-moving must not apply to a melee (charge) swing.");
+                "Indirect never modifies the hit roll; on a Hold it changes what can be targeted and the cover, not the dice.");
         }
 
         // Reliable is an attacker-seat rule that FLOORS the base quality to 2+ before per-roll
@@ -384,7 +301,8 @@ namespace FDG.Tests
             Assert.That(result.HitRollNeeded, Is.EqualTo(4), "no mark on the defender → nothing claimed.");
         }
 
-        // #377 — a one-shot range grant ("+6\" range when shooting once", Battle Rune) is spent by the
+        // #377 — a one-shot range grant (Battle Rune: "+6\" range on its weapons when shooting once", granted as
+        // Increased Shooting Range since #439) is spent by the
         // shooting attack that used it: the range check itself only peeks (a per-frame query must not
         // consume), so DetermineHitRollStage runs one live range evaluation per shooting attack. A melee
         // swing never read the range and must not spend it.
@@ -407,7 +325,7 @@ namespace FDG.Tests
         private static void GrantRangeBonus(DataBinding<UnitData> unit) =>
             unit.GetValue().Tokens.AddToken(new Token(TokenType.RuleGrant, 1,
                 new TokenClearTrigger.FirstTrigger(),
-                Payload: new TokenPayload.RuleGrant("+6\" range when shooting", ELifetime.NextTrigger)));
+                Payload: new TokenPayload.RuleGrant("Increased Shooting Range", ELifetime.NextTrigger)));
 
         // #377 — a mark naming a combat-kind-gated phrase rule ("+1 to hit rolls in melee", the Magic
         // Targeting / Raiding Drugs spells): the claim transfers the rule, and the rule's own gate then
@@ -465,9 +383,6 @@ namespace FDG.Tests
 
         private static void AttachStealth(DataBinding<UnitData> unit) =>
             unit.GetValue().AttachRuleDefinition(new ResolvedRule("Stealth", CoreRuleCatalog.Stealth));
-
-        private static void AttachArtillery(DataBinding<UnitData> unit) =>
-            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Artillery", CoreRuleCatalog.Artillery));
 
         private static void AttachIndirect(DataBinding<UnitData> unit) =>
             unit.GetValue().AttachRuleDefinition(new ResolvedRule("Indirect", CoreRuleCatalog.Indirect));

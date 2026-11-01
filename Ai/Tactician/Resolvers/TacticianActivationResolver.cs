@@ -230,6 +230,7 @@ namespace FDG.Ai.Tactician.Resolvers
             Position here = Centroid(unit);
             float advance = TacticalAnalysis.AdvanceDistance(unit, _evaluator, Terrain);
             float rush = TacticalAnalysis.RushDistance(unit, _evaluator, Terrain);
+            bool shootsAfterMoving = ActionRestrictionQueries.ShootingAfterMovingForbiddenBy(unit, _evaluator) == null;
 
             float kill = 0f;
             float threat = 0f;
@@ -255,11 +256,13 @@ namespace FDG.Ai.Tactician.Resolvers
                 // the DEEPEST unit activated before its own lane-blockers and then had nowhere to
                 // go (the WarriorSistersMovedLaterally save). Urgency is re-read at every pick, so
                 // once a blocker moves away the discount lifts on its own.
-                float closure = advance;
+                // #425 Cumbersome: a unit that can't shoot when moving shoots from where it stands (Hold) -
+                // the advance-then-shoot volley is not one it could take.
+                float closure = shootsAfterMoving ? advance : 0f;
                 bool hasLane = true;
                 if (ourClosest != null && theirClosest != null)
                 {
-                    closure = Math.Min(advance, TacticalAnalysis.FreeStraightAdvance(
+                    closure = Math.Min(closure, TacticalAnalysis.FreeStraightAdvance(
                         ourClosest.Position, theirClosest.Position, ourClosest.BaseRadiusInches,
                         advance, laneBlockers));
                     hasLane = LineOfSightUtilities.HasLineOfSight(
@@ -268,9 +271,24 @@ namespace FDG.Ai.Tactician.Resolvers
                 }
                 float reachAfterAdvance = Math.Max(1f, distance - closure);
                 AttackEstimate ours = CombatMath.EstimateShooting(_evaluator, unitBinding, enemyBinding,
-                    new AttackContext(reachAfterAdvance, AttackerMoved: true,
+                    new AttackContext(reachAfterAdvance, AttackerMoved: shootsAfterMoving,
                         SightFactor: hasLane ? 1f : 0f));
                 kill = Math.Max(kill, ValueFraction(ours.ExpectedWounds, enemy));
+
+                // #442 (#425 / #434): the HOLD volley from where the unit stands is a volley it could take too, and
+                // it is the one the Hold-only rules price - Indirect's line-of-sight bypass (a wall between does not
+                // silence it), Slayer / Ranged Slayer's AP(+2), Artillery. The planner's Score already weighs Hold
+                // candidates this way; the urgency term only ever priced the advance. (A Cumbersome unit's volley
+                // above already IS its Hold.)
+                if (shootsAfterMoving && ourClosest != null && theirClosest != null)
+                {
+                    bool laneHere = LineOfSightUtilities.HasLineOfSight(ourClosest.Position, theirClosest.Position,
+                        sightBlockers);
+                    AttackEstimate held = CombatMath.EstimateShooting(_evaluator, unitBinding, enemyBinding,
+                        new AttackContext(Math.Max(1f, distance), AttackerMoved: false,
+                            SightFactor: laneHere ? 1f : 0f));
+                    kill = Math.Max(kill, ValueFraction(held.ExpectedWounds, enemy));
+                }
 
                 // What could THEY do to us from where things stand (their advance included)?
                 float theirReach = Math.Max(1f,

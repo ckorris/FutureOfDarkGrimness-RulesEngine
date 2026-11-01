@@ -217,9 +217,10 @@ namespace FDG.Ai.Tactician
         // means standing MID-lane prices at about half this constant; 0.2 keeps that mid-lane
         // stand at the ~0.1 the term was sized for, comfortably above the 0.05 reachable
         // tie-break and an order below the real reasons to stand - a held marker (~0.5 round 1),
-        // a paying screen (0.8 x threatened value). An Indirect unit's -1-after-moving is priced
-        // by the damage term in the same currency, so "is the shuffle worth it?" resolves in the
-        // argmax, not here.
+        // a paying screen (0.8 x threatened value). What a shuffle costs a unit whose shooting turns on
+        // the Hold action is priced by the damage term in the same currency (#425, Core Rules v3.6.0:
+        // an Indirect weapon that moved needs line of sight; a Cumbersome unit that moved cannot shoot at
+        // all), so "is the shuffle worth it?" resolves in the argmax, not here.
         public static float MoveLaneBlock = 0.2f;
 
         // A5-8 (Chris): a landed charge also DEGRADES the target's next volley - it still shoots

@@ -78,6 +78,41 @@ namespace FDG.Tests
                 "marked to join the round in progress");
         }
 
+        // #426 (Core Rules v3.6.0): "Units placed via Spawn can't seize or contest objectives on the round
+        // they are placed." Spawned onto a marker through the real ActivationStartStage, then reconciled by
+        // the real ReconcileObjectivesStage twice: not this round, yes the next.
+        [Test]
+        public async Task ASpawnedUnitOnAnObjective_DoesNotSeizeItThisRound_DoesNextRound()
+        {
+            (DataBinding<UnitData> spawner, DataBinding<ArmyData> army) = MakeSpawnerArmy();
+            // The spawner (20, 20) is out of the marker's 3" reach; the Spores land right on it.
+            var objective = new ObjectiveData(new Position(25.5f, 20f), _store);
+            _store.Create(objective);
+            var ctx = new TriggeredMoveTestContext(_store,
+                new SpawnRequester { Accept = true, DestX = 25f, DestZ = 20f }, ruleResolver: _resolver);
+
+            await RunActivationStart(ctx, spawner);
+            UnitData spawned = army.GetValue().UnitBindings[1].GetValue();
+            Assert.That(spawned.Tokens.HasToken(TokenType.ArrivedFromReserve), Is.True,
+                "the placed-this-round marker Ambush arrivals carry");
+
+            await RunReconcile(ctx);
+            Assert.That(objective.OwnerID, Is.Null, "the round it was placed, the spawned unit cannot seize.");
+
+            await RunReconcile(ctx);
+            Assert.That(objective.OwnerID, Is.EqualTo(_player),
+                "the marker was swept at that round's end, so it seizes the next round.");
+        }
+
+        private static Task RunReconcile(TriggeredMoveTestContext ctx)
+        {
+            var stage = new ReconcileObjectivesStage(ctx, new NoOpLayer<IMainPhaseContext>());
+            stage.ToReconcileEndOfTurn.Bind(ReconcileObjectivesStage.RECONCILE_OBJECTIVES_TO_RECONCILE_NEW_TURN);
+            stage.ToVictoryCalculation.Bind(
+                ReconcileObjectivesStage.RECONCILE_OBJECTIVES_TO_VICTORY_CALCULATION_TRANSITION);
+            return stage.Enter(new StubMainPhaseContext(ctx));
+        }
+
         [Test]
         public async Task TheSpecsRules_AttachAndItsCreationRulesApply()
         {

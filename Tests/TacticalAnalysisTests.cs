@@ -73,6 +73,52 @@ namespace FDG.Tests
                 brawler.GetValue(), target.GetValue(), _evaluator), Is.EqualTo(0f));
         }
 
+        // #442 (#425): a Cumbersome brawler may not declare a Charge, so its threat range is its guns' alone (none
+        // here) - the kite band no longer stays out of a charge that cannot happen.
+        [Test]
+        public void ThreatRange_CumbersomeBrawler_ThreatensNoCharge()
+        {
+            var brawler = MakeUnit(3, Blade());
+            brawler.GetValue().AttachRuleDefinition(new ResolvedRule("Cumbersome", CoreRuleCatalog.Cumbersome));
+            var target = MakeUnit(3, null);
+
+            Assert.That(TacticalAnalysis.MayCharge(brawler.GetValue(), _evaluator), Is.False);
+            Assert.That(TacticalAnalysis.ThreatRangeAgainst(brawler.GetValue(), target.GetValue(), _evaluator),
+                Is.EqualTo(0f));
+        }
+
+        // #442 (#432): the charge-origin distance is base edge to base edge, as the engine snapshots it.
+        [Test]
+        public void ChargeOriginDistance_IsTheBaseEdgeGap_AndSpreadReachesTheFarthestBaseEdge()
+        {
+            var charger = MakeUnit(1, Blade(), atX: 0f, atZ: 0f);
+            var target = MakeUnit(3, null, atX: 8f, atZ: 0f);
+
+            Assert.That(TacticalAnalysis.ChargeOriginDistance(new TableState(_store), charger.GetValue(),
+                target.GetValue()), Is.EqualTo(7f).Within(0.01f), "8\" centre to centre, two 0.5\" bases");
+            Assert.That(TacticalAnalysis.Spread(target.GetValue()), Is.EqualTo(1.7f).Within(0.01f),
+                "three models 1.2\" apart: 1.2\" from the middle one, plus a 0.5\" base");
+        }
+
+        // #442 (#446): the end-position test reads each model's planned end (or where it stands), base overlap included.
+        [Test]
+        public void EndsInDangerousTerrain_ReadsThePlannedEnds_AndBaseOverlap()
+        {
+            var unit = MakeUnit(2, Blade(), atX: 20f, atZ: 20f); // models at (20,20), (20,21.2)
+            var lava = new List<ITerrain> { new TerrainData(ETerrainType.Dangerous, new RectangularZone(19f, 21f, 19f, 22f)) };
+            Assert.That(TacticalAnalysis.EndsInDangerousTerrain(unit.GetValue(), null, lava), Is.True, "standing in it");
+
+            var moveOut = unit.GetValue().ModelBindings
+                .Select((m, i) => new StageResolution.Requests.ModelMoveEntry(m,
+                    new List<Position> { new Position(30f, 20f + i * 1.2f) }))
+                .ToList();
+            Assert.That(TacticalAnalysis.EndsInDangerousTerrain(unit.GetValue(), moveOut, lava), Is.False, "moved out");
+
+            var edge = new List<ITerrain> { new TerrainData(ETerrainType.Dangerous, new RectangularZone(20.4f, 25f, 10f, 30f)) };
+            Assert.That(TacticalAnalysis.EndsInDangerousTerrain(unit.GetValue(), null, edge), Is.True,
+                "a 0.5\" base reaching 0.1\" into the piece counts, as the engine's swept-base test does");
+        }
+
         // --- Objective projection -----------------------------------------------------------------
 
         [Test]

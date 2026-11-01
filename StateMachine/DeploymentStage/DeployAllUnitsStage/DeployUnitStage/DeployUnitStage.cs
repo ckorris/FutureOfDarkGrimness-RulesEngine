@@ -123,7 +123,7 @@ namespace FDG.Stages
         /// OperationExecutor chain.
         ///
         /// <para>Two shapes hang here, told apart by how many abilities the rule offers. A single ability is
-        /// the "you MAY" shape (Vanguard's reposition move, Fanatic's reposition placement) and keeps its
+        /// the "you MAY" shape (Vanguard's and Fanatic's reposition placement, #426) and keeps its
         /// Yes/No prompt. SEVERAL abilities is the "pick one effect" shape (Versatile Defense, whose text
         /// reads "when this unit is deployed or activated, pick one effect"), which is mandatory and routes
         /// through <see cref="AbilityEffectChoice"/> — the same resolution <c>ActivationStartStage</c>
@@ -162,9 +162,11 @@ namespace FDG.Stages
                         $"chose {outcome.Chosen.Ability.Label}.");
                 }
 
-                // Fanatic emits a RepositionModels op the executor ignores (it is stage-folded, not
-                // executable). Fold it into a within-radius placement, exactly as ActivationStartStage does.
-                await RepositionPlacement.OfferFromOperations(GameContext, deployedUnit, outcome.Operations);
+                // Vanguard / Fanatic emit a RepositionModels op the executor ignores (it is stage-folded, not
+                // executable). Fold it into a within-radius placement, exactly as ActivationStartStage does;
+                // the deploy task name tells the AI this one is worth taking (#426).
+                await RepositionPlacement.OfferFromOperations(GameContext, deployedUnit, outcome.Operations,
+                    RepositionPlacement.DeployRepositionTaskName);
             }
         }
     }

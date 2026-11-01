@@ -18,13 +18,17 @@ public interface IOperationServices
     /// <summary>
     /// Move <paramref name="unit"/> up to <paramref name="maxInches"/>, acquiring the destination
     /// from <paramref name="controller"/> (the player who directs the move) — defaulting to the
-    /// unit's own owner when null, which is every self-move (Vanguard/Harassing). A cross-unit
+    /// unit's own owner when null, which is every self-move (Harassing, Drakesworn pre-#426). A cross-unit
     /// forced move (e.g. a "reposition an enemy unit" spell) passes the rule's bearer instead, so
     /// the caster directs the displacement rather than the victim. When <paramref name="isOptional"/>
     /// the player may decline by submitting a no-op move. Resolution of
     /// <see cref="RuleOperation.InvokeTriggeredMove"/>.
     /// </summary>
     Task MoveUnit(IUnit unit, float maxInches, bool isOptional, PlayerID? controller = null);
+
+    /// <summary>#434: a game-log line from an executable operation that decided to do nothing (Mind Control's
+    /// once-per-round refusal). A no-op by default, so test doubles need not implement it.</summary>
+    void Log(string message) { }
 
     /// <summary>
     /// Fatigue <paramref name="unit"/> for the rest of the round (the #020 melee penalty). Resolution of
@@ -102,7 +106,8 @@ public interface IOperationServices
 
     /// <summary>
     /// #197 P8: <paramref name="unit"/> takes a dangerous-terrain test on the spot, without moving —
-    /// one batched d6 per living model, a wound on a 1, landed through the same dice beat, casualty
+    /// one batched d6 per wound it would take to destroy it (3.6, #420), a wound to the unit on each 1,
+    /// landed through the same dice beat, casualty
     /// animation and destruction seam a real terrain crossing uses. A target that ignores all terrain
     /// (Flying) takes no test at all, matching what it would suffer walking through the real thing.
     /// Resolution of <see cref="RuleOperation.InvokeDangerousTerrainTest"/>.

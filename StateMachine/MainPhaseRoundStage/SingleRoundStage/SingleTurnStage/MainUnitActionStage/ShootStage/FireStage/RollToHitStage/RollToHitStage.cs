@@ -55,11 +55,13 @@ namespace FDG.Stages
                 // Each volley fires every weapon at once; the weapon's Attacks is the volley count.
                 // #239: the weapon's effect key + the natural hit share ride along so the front-end
                 // picks the right visual/sounds and lands only the shots that hit.
+                // #424 B1: picked by the ATTACK's kind - a weapon that is both ranged and melee (Assault) plays
+                // its shot with the ranged key and its swing with the melee one.
                 await GameContext.Presenter.Present(new AttackBeat(metaData.IsMelee,
                     attackerPositions, targetPositions,
                     volleyCount: metaData.WeaponType.Attacks,
                     armorPenetration: metaData.WeaponType.ArmorPenetration,
-                    weaponEffect: metaData.WeaponType.EffectKey,
+                    weaponEffect: metaData.IsMelee ? metaData.WeaponType.MeleeEffectKey : metaData.WeaponType.EffectKey,
                     hitCount: successfulResults.TotalRolls,
                     attackCount: attacks));
             }
@@ -77,17 +79,31 @@ namespace FDG.Stages
             IUnit defender = metaData.DefendingUnit.GetValue();
             float distance = UnitCompareUtilities.MinDistanceBetweenUnits(attacker, defender, out _, out _, includeVertical: true);
 
+            // #418 (Core Rules v3.6.0 Fatigue): a Fatigued (or Shaken) unit's melee hits are its natural 6s,
+            // and "those hits don't count as rolls of 6 for special rules". Decided once, here, on the
+            // context: every on-a-6 trigger (Furious, Surge, Rending's AP, the book rules built on the same
+            // primitives) reads the context's SpecialRuleHitRolls view, which zeroes face 6 for such an
+            // attack, and the per-hit AP split below reads the same view. The raw histogram is untouched,
+            // so the hits themselves (and the dice beat) are exactly what was rolled.
+            var hitContext = new HitRollCompleteContext(attacker, defender, rollToHitResults, distance,
+                metaData.IsMelee, metaData.IsCharging, IsSpell: false,
+                ChargeOriginDistanceInches: metaData.ChargeOriginDistanceInches,
+                UnpredictableBranch: metaData.UnpredictableBranch,
+                // #197 misc (Grounded family): the terrain-proximity conditions read the bearer's
+                // models against the live terrain layout.
+                TerrainPieces: GameContext.TableState.Terrain.Objects.ToList(),
+                SixesCountForSpecialRules: FatigueUtilities.SixesCountForSpecialRules(attacker, metaData.IsMelee),
+                // #434: Slayer / Ranged Slayer's "when using Hold actions and shooting" reads it here.
+                AttackerMoved: metaData.AttackerMoved,
+                // #433: the Enhanced family's "successful unmodified hit results of 5-6" reads the same threshold the
+                // successes above were split with.
+                HitRollNeeded: hitRollNeeded);
+
             // #204: the LIVE named evaluation - spends grants / narrates exactly like EvaluateAll, but also
             // pairs each op with the alias-aware rule name so the save presentation can say "+1 (Furious)",
             // "x3 (Blast)", "Rending AP+1". `operations` is the plain-op view the existing sinks consume.
             IReadOnlyList<(RuleOperation Op, string RuleName)> named = GameContext.RuleEvaluator.EvaluateAllNamedLive(
-                new HitRollCompleteContext(attacker, defender, rollToHitResults, distance, metaData.IsMelee,
-                    metaData.IsCharging, IsSpell: false,
-                    ChargeOriginDistanceInches: metaData.ChargeOriginDistanceInches,
-                    UnpredictableBranch: metaData.UnpredictableBranch,
-                    // #197 misc (Grounded family): the terrain-proximity conditions read the bearer's
-                    // models against the live terrain layout.
-                    TerrainPieces: GameContext.TableState.Terrain.Objects.ToList()),
+                hitContext,
                 // #006 slice F / #093: the attacker batch's living owners contribute their per-model rules
                 // under AllOwners semantics (fires only when every owner shares it), so a joined hero's
                 // Furious/Relentless fire for a hero-only batch and a homogeneous squad's shared per-model
@@ -100,7 +116,7 @@ namespace FDG.Stages
                 // as Subject for hit modifiers. Its Net(Save) folds into RollToHitResults.SaveModifier below
                 // alongside the attacker's whole-attack AP, so a defensive +1 and an attacker's -N net
                 // correctly. #183: passing the defender's living models surfaces a joined hero's relocated
-                // Shielded/Fortified (gated by AllModelsHaveThisRule) instead of silently dropping them.
+                // Shielded/Fortified (gated by MostModelsHaveThisRule) instead of silently dropping them.
                 RuleParticipant.Subject(defender, models: HeroStatRules.LivingModels(defender)));
 
             IReadOnlyList<RuleOperation> operations = named.Select(n => n.Op).ToList();
@@ -122,8 +138,9 @@ namespace FDG.Stages
             // matching-face hits carry the raised save threshold; the rest stay at base AP. With no such
             // rule the splitter returns a single group — identical to the old one-group behaviour. The named
             // form (#204) tags each peeled group with its rule so the save stage can say "Rending AP+1".
+            // #418: a face the special-rule view zeroes (a fatigued melee attack's 6s) is never peeled.
             RollToHitResults results = new RollToHitResults(
-                PerHitApSplitter.Split(successfulResults, named),
+                PerHitApSplitter.Split(successfulResults, named, hitContext.SpecialRuleHitRolls),
                 new List<FailedHitInfo>() { new FailedHitInfo(failedResults) });
 
             // #042 extra-hit rules (Surge / Furious / Relentless) fire at hit-roll-complete: an unmodified 6
@@ -182,9 +199,10 @@ namespace FDG.Stages
             // via RollToHitResults.SaveModifier — Thrust's charge AP, the defender's Shielded +1. Rending
             // and Crack no longer ride this scalar: their AP is per-hit (split into a face group above), so
             // this now holds only genuinely attack-wide modifiers.
-            RollModifierSink saveModifiers = new RollModifierSink();
-            saveModifiers.ApplyFrom(operations);
-            results.SaveModifier = saveModifiers.Net(ERollKind.Save);
+            // #431 Pierce ("ignores all positive Defense modifiers on the target") is folded here too - see
+            // WholeAttackSaveModifier; the flag tells the save stage to drop cover and granted buffs as well.
+            results.SaveModifier = WholeAttackSaveModifier(operations, out bool ignoresPositiveDefense);
+            results.IgnoresPositiveDefenseModifiers = ignoresPositiveDefense;
 
             // Fortified (defender) reduces the incoming WEAPON AP, floored at the save stage. Sum any
             // reduction ops here and carry the total alongside the save modifier.
@@ -193,7 +211,7 @@ namespace FDG.Stages
 
             // #245: name the rules behind the two scalars above so the save beat's chips can say
             // "Shielded +1" / "Thrust -1" / "Fortified AP-1" instead of an anonymous net number.
-            results.SaveModifierTags = ComposeSaveModifierTags(named);
+            results.SaveModifierTags = ComposeSaveModifierTags(named, results.IgnoresPositiveDefenseModifiers);
 
             // #197 Hazardous: the attacker's own unmodified 1s wound it. Counted here, where the UNMODIFIED
             // histogram is in hand, and CARRIED to ApplyWoundsStage - the last stage of every chain that
@@ -202,6 +220,9 @@ namespace FDG.Stages
             // attacking unit is never torn down while later stages of its own attack are still running.
             // The player learns of it at the moment of the roll, via the proc chip on the to-hit beat above.
             results.SelfWounds = operations.OfType<RuleOperation.InflictSelfWounds>().Sum(op => op.Wounds);
+            // #434: one weapon fires per volley, so one per-die value; the largest if a stacked copy ever disagrees.
+            results.SelfWoundsPerDie = operations.OfType<RuleOperation.InflictSelfWounds>()
+                .Where(op => op.Wounds > 0f).Select(op => op.WoundsPerDie).DefaultIfEmpty(1f).Max();
 
             await onFinished(results);
         }
@@ -252,15 +273,24 @@ namespace FDG.Stages
         // #245: chips naming the whole-attack save modifiers this evaluation produced, for the save
         // beat. Positive is the defender's favor (Shielded +1), negative the attacker's (Thrust -1);
         // Fortified's AP reduction reads as the AP it removes. Internal for tests.
-        internal static List<string>? ComposeSaveModifierTags(IReadOnlyList<(RuleOperation Op, string RuleName)> named)
+        internal static List<string>? ComposeSaveModifierTags(IReadOnlyList<(RuleOperation Op, string RuleName)> named,
+            bool ignoresPositiveDefense = false)
         {
             List<string> tags = new List<string>();
             foreach ((RuleOperation op, string ruleName) in named)
             {
                 switch (op)
                 {
+                    // #431 Pierce: an ignored Defense bonus earns no chip; the Pierce chip below says why.
+                    case RuleOperation.ApplyRollModifier { Roll: ERollKind.Save } mod
+                        when mod.Delta > 0 && ignoresPositiveDefense:
+                        break;
                     case RuleOperation.ApplyRollModifier { Roll: ERollKind.Save } mod when mod.Delta != 0:
                         tags.Add($"{RollTags.NameOr(ruleName, "modifier")} {RollTags.Delta(mod.Delta)}");
+                        break;
+                    case RuleOperation.IgnorePositiveDefenseModifiers
+                        when named.Any(n => n.Op is RuleOperation.ApplyRollModifier { Roll: ERollKind.Save, Delta: > 0 }):
+                        tags.Add($"{RollTags.NameOr(ruleName, "rule")}: no +Def");
                         break;
                     case RuleOperation.ReduceArmorPenetration reduce when reduce.Amount != 0:
                         tags.Add($"{RollTags.NameOr(ruleName, "AP reduction")} AP-{reduce.Amount}");
@@ -268,6 +298,31 @@ namespace FDG.Stages
                 }
             }
             return tags.Count > 0 ? tags : null;
+        }
+
+        /// <summary>
+        /// The whole-attack save modifier one hit-roll-complete evaluation produces: the net Save delta (Thrust's
+        /// -1, the defender's Shielded +1, ...). #431 Pierce: when the evaluation also carries
+        /// <see cref="RuleOperation.IgnorePositiveDefenseModifiers"/>, every positive Save delta - a Defense bonus
+        /// for the target - is left out and only the negative ones count. Shared with the shooting forecast and
+        /// the AI's CombatMath so all three agree. Internal for those callers and the tests.
+        /// </summary>
+        internal static int WholeAttackSaveModifier(IReadOnlyList<RuleOperation> operations,
+            out bool ignoresPositiveDefense)
+        {
+            RollModifierSink saveModifiers = new RollModifierSink();
+            saveModifiers.ApplyFrom(operations);
+            int net = saveModifiers.Net(ERollKind.Save);
+
+            ignoresPositiveDefense = operations.OfType<RuleOperation.IgnorePositiveDefenseModifiers>().Any();
+            if (ignoresPositiveDefense)
+            {
+                net -= operations.OfType<RuleOperation.ApplyRollModifier>()
+                    .Where(op => op.Roll == ERollKind.Save && op.Delta > 0)
+                    .Sum(op => op.Delta);
+            }
+
+            return net;
         }
 
         // #204: the distinct rule name(s) that added on-6 extra hits, joined for the save presentation

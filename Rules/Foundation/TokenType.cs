@@ -40,6 +40,11 @@ public readonly record struct TokenType(string Id)
     public const string SPENDABLE_AP_BONUS_ID = "SpendableApBonusMarker";
     public const string PERSISTENT_HIT_BONUS_ID = "PersistentHitBonusMarker";
     public const string PERSISTENT_AP_BONUS_ID = "PersistentApBonusMarker";
+    // #434: OPR 3.6 Piercing / Precision Tag - "When attacking, friendly units may remove ONE token from their target
+    // before rolling to block / to hit to get AP(+1) / +1 to hit". Unlike the Spotter's spendable markers (remove any
+    // number, +1 each), one per attack.
+    public const string SINGLE_SPEND_HIT_BONUS_ID = "SingleSpendHitBonusToken";
+    public const string SINGLE_SPEND_AP_BONUS_ID = "SingleSpendApBonusToken";
 
     // #197 Inquisitorial Agent: stamped on a unit that spent a quota-gated reactivation this round, so the
     // army-wide "only up to one third of them per round" cap can count the uses. Cleared at round end -
@@ -76,8 +81,9 @@ public readonly record struct TokenType(string Id)
     // authored as Condition.TokenPresent over it, so a unit that merely HAS the rule gets nothing.
     public const string COMPELLED_TO_ATTACK_ID = "CompelledToAttack";
 
-    // #197 Mobile Artillery's defensive arm: "as long as this unit hasn't moved during the ROUND, enemies
-    // shooting it from over 9in get -2 to hit". Named for the FACT, not the rule, like the P19 family.
+    // #197 (3.5 Mobile Artillery, deleted by #436; read since #425 by 3.6 Artillery's and Entrenched's defensive
+    // arms): "as long as they haven't moved during this round, enemy units shooting at them from over 12" away get
+    // -1 to hit rolls". Named for the FACT, not the rule, like the P19 family.
     //
     // Round-persistent because none of the existing "did it move" state can answer this question at the
     // seam that asks it. The hit hook fires during the ENEMY's activation, where UnitActionContext.HasMoved
@@ -103,14 +109,44 @@ public readonly record struct TokenType(string Id)
     // nothing looks unusual. ManualOnly: markers are never spent and last the whole game.
     public const string REGENERATIVE_STRENGTH_MARKER_ID = "RegenerativeStrengthMarker";
 
-    // #197 P12: the bearer has already cashed its markers into a weapon THIS MELEE. "Pick ONE of its
-    // weapons" is a per-melee choice, but the swing loop re-enters DetermineHitRollStage once per weapon,
-    // so the offer needs state that spans the volleys of one melee and no further. Cleared by
-    // PostMeleeStage's Melee_OnPostMelee sweep, which is why the trigger is CustomHook and not
-    // ActivationEnd: a strike-back happens inside the ENEMY's activation, and the end-of-activation sweep
-    // only ever visits the activated unit - a gate set while striking back would survive to suppress the
-    // bearer's own next melee.
-    public const string REGENERATIVE_STRENGTH_SPENT_ID = "RegenerativeStrengthSpentThisMelee";
+
+    // #434: OPR 3.6 Ravage and Regenerative Strength are "Once per round, when it's this model's turn to strike in
+    // melee, roll ... dice before attacking". ResolveRavageWoundsStage stamps the striking unit when its pre-strike
+    // dice pool is rolled and skips a unit already stamped, so a unit that fights twice in a round rolls once.
+    public const string STRIKE_DICE_USED_ID = "StrikeDiceUsedThisRound";
+
+    // #431 Scourge: wounds this unit COUNTS as having taken this activation without losing them - "enemies
+    // count as having taken 2 extra wounds when checking who won melee, or if shooting wounds would trigger
+    // Morale Tests". A Magnitude payload (fractional under the probabilistic roller, like the marker above),
+    // granted by AssignWoundsStage and read-and-removed by the melee result and the wound-driven morale check
+    // (Rules.Dispatch.CountedWounds). It lives on the STRUCK unit, which is usually not the activated one, so
+    // the end-of-activation sweep clears it table-wide (ReconcileEndOfActivationStage); RoundEnd is the
+    // catalog's backstop.
+    public const string COUNTED_WOUNDS_TAKEN_ID = "CountedWoundsTaken";
+
+    // #419 (Core Rules v3.6.0 Melee Results: "compare the number of wounds each unit took during this
+    // activation"): the REAL wounds this unit has taken so far in the current activation, whoever dealt them -
+    // the activation's wound ledger (Rules.Dispatch.WoundsTakenThisActivation). A Magnitude payload (fractional
+    // under the probabilistic roller), fed by the two wound-landing seams (ApplyWoundsStage,
+    // CasualtyPresentation.ApplyAndPresent) and read by the melee result for the wounds a combatant took BEFORE
+    // its melee began (a Dangerous Terrain test on the charge move, a Breath Attack or spell). Swept table-wide
+    // at the start and end of every activation; RoundEnd is the catalog's backstop.
+    public const string WOUNDS_TAKEN_THIS_ACTIVATION_ID = "WoundsTakenThisActivation";
+
+    // #446 (Core Rules v3.6.0 Dangerous Terrain: "Units with models moving across Dangerous terrain, or that
+    // activate in it, must roll ..."): this unit has already taken its Dangerous Terrain Test for the current
+    // activation, on either trigger - activating in it (ActivatedInDangerousTerrainStage) or a move across it
+    // (MovementExecutor.RollDangerousTerrain). A later trigger in the same activation does not test again
+    // (Rules.Dispatch.DangerousTerrainTestedThisActivation). A flag, no payload. Swept table-wide at the start
+    // and end of every activation, like the wound ledger above; RoundEnd is the catalog's backstop.
+    public const string DANGEROUS_TERRAIN_TESTED_THIS_ACTIVATION_ID = "DangerousTerrainTestedThisActivation";
+
+    // #435 (OPR 3.6 AoF Ethereal: "you may place this model anywhere fully within 6" of its position. If you do, this
+    // model moves -6" ... until the end of that activation"): this unit's models were actually placed somewhere else by
+    // a teleport this activation. Stamped by TeleportStage only when at least one model moved - an accepted placement
+    // that leaves every model where it stood (the CLI / AI default) is not "you do". The activated unit's own flag,
+    // so the end-of-activation sweep clears it (ActivationEnd).
+    public const string TELEPORTED_THIS_ACTIVATION_ID = "TeleportedThisActivation";
 
 
     public static readonly TokenType Shaken = new(SHAKEN_ID);
@@ -122,7 +158,11 @@ public readonly record struct TokenType(string Id)
     public static readonly TokenType CompelledToAttack = new(COMPELLED_TO_ATTACK_ID);
     public static readonly TokenType MovedThisRound = new(MOVED_THIS_ROUND_ID);
     public static readonly TokenType RegenerativeStrengthMarker = new(REGENERATIVE_STRENGTH_MARKER_ID);
-    public static readonly TokenType RegenerativeStrengthSpent = new(REGENERATIVE_STRENGTH_SPENT_ID);
+    public static readonly TokenType StrikeDiceUsed = new(STRIKE_DICE_USED_ID);
+    public static readonly TokenType CountedWoundsTaken = new(COUNTED_WOUNDS_TAKEN_ID);
+    public static readonly TokenType WoundsTakenThisActivation = new(WOUNDS_TAKEN_THIS_ACTIVATION_ID);
+    public static readonly TokenType DangerousTerrainTestedThisActivation = new(DANGEROUS_TERRAIN_TESTED_THIS_ACTIVATION_ID);
+    public static readonly TokenType TeleportedThisActivation = new(TELEPORTED_THIS_ACTIVATION_ID);
     public static readonly TokenType SpellTokens = new(SPELL_TOKENS_ID);
 
     /// <summary>
@@ -153,12 +193,16 @@ public readonly record struct TokenType(string Id)
     public static readonly TokenType SpendableApBonus = new(SPENDABLE_AP_BONUS_ID);
     public static readonly TokenType PersistentHitBonus = new(PERSISTENT_HIT_BONUS_ID);
     public static readonly TokenType PersistentApBonus = new(PERSISTENT_AP_BONUS_ID);
+    public static readonly TokenType SingleSpendHitBonus = new(SINGLE_SPEND_HIT_BONUS_ID);
+    public static readonly TokenType SingleSpendApBonus = new(SINGLE_SPEND_AP_BONUS_ID);
 
     /// <summary>
     /// Marks a unit that arrived from reserve (Ambush) this round. Engine-known because
     /// <c>ReconcileObjectivesStage</c> reads it to exclude the newcomer from seizing/contesting
     /// objectives the round it arrives. Granted with a <c>RoundEnd</c> clear trigger, so the
-    /// round-end token sweep removes it after that round's objective check.
+    /// round-end token sweep removes it after that round's objective check. Also stamped on a
+    /// Reinforcement copy, a returning Aircraft, and (#426, 3.6 text) a unit placed via Spawn or Split -
+    /// every "can't seize or contest objectives on the round they are placed" newcomer.
     /// </summary>
     public static readonly TokenType ArrivedFromReserve = new(ARRIVED_FROM_RESERVE_ID);
 
@@ -259,7 +303,7 @@ public readonly record struct TokenType(string Id)
     /// fatigued). Exists so "after being in melee" rules (AoF Retreating Strike) can gate as plain data
     /// via <c>Condition.TokenPresent</c>. RoundEnd clear, swept by the round-end pass - deliberately never
     /// ActivationEnd: melee happens during the CHARGER's activation and the end-of-activation sweep only
-    /// visits the activated unit (the RegenerativeStrengthSpent trap above).
+    /// visits the activated unit, so the defender's copy would never be swept.
     /// </summary>
     public static readonly TokenType WasInMeleeThisRound = new(WAS_IN_MELEE_THIS_ROUND_ID);
 

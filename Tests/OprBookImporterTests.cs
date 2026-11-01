@@ -50,7 +50,7 @@ public class OprBookImporterTests
     [Test]
     public void Import_StampsGameSystemSlug_AbsentStaysNull()
     {
-        string json = """{"name":"Fantasy Book","versionString":"3.5.3","gameSystemSlug":"age-of-fantasy","units":[]}""";
+        string json = """{"name":"Fantasy Book","versionString":"3.6.0","gameSystemSlug":"age-of-fantasy","units":[]}""";
         Assert.That(OprBookImporter.Import(json, "src", "lic").GameSystem, Is.EqualTo(GameSystems.AgeOfFantasy));
         Assert.That(Import().GameSystem, Is.Null, "no gameSystemSlug in the JSON leaves the field null (= GDF)");
     }
@@ -58,7 +58,7 @@ public class OprBookImporterTests
     [Test]
     public void Compile_CopiesGameSystemOntoArmy()
     {
-        string json = """{"name":"Fantasy Book","versionString":"3.5.3","gameSystemSlug":"age-of-fantasy","units":[]}""";
+        string json = """{"name":"Fantasy Book","versionString":"3.6.0","gameSystemSlug":"age-of-fantasy","units":[]}""";
         BookFile book = OprBookImporter.Import(json, "src", "lic");
         BuiltArmyFile army = ListCompiler.Compile(book, new BuilderList { BookName = book.Name });
         Assert.That(army.GameSystem, Is.EqualTo(GameSystems.AgeOfFantasy));
@@ -76,7 +76,8 @@ public class OprBookImporterTests
         // '"', so the fold must run on parsed string values, never on the raw JSON text (folding raw text
         // would inject an unescaped quote and corrupt the document — 29/47 corpus books hit exactly that).
         // Truly unfoldable characters warn instead of mangling.
-        string json = """{"name":"Kī’s “Legion” — Elite","versionString":"1.0","units":[]}""";
+        // (#437: one unit, so the book is not read as a 0-unit Army Forge parent entry, which warns.)
+        string json = """{"name":"Kī’s “Legion” — Elite","versionString":"1.0","units":[{"id":"u","name":"U","size":1,"cost":1,"bases":{"round":"25"}}]}""";
         var warnings = new List<string>();
 
         BookFile book = OprBookImporter.Import(json, "src", "lic", warnings.Add);
@@ -180,7 +181,7 @@ public class OprBookImporterTests
     // wrong. "generic" pins the fallback when a unit has no per-unit entry at all.
     private const string PerUnitCostJson = """
     {
-      "name": "Cost Legion", "versionString": "3.5.3",
+      "name": "Cost Legion", "versionString": "3.6.0",
       "units": [
         { "id": "noble",   "name": "Noble",   "size": 1, "cost": 45, "quality": 3, "defense": 4, "upgrades": ["P1"] },
         { "id": "protector","name": "Protector","size": 1, "cost": 35, "quality": 4, "defense": 5, "upgrades": ["P1"] }
@@ -222,10 +223,9 @@ public class OprBookImporterTests
         Assert.That(Opt("Noble", "mystery").Cost, Is.EqualTo(0));
     }
 
-    // #197 (Darkborn): OPR uses the bare name "Darkborn" for two different rules across armies. The catalog
-    // registers them disambiguated ("Darkborn (Offensive)"/"(Defensive)"), so the bare name resolved to
-    // nothing; the importer routes it to the right variant by army name. A rule name carried on a unit, a
-    // weapon, and an upgrade option all disambiguate (the walk reaches every rule-reference site).
+    // #197 (Darkborn): OPR 3.5 used the bare name "Darkborn" for two different rules across armies, and the
+    // importer routed it to the catalog's disambiguated variants by army name. #432: 3.6 has one Darkborn, so the
+    // bare name is kept at every rule-reference site (unit, weapon, upgrade option).
     private const string DarkbornJson = """
     {
       "name": "%ARMY%", "versionString": "1.0",
@@ -244,39 +244,31 @@ public class OprBookImporterTests
     }
     """;
 
-    [TestCase("Dark Brothers", "Darkborn (Defensive)")]
-    [TestCase("Dark Prime Brothers", "Darkborn (Offensive)")]
-    public void Import_DisambiguatesDarkborn_ByArmy(string army, string expected)
+    // #432: OPR 3.6 prints one Darkborn for both Dark Brothers books ("...that enemy unit gets -4"/-2" range to a
+    // min. of 6""), defined under the bare name in the GDF supplement, so the importer no longer rewrites it to the
+    // catalog's 3.5 "Darkborn (Defensive)" / "Darkborn (Offensive)" (those stay for old army files until #436).
+    [TestCase("Dark Brothers")]
+    [TestCase("Dark Prime Brothers")]
+    [TestCase("Some Other Legion")]
+    public void Import_KeepsTheBareDarkbornName_AtEverySite(string army)
     {
         BookFile book = OprBookImporter.Import(DarkbornJson.Replace("%ARMY%", army), "src", "lic");
         RosterUnit reaver = book.Units.Single();
+        var bare = new SpecialRuleEntry_Core("Darkborn");
 
-        Assert.That(reaver.Rules, Has.One.EqualTo(new SpecialRuleEntry_Core(expected)),
-            "unit-level Darkborn should route to the army's variant");
-        Assert.That(reaver.Weapons.Single().SpecialRules, Has.One.EqualTo(new SpecialRuleEntry_Core(expected)),
-            "weapon-level Darkborn should route too");
-        Assert.That(reaver.Sections.Single().Options.Single().RulesGained,
-            Has.One.EqualTo(new SpecialRuleEntry_Core(expected)),
-            "upgrade-gained Darkborn should route too");
-        Assert.That(book.Units.SelectMany(u => u.Rules), Has.None.EqualTo(new SpecialRuleEntry_Core("Darkborn")),
-            "the bare name must not survive for an army that defines Darkborn");
+        Assert.That(reaver.Rules, Has.One.EqualTo(bare), "unit-level Darkborn keeps its 3.6 name");
+        Assert.That(reaver.Weapons.Single().SpecialRules, Has.One.EqualTo(bare), "weapon-level too");
+        Assert.That(reaver.Sections.Single().Options.Single().RulesGained, Has.One.EqualTo(bare),
+            "upgrade-gained too");
+        Assert.That(book.Units.SelectMany(u => u.Rules).Select(r => r.PrintableName),
+            Has.None.StartsWith("Darkborn ("), "no 3.5 variant name is introduced");
     }
 
-    [Test]
-    public void Import_LeavesDarkbornUntouched_ForAnUnlistedArmy()
-    {
-        // Only the two armies that actually define "Darkborn" are disambiguated; a stray reference in any
-        // other book is left as-is (it simply stays an unresolved reference, exactly as before).
-        BookFile book = OprBookImporter.Import(DarkbornJson.Replace("%ARMY%", "Some Other Legion"), "src", "lic");
-        Assert.That(book.Units.Single().Rules, Has.One.EqualTo(new SpecialRuleEntry_Core("Darkborn")));
-    }
-
-    // #197 P8: the same reuse, six armies wide. Four books say the picked enemy "counts as being in
-    // Dangerous Terrain once (next time the effect would apply)"; Lust Disciples and War Disciples say it
-    // "must immediately take a Dangerous Terrain test" - a different mechanic that lands whether or not
-    // the victim ever moves. Only the minority variant is renamed, so the majority keeps the corpus
-    // wording. All 14 corpus references sit on a wargear item gained from an upgrade, which is the site
-    // this fixture uses.
+    // #197 P8: the same reuse, six armies wide in 3.5 - four books said the picked enemy "counts as being in
+    // Dangerous Terrain once (next time the effect would apply)"; Lust Disciples and War Disciples said it
+    // "must immediately take a Dangerous Terrain test", renamed to "(Immediate)". #434: 3.6 prints the deferred
+    // text in all six, so the importer renames nothing. The references sit on a wargear item gained from an
+    // upgrade, which is the site this fixture uses.
     private const string TerrainDebuffJson = """
     {
       "name": "%ARMY%", "versionString": "1.0",
@@ -296,8 +288,10 @@ public class OprBookImporterTests
     }
     """;
 
-    [TestCase("Lust Disciples", "Dangerous Terrain Debuff (Immediate)")]
-    [TestCase("War Disciples", "Dangerous Terrain Debuff (Immediate)")]
+    // #434: OPR 3.6 prints the deferred Dangerous Terrain Debuff in all six books, so no army is renamed any more
+    // (3.5 renamed Lust / War Disciples' immediate variant to "Dangerous Terrain Debuff (Immediate)").
+    [TestCase("Lust Disciples", "Dangerous Terrain Debuff")]
+    [TestCase("War Disciples", "Dangerous Terrain Debuff")]
     [TestCase("Change Disciples", "Dangerous Terrain Debuff")]
     [TestCase("Havoc Brothers", "Dangerous Terrain Debuff")]
     [TestCase("Plague Disciples", "Dangerous Terrain Debuff")]
@@ -309,7 +303,7 @@ public class OprBookImporterTests
         ItemEntry item = book.Units.Single().Sections.Single().Options.Single().ItemsGained.Single();
 
         Assert.That(item.Rules, Has.One.EqualTo(new SpecialRuleEntry_Core(expected)),
-            $"{army} prints the {(expected.EndsWith("(Immediate)") ? "immediate" : "deferred")} wording");
+            $"{army} prints the deferred wording in 3.6");
     }
 
     // Every bases variant observed in the real books: round number, round oval "WxH", round "none" with a
@@ -419,12 +413,13 @@ public class OprBookImporterTests
         Assert.That(terror.Target.TargetAffinity, Is.EqualTo(ETargetAffinity.Foe));
         Assert.That(((Effect.MarkTarget)terror.Effect).RuleName, Is.EqualTo("Unpredictable Fighter"));
 
-        // Damage: AP folds into ArmorPenetration; targeting is one enemy unit needing LoS.
+        // Damage: AP folds into ArmorPenetration; targeting is one enemy unit. #429: this 3.5 text has no "in line
+        // of sight" clause, so under the 3.6 contract it needs none - LoS follows the text, not the damage shape.
         SpellDefinition blast = book.Spells.Single(s => s.Name == "Psychic Blast");
         Assert.That(blast.Threshold, Is.EqualTo(2));
         Assert.That(blast.Target.RangeInches, Is.EqualTo(12f));
         Assert.That(blast.Target.TargetAffinity, Is.EqualTo(ETargetAffinity.Foe));
-        Assert.That(blast.Target.RequireLineOfSight, Is.True);
+        Assert.That(blast.Target.RequireLineOfSight, Is.False);
         var blastHits = (Effect.DealHits)blast.Effect;
         Assert.That(blastHits.Count, Is.EqualTo(4));
         Assert.That(blastHits.ArmorPenetration, Is.EqualTo(2));
@@ -446,6 +441,76 @@ public class OprBookImporterTests
         var grant = (Effect.AddRule)spirits.Effect;
         Assert.That(grant.RuleName, Is.EqualTo("Unpredictable Shooter"));
         Assert.That(grant.Scope, Is.EqualTo(ELifetime.NextTrigger));
+    }
+
+    // #429 - Core Rules v3.6.0 moved "target in line of sight" out of Caster and into each spell's own text
+    // ("Pick one enemy unit within 18\" in line of sight, ..."). The importer's contract: RequireLineOfSight is
+    // true iff the text carries that clause, for EVERY effect shape (it used to be true for damage spells and
+    // false for everything else). Invented spells in the 3.6 grammar, one per shape, with and without the clause.
+    private const string LineOfSightSpellsJson = """
+    {
+      "name": "Spells36", "versionString": "1", "units": [], "upgradePackages": [],
+      "spells": [
+        { "name": "Seen Bolt", "threshold": 1,
+          "effect": "Pick one enemy unit within 18\" in line of sight, which takes 2 hits with AP(1)." },
+        { "name": "Unseen Bolt", "threshold": 1,
+          "effect": "Pick one enemy unit within 18\", which takes 2 hits with AP(1)." },
+        { "name": "Seen Lance", "threshold": 2,
+          "effect": "Pick one enemy model within 24\" In Line Of Sight, which takes 1 hit with AP(4). This effect is resolved as if the target was a unit of [1]." },
+        { "name": "Seen Ward", "threshold": 1,
+          "effect": "Pick up to two friendly units within 12\" in line of sight, which get Unpredictable Shooter once (next time the effect would apply)." },
+        { "name": "Unseen Ward", "threshold": 1,
+          "effect": "Pick up to two friendly units within 12\", which get Unpredictable Shooter once (next time the effect would apply)." },
+        { "name": "Seen Dread", "threshold": 2,
+          "effect": "Pick one enemy unit within 18\" in line of sight, which must take a morale test. If failed, it becomes fatigued." },
+        { "name": "Seen Mark", "threshold": 2,
+          "effect": "Pick up to three enemy units within 18\" in line of sight, which friendly units gets Unpredictable Fighter against once (next time the effect would apply)." },
+        { "name": "Seen Hex", "threshold": 2,
+          "effect": "Pick one enemy unit within 18\" in line of sight, which gets -1 to hit rolls when attacking once (next time the effect would apply)." },
+        { "name": "Seen Mire", "threshold": 1,
+          "effect": "Pick one enemy unit within 18\" in line of sight, which counts as being in Difficult Terrain once (next time the effect would apply)." }
+      ]
+    }
+    """;
+
+    [Test]
+    public void Import_SpellLineOfSight_FollowsTheSpellsOwnClause_NotItsEffectShape()
+    {
+        var warnings = new List<string>();
+        BookFile book = OprBookImporter.Import(LineOfSightSpellsJson, "TestSource", "CC-BY-SA 4.0", warnings.Add);
+
+        Assert.That(book.Spells, Has.Count.EqualTo(9), "the clause must not break any shape's parse");
+        Assert.That(warnings, Is.Empty);
+
+        bool Los(string name) => book.Spells.Single(s => s.Name == name).Target.RequireLineOfSight;
+
+        // With the clause - damage, single-model damage (any casing), buff grant, morale test, mark, stat
+        // modifier and a synthesized-rule grant all require LoS.
+        foreach (string name in new[] { "Seen Bolt", "Seen Lance", "Seen Ward", "Seen Dread", "Seen Mark", "Seen Hex",
+                     "Seen Mire" })
+        {
+            Assert.That(Los(name), Is.True, $"{name}: the text says 'in line of sight'");
+        }
+
+        // Without it - a damage spell no longer needs LoS just for being a damage spell, and a buff stays free.
+        Assert.That(Los("Unseen Bolt"), Is.False, "no clause, no LoS - even for a damage spell");
+        Assert.That(Los("Unseen Ward"), Is.False);
+
+        // The clause is part of the target text only: range and count still parse around it.
+        SpellDefinition lance = book.Spells.Single(s => s.Name == "Seen Lance");
+        Assert.That(lance.Target.RangeInches, Is.EqualTo(24f));
+        Assert.That(lance.Target.SingleModel, Is.True);
+        Assert.That(book.Spells.Single(s => s.Name == "Seen Mark").Target.MaxCount, Is.EqualTo(3));
+    }
+
+    [TestCase("Pick one enemy unit within 18\" in line of sight, which takes 1 hit.", true)]
+    [TestCase("Pick one enemy unit within 18\" IN LINE OF SIGHT, which takes 1 hit.", true)]
+    [TestCase("Pick one enemy unit within 18\", which takes 1 hit.", false)]
+    [TestCase("Pick one enemy unit within 18\" out of sight lines, which takes 1 hit.", false)]
+    [TestCase("", false)]
+    public void SpellTextRequiresLineOfSight_IsTheClauseTest(string text, bool expected)
+    {
+        Assert.That(OprBookImporter.SpellTextRequiresLineOfSight(text), Is.EqualTo(expected));
     }
 
     // The five remaining corpus shapes verbatim (Dwarf Guilds / HDF / Machine Cults / War Disciples /
@@ -570,7 +635,9 @@ public class OprBookImporterTests
         Assert.That(((Effect.AddRule)corrode.Effect).RuleName, Is.EqualTo("Corrode Weapons Effect"));
         SpecialRuleDefinition corrodeRule = book.RuleDefinitions.Single(d => d.Name == "Corrode Weapons Effect");
         Assert.That(((Effect.ReduceArmorPenetration)corrodeRule.Passive[0].Effect).Amount, Is.EqualTo(1));
-        Assert.That(corrodeRule.Passive[0].Condition, Is.InstanceOf<Condition.Not>());
+        // #439: shooting only, and never the bearer's own spell hits ("on its weapons", 3.6).
+        Assert.That(corrodeRule.Passive[0].Condition,
+            Is.EqualTo(new Condition.And(new Condition.Not(new Condition.IsMelee()), new Condition.IsNotSpell())));
 
         // Morale-test-then: the #034 conditional family, both corpus consequences.
         SpellDefinition fury = book.Spells.Single(s => s.Name == "Terrifying Fury");
@@ -587,6 +654,145 @@ public class OprBookImporterTests
                 "Shock Speed Effect", "Deceleration Rune Effect", "Corrode Weapons Effect",
                 "Aura of Pestilence Effect", "Cursed Stride Effect",
             }));
+    }
+
+    // #439 - the OPR 3.6.0 spell grammar, verbatim from the 2026-10-30 snapshots (one spell per new phrasing): the
+    // weapon-scoped grant suffix on grants and marks, the +6" range grant/mark, the 3.6 Corrode Weapons, the
+    // spell-token drain, the once-per-round morale move, 3.6 damage-rule names, a mark with its verb dropped, and the
+    // truncated Combat Possession.
+    private const string Spells36Json = """
+    {
+      "name": "Spells36Grammar", "versionString": "3.6.0", "units": [], "upgradePackages": [],
+      "spells": [
+        { "name": "Blessed Ammo", "threshold": 3,
+          "effect": "Pick up to three friendly units within 18\", which get Shred on its weapons when shooting once (next time the effect would apply)." },
+        { "name": "Elemental Form", "threshold": 3,
+          "effect": "Pick up to three friendly units within 18\", which get AP(+1) on its weapons in melee once (next time the effect would apply)." },
+        { "name": "Creator of Illusions", "threshold": 1,
+          "effect": "Pick one enemy unit within 18\" in line of sight, which gets Unwieldy on its weapons in melee once (next time the effect would apply)." },
+        { "name": "Toxin Mist", "threshold": 1,
+          "effect": "Pick one enemy unit within 18\" in line of sight, which friendly units gets Bane on their weapons when attacking against once (next time the effect would apply)." },
+        { "name": "Head Bang", "threshold": 2,
+          "effect": "Pick up to two enemy units within 18\" in line of sight, which friendly units gets Rending on their weapons in melee against once (next time the effect would apply)." },
+        { "name": "Coordinated Aggression", "threshold": 2,
+          "effect": "Pick up to two enemy units within 18\" in line of sight, which friendly units gets AP(1) on their weapons when shooting against once (next time the effect would apply)." },
+        { "name": "Triangulation Bots", "threshold": 1,
+          "effect": "Pick one enemy unit within 18\" in line of sight, which friendly units gets Indirect on their weapons against once (next time the effect would apply)." },
+        { "name": "Ancestral Guidance", "threshold": 2,
+          "effect": "Pick up to two enemy units within 18\" in line of sight, which friendly units Indirect on their weapons against once (next time the effect would apply)." },
+        { "name": "Battle Rune ", "threshold": 2,
+          "effect": "Pick up to two friendly units within 12\", which get +6\" range on its weapons when shooting once (next time the effect would apply)." },
+        { "name": "Eternal Guidance", "threshold": 2,
+          "effect": "Pick up to two enemy units within 18\" in line of sight, which friendly units get +6\" range on their weapons when shooting against once (next time the effect would apply)." },
+        { "name": "Corrode Weapons", "threshold": 2,
+          "effect": "Pick up to two enemy units within 18\" in line of sight, which loses AP(1) on its weapons when shooting once (next time the effect would apply)." },
+        { "name": "Burn the Heretic", "threshold": 1,
+          "effect": "Pick one enemy unit within 18\" in line of sight, which loses 2 spell tokens. Note that the target may not spend those spell tokens to prevent this effect." },
+        { "name": "Seductive Invocation", "threshold": 1,
+          "effect": "Pick one enemy unit within 18\" in line of sight, which must take a Morale Test. If failed you may move it by up to 6\" in a straight line in any direction. Units may only be moved once per round in this way." },
+        { "name": "Cerebral Trauma", "threshold": 3,
+          "effect": "Pick one enemy unit within 24\" in line of sight, which takes 6 hits with AP(1) and Smash." },
+        { "name": "Shattering Curse", "threshold": 2,
+          "effect": "Pick one enemy unit within 18\" in line of sight, which takes 4 hits with Fracture. Roll as many dice as hits to see if \"on rolls of 6\" effects trigger." },
+        { "name": "Headtaker Strike", "threshold": 2,
+          "effect": "Pick up to two enemy units within 6\", which take 4 hits with AP(2) each." },
+        { "name": "Asphyxiating Fog", "threshold": 1,
+          "effect": "Pick one friendly unit within 12\", which gets Counter in Melee once (next time the effect would apply)." },
+        { "name": "Lust Boon", "threshold": 2,
+          "effect": "Pick up to two friendly units within 12\", which get Enhanced Lustbound once (next time the effect would apply)." },
+        { "name": "Combat Possession", "threshold": 2,
+          "effect": "Pick up to two friendly units within 12\", which" }
+      ]
+    }
+    """;
+
+    [Test]
+    public void Import36_SpellGrammar_EveryNewPhrasingParses_ToCanonicalNames()
+    {
+        var warnings = new List<string>();
+        BookFile book = OprBookImporter.Import(Spells36Json, "TestSource", "CC-BY-SA 4.0", warnings.Add);
+
+        // Everything but the truncated source text parses; that one warns as a SOURCE defect, not a parser gap.
+        Assert.That(book.Spells, Has.Count.EqualTo(18));
+        Assert.That(warnings, Has.Count.EqualTo(1));
+        Assert.That(warnings[0], Does.Contain("Combat Possession").And.Contain(OprBookImporter.TruncatedSpellWarning));
+        Assert.That(warnings[0], Does.Not.Contain(OprBookImporter.UnrecognizedSpellWarning));
+
+        Effect EffectOf(string name) => book.Spells.Single(s => s.Name == name).Effect;
+        string Granted(string name) => ((Effect.AddRule)EffectOf(name)).RuleName;
+        string Marked(string name) => ((Effect.MarkTarget)EffectOf(name)).RuleName;
+
+        // The weapon-scope suffix folds onto the catalog's grant names - the ones auras and units grant.
+        Assert.That(Granted("Blessed Ammo"), Is.EqualTo("Shred when shooting"));
+        Assert.That(Granted("Elemental Form"), Is.EqualTo("AP(+1) in melee"));
+        Assert.That(Granted("Creator of Illusions"), Is.EqualTo("Unwieldy in melee"));
+        Assert.That(Marked("Toxin Mist"), Is.EqualTo("Bane when attacking"));
+        Assert.That(Marked("Head Bang"), Is.EqualTo("Rending in melee"));
+        Assert.That(Marked("Coordinated Aggression"), Is.EqualTo("AP(1) when shooting"));
+        Assert.That(Marked("Triangulation Bots"), Is.EqualTo("Indirect"), "bare 'on their weapons' is the rule itself");
+        Assert.That(Marked("Ancestral Guidance"), Is.EqualTo("Indirect"), "the source dropped the verb - still a mark");
+        Assert.That(book.Spells.Single(s => s.Name == "Ancestral Guidance").Target.MaxCount, Is.EqualTo(2));
+
+        // "+6\" range on its weapons when shooting" is Increased Shooting Range, as a grant and as a mark.
+        Assert.That(Granted("Battle Rune"), Is.EqualTo("Increased Shooting Range"));
+        Assert.That(Marked("Eternal Guidance"), Is.EqualTo("Increased Shooting Range"));
+
+        // Phrases without the suffix are unchanged ("once (next time the effect would apply)" -> NextTrigger).
+        Assert.That(Granted("Asphyxiating Fog"), Is.EqualTo("Counter in Melee"));
+        Assert.That(Granted("Lust Boon"), Is.EqualTo("Enhanced Lustbound"));
+        Assert.That(((Effect.AddRule)EffectOf("Lust Boon")).Scope, Is.EqualTo(ELifetime.NextTrigger));
+
+        // 3.6 Corrode Weapons: the synthesized AP-loss rule, still shooting-only and not on its own spells.
+        Assert.That(Granted("Corrode Weapons"), Is.EqualTo("Corrode Weapons Effect"));
+        SpecialRuleDefinition corrode = book.RuleDefinitions.Single(d => d.Name == "Corrode Weapons Effect");
+        Assert.That(((Effect.ReduceArmorPenetration)corrode.Passive[0].Effect).Amount, Is.EqualTo(1));
+
+        // The spell-token drain: ConsumeToken(SpellTokens, 2) on one enemy unit in line of sight.
+        SpellDefinition burn = book.Spells.Single(s => s.Name == "Burn the Heretic");
+        Assert.That(burn.Effect, Is.EqualTo(new Effect.ConsumeToken(TokenType.SpellTokens, 2)));
+        Assert.That((burn.Target.TargetAffinity, burn.Target.RequireLineOfSight), Is.EqualTo((ETargetAffinity.Foe, true)));
+
+        // The once-per-round move keys on the spell's own name.
+        var invocation = (Effect.TriggeredMove)((Effect.MoraleTestThen)EffectOf("Seductive Invocation")).OnFailure;
+        Assert.That((invocation.MaxInches, invocation.IsOptional, invocation.OncePerRoundKey),
+            Is.EqualTo((6f, true, "Seductive Invocation")));
+
+        // 3.6 damage-rule names ride WithRules; AP folds; the roll-dice sentence and "each" change nothing.
+        Assert.That(EffectOf("Cerebral Trauma"), Is.EqualTo(new Effect.DealHits(6, new[] { "Smash" }, 1))
+            .Using<Effect>((a, b) => a is Effect.DealHits x && b is Effect.DealHits y && x.Count == y.Count
+                && x.ArmorPenetration == y.ArmorPenetration && x.WithRules.SequenceEqual(y.WithRules)));
+        var curse = (Effect.DealHits)EffectOf("Shattering Curse");
+        Assert.That((curse.Count, curse.ArmorPenetration, string.Join("|", curse.WithRules)), Is.EqualTo((4, 0, "Fracture")));
+        var headtaker = (Effect.DealHits)EffectOf("Headtaker Strike");
+        Assert.That((headtaker.Count, headtaker.ArmorPenetration, headtaker.WithRules.Count), Is.EqualTo((4, 2, 0)));
+        Assert.That(book.Spells.Single(s => s.Name == "Headtaker Strike").Target.MaxCount, Is.EqualTo(2));
+    }
+
+    [TestCase("Shred on its weapons when shooting", "Shred when shooting")]
+    [TestCase("Unstoppable on their weapons when shooting", "Unstoppable when shooting")]
+    [TestCase("Rending on their weapons in melee", "Rending in melee")]
+    [TestCase("Shred on their weapons when attacking", "Shred when attacking")]
+    [TestCase("Surge on their weapons", "Surge")]
+    [TestCase("+6\" range on its weapons when shooting", "Increased Shooting Range")]
+    [TestCase("+3\" range on its weapons when shooting", "+3\" range when shooting")]
+    [TestCase("Bane when Shooting", "Bane when Shooting")]
+    [TestCase("Enhanced Wolfborn", "Enhanced Wolfborn")]
+    [TestCase("Counter in Melee", "Counter in Melee")]
+    public void CanonicalGrantName_FoldsTheWeaponScopeSuffix(string phrase, string expected)
+    {
+        Assert.That(OprBookImporter.CanonicalGrantName(phrase), Is.EqualTo(expected));
+    }
+
+    [TestCase("Pick up to two friendly units within 12\", which", true)]
+    [TestCase("Pick one enemy unit within 18\" in line of sight, which ", true)]
+    [TestCase("Something entirely unlike the corpus shapes.", false)]
+    [TestCase("Pick one enemy unit within 18\", which dances.", false)]
+    public void DescribeSkippedSpell_TellsATruncatedSourceFromAParserGap(string text, bool truncated)
+    {
+        string warning = OprBookImporter.DescribeSkippedSpell("X", text);
+        Assert.That(warning, Does.Contain(truncated
+            ? OprBookImporter.TruncatedSpellWarning
+            : OprBookImporter.UnrecognizedSpellWarning));
     }
 
     // OPR "select" is the pick bound per section ("Upgrade with one/any/up to two:"), distinct from
@@ -827,5 +1033,220 @@ public class OprBookImporterTests
         Assert.That(unit.PointCost, Is.EqualTo(120));                       // 100 + 10×2
         Assert.That(unit.Weapons.Single(w => w.Name == "Blaster").Quantity, Is.EqualTo(3));  // 5 − 2 replaced
         Assert.That(unit.Weapons.Single(w => w.Name == "Heavy Blaster").Quantity, Is.EqualTo(2));
+    }
+
+    // #437 - the 3.6.0 snapshot shape, on a hand-trimmed excerpt of the High Elf Fleets 3.6.0 book (one unit, one
+    // package, two spells; lore and product fields dropped, a few typographic characters kept on purpose). Pins:
+    // the version stamp comes from versionString; an Assault weapon is ONE entry with the rule (#424); Overrun is a
+    // range-0 melee weapon carrying Thrust; attacks is read as-is (already multiplied - attacksMultiplier,
+    // originalCount and label are not applied); per-unit costs[] wins over the flat cost and its exactCost /
+    // questCost are ignored; spells' effectSkirmish / costFormula / generation are ignored; none of it warns.
+    private const string HighElfExcerpt36 = """
+    {
+      "uid": "7i7blhft75q9zfdc", "name": "High Elf Fleets", "versionString": "3.6.0", "gameEngine": 1,
+      "gameSystemId": 2, "gameSystemSlug": "grimdark-future", "manualUnitSorting": false, "raceGroup": "Elves",
+      "background": "They fled the Great War‍ - “never again”, they swore…",
+      "units": [
+        { "id": "NNVOyAx", "name": "Anti-Gravity Tank", "size": 1, "sizeSkirmish": 1, "cost": 535, "quality": 3, "defense": 2,
+          "rules": [ {"id":"KdgwlPb8LuD2","name":"Fast","label":"Fast"}, {"id":"a0YtInGiUDd6","name":"Tough","rating":12,"label":"Tough(12)"} ],
+          "weapons": [
+            { "id": "_o11SyDX", "name": "Shard Cannon", "type": "ArmyBookWeapon", "count": 2, "range": 24, "attacks": 6,
+              "weaponId": "RuWZrJpV", "attacksMultiplier": 2, "originalCount": 2, "label": "2x Shard Cannon (24\", A6, Anti-Cover, Fracture)",
+              "specialRules": [ {"type":"ArmyBookRule","id":"efmjJPTe0Yzd","name":"Anti-Cover","label":"Anti-Cover"},
+                                {"type":"ArmyBookRule","id":"JSnFcm3SCiMD","name":"Fracture","label":"Fracture"} ] },
+            { "id": "i6kCRfk3", "name": "Hull Shard Cannon", "type": "ArmyBookWeapon", "count": 1, "range": 12, "attacks": 3,
+              "weaponId": "Oglu9AuE", "attacksMultiplier": 1, "originalCount": 1, "label": "Hull Shard Cannon (12\", A3, Anti-Cover, Assault, Fracture)",
+              "specialRules": [ {"type":"ArmyBookRule","id":"efmjJPTe0Yzd","name":"Anti-Cover","label":"Anti-Cover"},
+                                {"type":"ArmyBookRule","id":"FF5ddXgx75lI","name":"Assault","label":"Assault"},
+                                {"type":"ArmyBookRule","id":"JSnFcm3SCiMD","name":"Fracture","label":"Fracture"} ] },
+            { "id": "mmIw7lbH", "name": "Overrun", "type": "ArmyBookWeapon", "count": 1, "range": 0, "attacks": 4,
+              "weaponId": "9yR1y88z", "attacksMultiplier": 4, "originalCount": 1, "label": "Overrun (A4, Thrust)",
+              "specialRules": [ {"type":"ArmyBookRule","id":"umbiz4tnEyF8","name":"Thrust","label":"Thrust"} ] }
+          ],
+          "items": [], "upgrades": ["D2"], "bases": { "round": "120x92", "square": "150x100" } }
+      ],
+      "upgradePackages": [
+        { "uid": "D2", "calcErrorReason": null, "sections": [
+          { "uid": "-1b_g", "id": "CinFtiX", "label": "Replace 2x Shard Cannon", "variant": "replace", "targets": ["2x Shard Cannon"],
+            "options": [
+              { "uid": "s7mp3", "id": "s7mp3", "cost": 55, "label": "Heavy Focal Cannon (36\", A2, AP(4), Deadly(6))",
+                "costs": [ {"cost":80,"unitId":"NNVOyAx","exactCost":78.78,"questCost":235} ],
+                "gains": [ {"id":null,"name":"Heavy Focal Cannon","type":"ArmyBookWeapon","count":1,"range":36,"attacks":2,
+                            "attacksMultiplier":2,"weaponId":"dfhsdKVE","parentId":"x1","label":"Heavy Focal Cannon (36\", A2, AP(4), Deadly(6))",
+                            "specialRules":[{"id":"17crjK7P6_w6","name":"AP","type":"ArmyBookRule","rating":4},
+                                            {"id":"_mrPya5SXSqW","name":"Deadly","type":"ArmyBookRule","rating":6}]} ] }
+            ] },
+          { "uid": "Gz6Ba", "id": "TQrtsBr", "label": "Replace Hull Shard Cannon", "variant": "replace", "targets": ["Hull Shard Cannon"],
+            "options": [
+              { "uid": "hs1", "id": "hs1", "label": "Hull Shardguns (6\", A3, AP(1), Assault, Fracture)",
+                "costs": [ {"cost":5,"unitId":"NNVOyAx","exactCost":4.94,"questCost":15} ],
+                "gains": [ {"id":null,"name":"Hull Shardguns","type":"ArmyBookWeapon","count":1,"range":6,"attacks":3,
+                            "attacksMultiplier":1,"weaponId":"hsg","label":"Hull Shardguns (6\", A3, AP(1), Assault, Fracture)",
+                            "specialRules":[{"name":"AP","type":"ArmyBookRule","rating":1},{"name":"Assault","type":"ArmyBookRule"},
+                                            {"name":"Fracture","type":"ArmyBookRule"}]} ] }
+            ] }
+        ] }
+      ],
+      "spells": [
+        { "id": "Hql50", "cost": 15, "name": "Elemental Seeker", "type": 0, "threshold": 1, "spellbookId": "sb",
+          "effect": "Pick one enemy unit within 18\" in line of sight, which takes 1 hit with Blast(3).",
+          "effectSkirmish": "Pick one enemy model within 18\" in line of sight, which takes 1 hit.",
+          "generation": { "effect": { "id": "QFjxWsOHTCSi", "parameters": [] } },
+          "costFormula": [ { "type": "cost", "value": "return 1;", "params": { "assignment": { "inLoS": true } } } ] },
+        { "id": "UVq_l", "cost": 5, "name": "Creator of Illusions", "type": 2, "threshold": 1,
+          "effect": "Pick one enemy unit within 18\" in line of sight, which gets Unwieldy on its weapons in melee once (next time the effect would apply).",
+          "effectSkirmish": "Pick one enemy model within 18\" in line of sight, which gets Unwieldy once.",
+          "costFormula": [] }
+      ]
+    }
+    """;
+
+    [Test]
+    public void Import36_StampsTheVersionString_AndImportsWithoutWarnings()
+    {
+        var warnings = new List<string>();
+        BookFile book = OprBookImporter.Import(HighElfExcerpt36, "TestSource", "CC-BY-SA 4.0", warnings.Add);
+
+        Assert.That(book.Version, Is.EqualTo("OPR v3.6.0"));
+        Assert.That(book.Name, Is.EqualTo("High Elf Fleets"));
+        Assert.That(book.GameSystem, Is.EqualTo(GameSystems.GrimdarkFuture));
+        Assert.That(book.Spells.Select(sp => sp.Name), Is.EqualTo(new[] { "Elemental Seeker", "Creator of Illusions" }));
+        Assert.That(book.Spells[0].Threshold, Is.EqualTo(1), "threshold is read as before");
+        Assert.That(warnings, Is.Empty,
+            "the new 3.6 fields (effectSkirmish, questCost, exactCost, attacksMultiplier, sizeSkirmish, ...) are ignored silently");
+    }
+
+    [Test]
+    public void Import36_AssaultIsOneEntry_OverrunIsMeleeWithThrust_AttacksReadAsIs()
+    {
+        RosterUnit tank = OprBookImporter.Import(HighElfExcerpt36, "TestSource", "CC-BY-SA 4.0").Units.Single();
+
+        Assert.That(tank.Weapons.Select(w => w.Name), Is.EqualTo(new[] { "Shard Cannon", "Hull Shard Cannon", "Overrun" }),
+            "one entry per OPR weapon - no Assault copy");
+        WeaponFileEntry shard = tank.Weapons[0];
+        Assert.That((shard.Quantity, shard.Attacks, shard.RangeInches), Is.EqualTo((2, 6, 24)),
+            "2x A6 each: attacks is the per-weapon figure already multiplied, count is the copy count");
+
+        WeaponFileEntry hull = tank.Weapons[1];
+        Assert.That(hull.RangeInches, Is.EqualTo(12));
+        Assert.That(hull.SpecialRules, Does.Contain(new SpecialRuleEntry_Core("Assault")));
+
+        WeaponFileEntry overrun = tank.Weapons[2];
+        Assert.That((overrun.RangeInches, overrun.Attacks), Is.EqualTo((0, 4)));
+        Assert.That(overrun.SpecialRules, Is.EqualTo(new SpecialRuleEntry[] { new SpecialRuleEntry_Core("Thrust") }));
+
+        WeaponFileEntry shardguns = tank.Sections.Single(sec => sec.Label == "Replace Hull Shard Cannon")
+            .Options.Single().WeaponsGained.Single();
+        Assert.That(shardguns.ArmorPenetration, Is.EqualTo(1));
+        Assert.That(shardguns.SpecialRules, Is.EqualTo(new SpecialRuleEntry[]
+            { new SpecialRuleEntry_Core("Assault"), new SpecialRuleEntry_Core("Fracture") }), "a gained Assault weapon too");
+    }
+
+    // #438: a base-loadout item that bundles weapons (3.6 mounts and crews - Jackals' Charger Beast, Goblins' Spider
+    // Mounts) keeps them: they join the unit's weapons (one copy per item) and are recorded on the item, so a Replace
+    // that removes the item removes them too. A "Replace <weapon>" target now finds the weapon.
+    private const string BeastJson = """
+    {
+      "name": "Beast Book", "versionString": "3.6.0",
+      "units": [
+        { "id": "rid", "name": "Spider Riders", "size": 5, "cost": 100, "quality": 5, "defense": 5,
+          "weapons": [ { "name": "Hand Weapon", "count": 5, "range": 0, "attacks": 1, "specialRules": [] } ],
+          "items": [ { "name": "Spider Mounts", "type": "ArmyBookItem", "count": 5, "content": [
+            { "type": "ArmyBookRule", "name": "Strider" },
+            { "type": "ArmyBookWeapon", "name": "Poison Fangs", "count": 1, "range": 0, "attacks": 1,
+              "specialRules": [ { "name": "Poison" } ] } ] } ],
+          "upgrades": ["P1"] }
+      ],
+      "upgradePackages": [
+        { "uid": "P1", "sections": [
+          { "uid": "mounts", "label": "Replace all Spider Mounts", "variant": "replace", "affects": {"type": "all"},
+            "targets": ["Spider Mounts"],
+            "options": [ { "uid": "wolves", "label": "Wolf Mounts (Fast)", "cost": 10, "gains": [
+              { "type": "ArmyBookItem", "name": "Wolf Mounts", "count": 1, "content": [ { "type": "ArmyBookRule", "name": "Fast" } ] } ] } ] }
+        ] }
+      ]
+    }
+    """;
+
+    [Test]
+    public void Import36_ABaseItemsNestedWeapons_JoinTheUnit_AndAreRecordedOnTheItem()
+    {
+        RosterUnit riders = OprBookImporter.Import(BeastJson, "TestSource", "CC-BY-SA 4.0").Units.Single();
+
+        WeaponFileEntry fangs = riders.Weapons.Single(w => w.Name == "Poison Fangs");
+        Assert.That(fangs.Quantity, Is.EqualTo(5), "one per mount");
+        Assert.That(fangs.SpecialRules, Is.EqualTo(new SpecialRuleEntry[] { new SpecialRuleEntry_Core("Poison") }));
+
+        ItemEntry mounts = riders.Items.Single();
+        Assert.That(mounts.Rules, Is.EqualTo(new SpecialRuleEntry[] { new SpecialRuleEntry_Core("Strider") }));
+        Assert.That(mounts.Weapons!.Select(w => (w.Name, w.Quantity)), Is.EqualTo(new[] { ("Poison Fangs", 1) }),
+            "per ONE item");
+    }
+
+    [Test]
+    public void Compile_ReplacingAWeaponBundlingItem_RemovesItsWeaponsToo()
+    {
+        BookFile book = OprBookImporter.Import(BeastJson, "TestSource", "CC-BY-SA 4.0");
+        RosterUnit riders = book.Units.Single();
+        var bu = new BuilderUnit { RosterUnitId = riders.Id, ModelCount = 5 };
+
+        (UnitFileEntry before, _) = ListCompiler.CompileUnitDetailed(book, bu);
+        Assert.That(before.Weapons.Single(w => w.Name == "Poison Fangs").Quantity, Is.EqualTo(5));
+
+        bu.Choices.Add(new UpgradeChoice { SectionId = "mounts", OptionId = "wolves", Count = 1 });
+        (UnitFileEntry after, List<ItemEntry> items) = ListCompiler.CompileUnitDetailed(book, bu);
+        Assert.That(after.Weapons.Any(w => w.Name == "Poison Fangs"), Is.False, "the spiders' fangs leave with them");
+        Assert.That(after.Weapons.Single(w => w.Name == "Hand Weapon").Quantity, Is.EqualTo(5));
+        Assert.That(items.Select(i => i.Name), Is.EqualTo(new[] { "Wolf Mounts" }));
+        Assert.That(after.PointCost, Is.EqualTo(110));
+    }
+
+    // #438: Army Forge regenerates every section `id` per request (two fetches of an unchanged book disagree on all of
+    // them); the section `uid` is stable, so it keys the section and a re-bake keeps saved Forge picks valid.
+    [Test]
+    public void Import36_SectionIdIsTheStableUid_NotThePerRequestId()
+    {
+        RosterUnit tank = OprBookImporter.Import(HighElfExcerpt36, "TestSource", "CC-BY-SA 4.0").Units.Single();
+
+        Assert.That(tank.Sections.Select(sec => sec.Id), Is.EqualTo(new[] { "-1b_g", "Gz6Ba" }));
+    }
+
+    [Test]
+    public void Import36_PricesEachOptionFromTheUnitsCostsEntry()
+    {
+        RosterUnit tank = OprBookImporter.Import(HighElfExcerpt36, "TestSource", "CC-BY-SA 4.0").Units.Single();
+
+        UpgradeOption focal = tank.Sections.Single(sec => sec.Label == "Replace 2x Shard Cannon").Options.Single();
+        Assert.That((focal.Cost, focal.CostUnpriced), Is.EqualTo((80, false)), "costs[].cost, not the flat 55 nor exactCost 78.78");
+        UpgradeOption shardguns = tank.Sections.Single(sec => sec.Label == "Replace Hull Shard Cannon").Options.Single();
+        Assert.That((shardguns.Cost, shardguns.CostUnpriced), Is.EqualTo((5, false)), "no flat cost at all - costs[] alone prices it");
+    }
+
+    [Test]
+    public void Import36_FoldsZeroWidthAndTypographicCharacters()
+    {
+        Assert.That(OprBookImporter.AsciiFold("War‍ - “never”…"), Is.EqualTo("War - \"never\"..."));
+        foreach (char zeroWidth in new[] { '​', '‌', '‍', '⁠', '﻿' })
+        {
+            var leftovers = new List<string>();
+            Assert.That(OprBookImporter.AsciiFold($"a{zeroWidth}b", leftovers.Add), Is.EqualTo("ab"));
+            Assert.That(leftovers, Is.Empty, $"U+{(int)zeroWidth:X4} folds to nothing, it does not survive as '?'");
+        }
+    }
+
+    // #437: OPR 3.6's index lists a 0-unit PARENT entry per daemon family beside the real "Daemons of X" books.
+    [Test]
+    public void Import_AParentEntry_WarnsAndIsDetectable()
+    {
+        const string parent = """
+        { "uid": "i4ZEAmqeFSfAcw3f", "name": "Wormhole Daemons", "versionString": "3.6.0", "gameSystemSlug": "grimdark-future",
+          "factionName": "Wormhole Daemons", "units": [], "upgradePackages": [], "spells": [] }
+        """;
+        var warnings = new List<string>();
+        BookFile book = OprBookImporter.Import(parent, "src", "lic", warnings.Add);
+
+        Assert.That(OprBookImporter.IsParentEntry(book), Is.True);
+        Assert.That(warnings, Has.One.Contains("parent entry"));
+        Assert.That(OprBookImporter.IsParentEntry(OprBookImporter.Import(HighElfExcerpt36, "src", "lic")), Is.False);
     }
 }

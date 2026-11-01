@@ -137,7 +137,7 @@ namespace FDG.Tests
             var ctx = new WoundTestContext(_store, new NullPlayerRequester());
             DataBinding<UnitData> mover = MakeMover("Skimmers", crossingX: 1, new Position(0f, 0f));
             var bombs = new Weapon("Bombs", rangeInches: 0f, attacks: 1, armorPenetration: 0);
-            bombs.AttachRuleDefinition(new ResolvedRule("Strafing", CoreRuleCatalog.Strafing));
+            bombs.AttachRuleDefinition(new ResolvedRule("Crossing Strike", WeaponRules36Definitions.CrossingStrike));
             mover.GetValue().ModelBindings[0].GetValue().Weapons.Add(bombs);
 
             IReadOnlyList<AbilityOffer> offers = ctx.RuleEvaluator.GatherOffers(

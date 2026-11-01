@@ -47,14 +47,31 @@ namespace FDG.ArmyBuilding
                     continue;
                 }
 
-                if (army.TotalPoints > lobbyPointsLimit)
-                    problems.Add($"{playerName}: army is {army.TotalPoints} pts, over the {lobbyPointsLimit} pt lobby limit.");
+                foreach (string problem in SettingsProblems(army, lobbyPointsLimit, allowedSystems))
+                    problems.Add($"{playerName}: {problem}");
+            }
 
-                if (!GameSystems.IsAllowed(allowedSystems, army.GameSystem))
-                {
-                    problems.Add($"{playerName}: {GameSystems.DisplayName(army.GameSystem)} army, but this "
-                        + $"lobby takes {GameSystems.DisplayName(allowedSystems)} armies only.");
-                }
+            return problems;
+        }
+
+        /// <summary>
+        /// #460: the half of <see cref="BlockingProblems"/> that judges ONE army against the lobby's
+        /// settings (over points, wrong game system), unprefixed by a player name. The lobby's Import
+        /// popup asks it about a list before assigning it, so its "this breaks the lobby settings" confirm
+        /// and the LAUNCH gate can never disagree. Empty means the army fits the settings.
+        /// </summary>
+        public static IReadOnlyList<string> SettingsProblems(
+            ArmyListFile army, int lobbyPointsLimit, EAllowedGameSystems allowedSystems)
+        {
+            var problems = new List<string>();
+
+            if (army.TotalPoints > lobbyPointsLimit)
+                problems.Add($"army is {army.TotalPoints} pts, over the {lobbyPointsLimit} pt lobby limit.");
+
+            if (!GameSystems.IsAllowed(allowedSystems, army.GameSystem))
+            {
+                problems.Add($"{GameSystems.DisplayName(army.GameSystem)} army, but this "
+                    + $"lobby takes {GameSystems.DisplayName(allowedSystems)} armies only.");
             }
 
             return problems;

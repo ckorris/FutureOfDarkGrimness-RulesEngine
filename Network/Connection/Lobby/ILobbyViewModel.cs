@@ -218,6 +218,13 @@ namespace FDG.Network.Connection.Lobby
         /// <summary>True when this lobby was created from a saved game and resumes instead of starting fresh.</summary>
         bool IsResumeMode { get; }
 
+        /// <summary>#444 D2: the OPR rules stamp of the save a resume lobby was loaded from (the out value of
+        /// <see cref="GameSaveSerializer.Load(string, out string?)"/>), or null when the save carried none - every
+        /// save written before the 3.6 upgrade. Meaningful only while <see cref="IsResumeMode"/>; a fresh lobby
+        /// returns null, and so does a client (the stamp is not synced in 0.4.0 - the host alone owns the save).
+        /// The front end turns it into the amber <see cref="LegacySaveNotice"/> line beside the army notices.</summary>
+        string? SaveRulesVersion => null;
+
         /// <summary>Re-crews a saved slot (by its preserved PlayerID) before resuming. No-op when not host/resume.</summary>
         /// <param name="aiProfile">Which AI plays the slot when <paramref name="playerType"/> is AI.</param>
         void SetSavedSlotPlayerType(PlayerID slotPlayerID, EPlayerType playerType,

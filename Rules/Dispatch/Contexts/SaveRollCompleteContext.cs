@@ -34,7 +34,7 @@ namespace FDG.Rules.Dispatch.Contexts
         bool IsSpell = false, float DistanceInches = 0f, float ChargeOriginDistanceInches = 0f,
         IReadOnlyList<ITerrain>? TerrainPieces = null)
         : IHookContext, IHasTarget, IHasUnmodifiedSaveRolls, IHasCombatKind, IHasIsSpell, IHasDistance,
-            IHasAttackOriginDistance, IHasTerrain
+            IHasAttackOriginDistance, IHasTerrain, IHasShootChargeDistance
     {
         public EHookID Hook => EHookID.Shooting_OnSaveRollComplete;
 
@@ -44,6 +44,13 @@ namespace FDG.Rules.Dispatch.Contexts
         // Mirrors HitRollCompleteContext: in melee the launch distance is the charge's declared distance,
         // never the base-contact distance the save is being rolled at.
         public float AttackOriginDistanceInches => IsMelee ? ChargeOriginDistanceInches : DistanceInches;
+
+        // #432: the save stage has no IsCharging of its own, but ChargeOriginDistanceInches is only ever non-zero
+        // for the charger's swings (CombatActionContext reports 0 for a strike-back), so melee + a recorded origin
+        // is the charge. A spell's wounds are not a shooting attack.
+        public float? ShootingDistanceInches => IsMelee || IsSpell ? null : DistanceInches;
+
+        public float? ChargeDistanceInches => IsMelee && ChargeOriginDistanceInches > 0f ? ChargeOriginDistanceInches : null;
 
         public IReadOnlyList<ITerrain> Terrain => TerrainPieces ?? Array.Empty<ITerrain>();
     }

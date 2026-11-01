@@ -13,7 +13,9 @@ using NUnit.Framework;
 
 namespace FDG.Tests
 {
-    // Vertical-slice integration test for Strafing: "Once per activation, when this model moves through
+    // Vertical-slice integration test for StrafingStage, driven since #436 by 3.6's Crossing Strike (the catalog's
+    // 3.5 Strafing was deleted; the supplement's Crossing Strike is the same ability under the 3.6 name - hand-built
+    // copy in WeaponRules36Definitions). The text: "Once per activation, when this model moves through
     // enemy units, pick one of them and attack it with this weapon as if it was shooting. This weapon may
     // only be used in this way."
     //
@@ -31,7 +33,7 @@ namespace FDG.Tests
     [TestFixture]
     public class StrafingRuleIntegrationTests
     {
-        private static readonly TokenType UsedMarker = new("AbilityUsed:Strafing");
+        private static readonly TokenType UsedMarker = new("AbilityUsed:Crossing Strike");
 
         private GameDataStore _store = null!;
         private PlayerID _mover;
@@ -369,7 +371,7 @@ namespace FDG.Tests
         {
             var weapon = new Weapon("Bombs", rangeInches: 0f, attacks: attacks,
                 armorPenetration: armorPenetration);
-            weapon.AttachRuleDefinition(new ResolvedRule("Strafing", CoreRuleCatalog.Strafing));
+            weapon.AttachRuleDefinition(new ResolvedRule("Crossing Strike", WeaponRules36Definitions.CrossingStrike));
             return weapon;
         }
 

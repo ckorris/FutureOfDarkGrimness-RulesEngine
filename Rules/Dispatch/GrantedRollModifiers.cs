@@ -22,14 +22,17 @@ namespace FDG.Rules.Dispatch
         /// Safe to call while building UI; the forecast stays honest because each offer pass recomputes
         /// it, so a grant spent by an earlier volley of the same action has already left the tokens.
         /// </summary>
-        public static int PeekNet(IUnit unit, ERollKind roll)
+        public static int PeekNet(IUnit unit, ERollKind roll, bool ignorePositive = false,
+            bool ignoreOtherUnitsNegative = false)
         {
             TokenType type = RollModifierTokens.TypeFor(roll);
 
             int net = 0;
             foreach (Token token in unit.Tokens.GetAllTokens(type))
             {
-                if (token.Payload is TokenPayload.StatModifier modifier)
+                if (token.Payload is TokenPayload.StatModifier modifier
+                    && !(ignorePositive && modifier.Delta > 0)
+                    && !IsIgnoredNegative(token, modifier, ignoreOtherUnitsNegative))
                 {
                     net += modifier.Delta * token.Count;
                 }
@@ -37,7 +40,24 @@ namespace FDG.Rules.Dispatch
             return net;
         }
 
-        public static int ConsumeNet(IUnit unit, ERollKind roll)
+        /// <summary>
+        /// #427 Unstoppable: a negative grant another unit placed (<see cref="Token.OwnerUnitID"/> set - an enemy
+        /// spell's "-1 to hit") is "not from this model's special rules", so an attack that ignores negative
+        /// weapon modifiers leaves it out. A negative grant the bearer placed on itself (OwnerUnitID null) is its
+        /// own and still counts.
+        /// </summary>
+        private static bool IsIgnoredNegative(Token token, TokenPayload.StatModifier modifier, bool ignoreOtherUnitsNegative) =>
+            ignoreOtherUnitsNegative && modifier.Delta < 0 && token.OwnerUnitID != null;
+
+        /// <param name="ignorePositive">#431 Pierce ("ignores all positive Defense modifiers on the target"): leave
+        /// the positive grants out of the net. They are still spent like any one-shot grant - this roll IS the
+        /// "next time" - so an ignored "+1 to Defense once" does not carry over to the next attack (#431
+        /// decision).</param>
+        /// <param name="ignoreOtherUnitsNegative">#427 Unstoppable: leave the negative grants another unit placed out
+        /// of the net. Spent like any one-shot grant all the same - the attack IS the "next time" - so an ignored
+        /// "-1 to hit once" does not carry over to the next attack (the same call as Pierce's #431 decision).</param>
+        public static int ConsumeNet(IUnit unit, ERollKind roll, bool ignorePositive = false,
+            bool ignoreOtherUnitsNegative = false)
         {
             TokenType type = RollModifierTokens.TypeFor(roll);
 
@@ -45,7 +65,9 @@ namespace FDG.Rules.Dispatch
             int firstTriggerCount = 0;
             foreach (Token token in unit.Tokens.GetAllTokens(type).ToList())
             {
-                if (token.Payload is TokenPayload.StatModifier modifier)
+                if (token.Payload is TokenPayload.StatModifier modifier
+                    && !(ignorePositive && modifier.Delta > 0)
+                    && !IsIgnoredNegative(token, modifier, ignoreOtherUnitsNegative))
                 {
                     net += modifier.Delta * token.Count;
                 }

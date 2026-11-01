@@ -37,7 +37,6 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(DealHits), "dealHits")]
 [JsonDerivedType(typeof(AttackWithThisWeapon), "attackWithThisWeapon")]
 [JsonDerivedType(typeof(DealAutoWounds), "dealAutoWounds")]
-[JsonDerivedType(typeof(StormOfHits), "stormOfHits")]
 [JsonDerivedType(typeof(DealPooledHits), "dealPooledHits")]
 [JsonDerivedType(typeof(Heal), "heal")]
 [JsonDerivedType(typeof(GrantToken), "grantToken")]
@@ -57,14 +56,24 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(SetDefense), "setDefense")]
 [JsonDerivedType(typeof(MultiplyHits), "multiplyHits")]
 [JsonDerivedType(typeof(ChargeImpactHits), "chargeImpactHits")]
-[JsonDerivedType(typeof(ReduceImpactDicePerModel), "reduceImpactDicePerModel")]
+// #422: 3.5 Counter's impact facet. The kind still parses (old army files and not-yet-rebaked books embed it)
+// and does nothing - see LegacyReduceImpactDicePerModel.
+[JsonDerivedType(typeof(LegacyReduceImpactDicePerModel), "reduceImpactDicePerModel")]
+[JsonDerivedType(typeof(CancelImpactDice), "cancelImpactDice")]
+// #423: Parry(X) (Core Rules v3.6.0) - the defender's hit-ignore dice when it takes hits in melee.
+[JsonDerivedType(typeof(ParryHits), "parryHits")]
 [JsonDerivedType(typeof(ExtraMeleeWoundCount), "extraMeleeWoundCount")]
 [JsonDerivedType(typeof(StrikeFirst), "strikeFirst")]
 [JsonDerivedType(typeof(StrikeLast), "strikeLast")]
 [JsonDerivedType(typeof(ShootAfterRush), "shootAfterRush")]
+// #425: Cumbersome's "can't shoot when moving" (Core Rules v3.6.0).
+[JsonDerivedType(typeof(NoShootingAfterMoving), "noShootingAfterMoving")]
 [JsonDerivedType(typeof(EnableCasting), "enableCasting")]
 [JsonDerivedType(typeof(EnableTransport), "enableTransport")]
 [JsonDerivedType(typeof(EnableReDeployment), "enableReDeployment")]
+// #424: weapon roles (Assault) - the weapon-scoped members of the capability family.
+[JsonDerivedType(typeof(EnableMeleeUse), "enableMeleeUse")]
+[JsonDerivedType(typeof(EnableRangedUse), "enableRangedUse")]
 [JsonDerivedType(typeof(EnableSpellLending), "enableSpellLending")]
 [JsonDerivedType(typeof(EnableSpellRelay), "enableSpellRelay")]
 [JsonDerivedType(typeof(EnableBuffRelay), "enableBuffRelay")]
@@ -82,6 +91,8 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(IgnoreEnemyMovementBlock), "ignoreEnemyMovementBlock")]
 [JsonDerivedType(typeof(IgnoreCover), "ignoreCover")]
 [JsonDerivedType(typeof(IgnoreLineOfSight), "ignoreLineOfSight")]
+// #425: Indirect 3.6 "ignores Cover from Sight Blockers" (Hold only) - not all cover, unlike IgnoreCover.
+[JsonDerivedType(typeof(IgnoreSightBlockerCover), "ignoreSightBlockerCover")]
 [JsonDerivedType(typeof(DeferDeployment), "deferDeployment")]
 [JsonDerivedType(typeof(Disembark), "disembark")]
 [JsonDerivedType(typeof(Embark), "embark")]
@@ -97,6 +108,11 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(PerHitSaveModifier), "perHitSaveModifier")]
 [JsonDerivedType(typeof(ExtraAttack), "extraAttack")]
 [JsonDerivedType(typeof(ActivateUnitNext), "activateUnitNext")]
+// #431: OPR 3.6 Pierce's "ignores all positive Defense modifiers" and Scourge's counted (not dealt) wounds.
+[JsonDerivedType(typeof(IgnorePositiveDefenseModifiers), "ignorePositiveDefenseModifiers")]
+[JsonDerivedType(typeof(CountsAsWoundsTaken), "countsAsWoundsTaken")]
+// #427: OPR 3.6 Unstoppable's "ignores all negative modifiers to this weapon which are not from this model's special rules".
+[JsonDerivedType(typeof(IgnoreNegativeWeaponModifiers), "ignoreNegativeWeaponModifiers")]
 
 public abstract record Effect
 {
@@ -150,11 +166,26 @@ public abstract record Effect
     /// this tags only the matching-face hits: the hit-roll stage peels those hits into their own group
     /// carrying <see cref="Delta"/> while the rest save at base AP. The stage reads the roll histogram,
     /// so the matching-face count stays correct — and fractional — under the probabilistic roller.
+    /// <para>
+    /// #418: when the firing context carries hit rolls and none of them count as
+    /// <see cref="OnRollValue"/> for special rules (<see cref="IHasUnmodifiedHitRolls.SpecialRuleHitRolls"/>
+    /// - a fatigued melee attack's 6s), nothing is emitted, so no AP group, no "Rending AP+4" proc chip.
+    /// Kept a plain <c>Effect</c> rather than a <c>CapabilityEffect</c>, so the validator's requirements for
+    /// it are unchanged; off a hit-roll context it emits exactly as before.
+    /// </para>
     /// </summary>
     public sealed record PerHitSaveModifier(int OnRollValue, int Delta) : Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
+            if (ruleInvocation.Hook is IHasUnmodifiedHitRolls rolls
+                && OnRollValue >= rolls.SpecialRuleHitRolls.SideMin
+                && OnRollValue <= rolls.SpecialRuleHitRolls.SideMax
+                && rolls.SpecialRuleHitRolls.At(OnRollValue) <= 0f)
+            {
+                return;
+            }
+
             operations.Add(new RuleOperation.ApplyPerHitSaveModifier(OnRollValue, Delta));
         }
     }
@@ -194,33 +225,71 @@ public abstract record Effect
     /// <summary>
     /// Each die that came up unmodified <see cref="OnRollValue"/> generates
     /// <see cref="Count"/> additional hits (defaults to one). Covers Furious,
-    /// Surge, Relentless — all the "natural 6 → bonus hit" rules.
+    /// Surge, Relentless — all the "natural 6 → bonus hit" rules. Counts the dice in
+    /// <see cref="IHasUnmodifiedHitRolls.SpecialRuleHitRolls"/>, so a fatigued melee attack's 6s add
+    /// nothing (#418). The generated hits are not rolls at all, so they never trigger anything themselves
+    /// ("only the original hit counts as a 6 for special rules").
     /// </summary>
     public sealed record AddExtraHit(int OnRollValue, int Count = 1) : CapabilityEffect<IHasUnmodifiedHitRolls>
     {
         protected override void ApplyCore(IHasUnmodifiedHitRolls context, List<RuleOperation> operations)
         {
-            operations.Add(new RuleOperation.InsertExtraHits(context.UnmodifiedHitRolls.At(OnRollValue) * Count));
+            operations.Add(new RuleOperation.InsertExtraHits(context.SpecialRuleHitRolls.At(OnRollValue) * Count));
         }
     }
 
     /// <summary>
-    /// The attacking unit takes <see cref="Count"/> wounds for each of its own dice that came up an
+    /// The attacker takes <see cref="Count"/> wounds for each of its own dice that came up an
     /// unmodified <see cref="OnRollValue"/> — the punitive mirror of <see cref="Effect.AddExtraHit"/>,
-    /// reading the same hit histogram. Covers #197 Hazardous ("this weapon's unit takes one wound on
-    /// unmodified rolls of 1 to hit").
+    /// reading the same hit histogram. Covers Hazardous: #197's 3.5 "this weapon's unit takes one wound on
+    /// unmodified rolls of 1 to hit", and #434's 3.6 "on unmodified results of 1 to hit this model takes one
+    /// wound, or X wounds if this weapon has the Blast(X)/Deadly(X) rule".
     /// <para>
     /// The wounds land after the attack fully resolves and cannot be saved or ignored — see
-    /// <c>CasualtyPresentation.ApplyUnitWounds</c> for both rulings.
+    /// <c>CasualtyPresentation.ApplyUnitWounds</c> for both rulings. #434: they land on the MODELS that fired the
+    /// weapon (<c>CasualtyPresentation.ApplyCarrierWounds</c>), each die's wounds on one model with any excess lost,
+    /// and <see cref="CountFromBlastOrDeadly"/> makes a die worth the firing weapon's Blast(X) / Deadly(X) (the larger
+    /// when both; <see cref="Count"/> when neither). False (the default, what old data parses to) keeps Count.
     /// </para>
     /// </summary>
-    public sealed record SelfWoundOnUnmodifiedRoll(int OnRollValue, int Count = 1)
-        : CapabilityEffect<IHasUnmodifiedHitRolls>
+    public sealed record SelfWoundOnUnmodifiedRoll(int OnRollValue, int Count = 1, bool CountFromBlastOrDeadly = false)
+        : Effect
     {
-        protected override void ApplyCore(IHasUnmodifiedHitRolls context, List<RuleOperation> operations)
+        public override IReadOnlyCollection<Type> RequiredCapabilities => [typeof(IHasUnmodifiedHitRolls)];
+
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
-            operations.Add(new RuleOperation.InflictSelfWounds(
-                context.UnmodifiedHitRolls.At(OnRollValue) * Count));
+            if (ruleInvocation.Hook is not IHasUnmodifiedHitRolls context)
+            {
+                throw new InvalidOperationException(
+                    $"{nameof(SelfWoundOnUnmodifiedRoll)} requires {nameof(IHasUnmodifiedHitRolls)}, but the firing " +
+                    $"context ({ruleInvocation.Hook?.GetType().Name ?? "none"}) does not provide it.");
+            }
+
+            int perDie = CountFromBlastOrDeadly ? BlastOrDeadlyValue(ruleInvocation.Weapon) ?? Count : Count;
+
+            // The special-rule view, like every other natural-N trigger; it only differs from the raw roll
+            // on a fatigued melee attack's 6s (#418), so Hazardous's 1s are unaffected.
+            float dice = context.SpecialRuleHitRolls.At(OnRollValue);
+            operations.Add(new RuleOperation.InflictSelfWounds(dice * perDie, WoundsPerDie: perDie));
+        }
+
+        /// <summary>The firing weapon's Blast(X) / Deadly(X) value (the larger when it carries both), or null.</summary>
+        private static int? BlastOrDeadlyValue(IWeapon? weapon)
+        {
+            if (weapon == null) return null;
+            int? best = null;
+            foreach (Dispatch.ResolvedRule rule in weapon.RuleDefinitions)
+            {
+                string name = rule.Definition.Name;
+                if (!string.Equals(name, "Blast", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(name, "Deadly", StringComparison.OrdinalIgnoreCase)) continue;
+                foreach (RuleArgument argument in rule.Arguments)
+                {
+                    if (argument is RuleArgument.Int x && (best == null || x.Value > best)) best = x.Value;
+                }
+            }
+            return best;
         }
     }
 
@@ -236,6 +305,37 @@ public abstract record Effect
         protected override void ApplyCore(IHasUnmodifiedSaveRolls context, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.InsertExtraWounds(context.UnmodifiedSaveRolls.At(OnRollValue) * Count));
+        }
+    }
+
+    /// <summary>
+    /// #431 Scourge: "For each unmodified result of 1 to block hits, enemies count as having taken 2 extra
+    /// wounds when checking who won melee, or if shooting wounds would trigger Morale Tests." Each of the
+    /// defender's unmodified <see cref="OnRollValue"/> block rolls makes it COUNT as having taken
+    /// <see cref="WoundsPerDie"/> more wounds - the same histogram read as <see cref="AddExtraWound"/> (Shred),
+    /// but nothing is dealt: no model loses a wound, nothing is saved or regenerated.
+    /// <para>
+    /// The emitted <see cref="RuleOperation.AddCountedWoundsTaken"/> is folded by <c>AssignWoundsStage</c> into
+    /// one <see cref="Foundation.TokenType.CountedWoundsTaken"/> magnitude on the defender
+    /// (<see cref="Dispatch.CountedWounds"/>), read and removed by the two consumers the text names:
+    /// <c>DetermineMeleeWinnerStage</c> (added to the struck unit's taken total, so the striker's side wins
+    /// ties it would otherwise lose - the same "enemies count as having taken" polarity as Fear(X)) and the
+    /// wound-driven morale check of a shooting attack
+    /// (<c>ResolveRangedMoraleStage</c>, and <c>ResolveStrafeMoraleStage</c> for "as if shooting" attacks),
+    /// where the counted wounds are allocated virtually for the half-strength test and alone can trigger it.
+    /// Defense rolls are not hit rolls, so #418's Fatigue view does not apply.
+    /// </para>
+    /// </summary>
+    public sealed record CountsAsWoundsTaken(int OnRollValue = 1, int WoundsPerDie = 2)
+        : CapabilityEffect<IHasUnmodifiedSaveRolls>
+    {
+        protected override void ApplyCore(IHasUnmodifiedSaveRolls context, List<RuleOperation> operations)
+        {
+            float counted = context.UnmodifiedSaveRolls.At(OnRollValue) * WoundsPerDie;
+            if (counted > 0f)
+            {
+                operations.Add(new RuleOperation.AddCountedWoundsTaken(counted));
+            }
         }
     }
 
@@ -452,7 +552,7 @@ public abstract record Effect
     ///
     /// <see cref="DiceCountPerModel"/> is the rule's per-model X (an <see cref="ValueSource.Arg"/> for the
     /// numeric rating); the effect multiplies it by the number of living models in the bearer's unit that
-    /// carry this rule (weapon-aware, mirroring <see cref="ReduceImpactDicePerModel"/>), because the source
+    /// carry this rule (weapon-aware, like <see cref="CancelImpactDice"/>), because the source
     /// text is per model ("when it is THIS MODEL's turn to attack, roll X dice"). There is no output
     /// attribution to solve — the wounds land on the enemy, not a specific attacker die — so a single pool
     /// summed across carriers is exact.
@@ -461,19 +561,22 @@ public abstract record Effect
     /// <see cref="RuleOperation.InvokeDealAutoWounds"/> is a plain <see cref="RuleOperation"/>, enacted only
     /// by the stages wired for it — <c>ResolveRavageWoundsStage</c> (melee charge-contact, this slice) and
     /// the Crossing Attack movement path. Any other hook's generic op application silently drops it.
+    ///
+    /// <para>#434: the carriers are counted per ATTACHMENT, by #447's <see cref="ChargeImpactHits.CountCarriers"/>:
+    /// a unit-attached Ravage counts the living native models (a joined hero does not inherit it), a joined hero's
+    /// own copy counts the hero, a token grant (an aura) counts every living model, and a weapon-carried copy
+    /// counts the models wielding a weapon with THAT attachment (a resumed game's one attachment per weapon no
+    /// longer multiplies it). <see cref="PerModel"/> false skips the multiplication for a pool the bearer already
+    /// holds as a whole (3.6 Regenerative Strength: "roll as many dice as tokens on it").</para>
     /// </summary>
-    public sealed record DealAutoWounds(ValueSource DiceCountPerModel, int SuccessThreshold = 6) : Effect
+    public sealed record DealAutoWounds(ValueSource DiceCountPerModel, int SuccessThreshold = 6,
+        bool PerModel = true) : Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
-            // Per-model X: multiply the rating by the living models that actually carry this rule. Weapon
-            // scope counts the models wielding the weapon; unit scope counts every living model. Mirrors
-            // ReduceImpactDicePerModel so a weapon-scoped Ravage (e.g. "Combat Scythes (Ravage(3))") scales
-            // by the scythe-bearers, while a monster's unit-scoped Ravage scales by 1.
-            int carriers = ruleInvocation.Weapon == null || ruleInvocation.Definition == null
-                ? ruleInvocation.Bearer.Models.Count(m => m.GetIsAlive())
-                : ruleInvocation.Bearer.Models.Count(m => m.GetIsAlive()
-                    && m.Weapons.Any(w => w.RuleDefinitions.Any(r => r.Definition == ruleInvocation.Definition)));
+            // Per-model X: multiply the rating by the living models that actually carry this copy (Brace's and
+            // Impact's accounting), so a monster's unit-scoped Ravage scales by 1 and a squad's by its size.
+            int carriers = PerModel ? ChargeImpactHits.CountCarriers(ruleInvocation) : 1;
 
             int diceCount = DiceCountPerModel.Resolve(ruleInvocation) * carriers;
             if (diceCount <= 0)
@@ -481,31 +584,16 @@ public abstract record Effect
                 return;
             }
 
-            operations.Add(new RuleOperation.InvokeDealAutoWounds(
-                ruleInvocation.EffectiveTarget, diceCount, SuccessThreshold));
-        }
-    }
-
-    /// <summary>
-    /// #197 P10 Storm of X — a rolled, multi-target hit burst. Once activated, roll <see cref="PoolDice"/>
-    /// dice; for each result >= <see cref="SuccessThreshold"/> the player picks one enemy unit within
-    /// <see cref="RangeInches"/> that takes <see cref="HitsPerSuccess"/> hits carrying <see cref="WithRules"/>
-    /// (Shred / Surge / Bane) at <see cref="ArmorPenetration"/>. Covers Storm of Change/Lust/Plague/War.
-    ///
-    /// The effect carries only the CONFIG - it emits a single <see cref="RuleOperation.InvokeStorm"/>. The
-    /// pool roll, the per-success target picks, and the per-target hit batches are enacted stage-side by
-    /// StormStage, because (a) the pool must be rolled DECISIVELY so the number of target picks is a whole
-    /// number even under the probabilistic roller (you cannot pick a fractional number of targets - the
-    /// #100 dice invariant, resolved as for P15's branch die), and (b) each target's hits run the save/wound
-    /// child-stage pipeline, which only sequences correctly as a real stage loop.
-    /// </summary>
-    public sealed record StormOfHits(int PoolDice, int SuccessThreshold, int HitsPerSuccess,
-        IReadOnlyList<string> WithRules, int ArmorPenetration, float RangeInches) : Effect
-    {
-        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
-        {
-            operations.Add(new RuleOperation.InvokeStorm(PoolDice, SuccessThreshold, HitsPerSuccess,
-                WithRules, ArmorPenetration, RangeInches));
+            // #436 (from #442): a passive Ravage has no explicit Target, so EffectiveTarget is the bearer and the
+            // narration read "Tribe Master's Ravage(6) rolled 6 dice at Tribe Master". At the strike hook the
+            // context names the unit being struck (ResolveRavageWoundsStage puts the striker in Attacker in both
+            // its placements); the stage itself always wounded the right unit - this is the op's label only.
+            IUnit target = ruleInvocation.Target
+                ?? (ruleInvocation.Hook is Dispatch.Contexts.ChargeContactContext contact
+                    && contact.Defender.ID != ruleInvocation.Bearer.ID
+                        ? contact.Defender
+                        : ruleInvocation.EffectiveTarget);
+            operations.Add(new RuleOperation.InvokeDealAutoWounds(target, diceCount, SuccessThreshold));
         }
     }
 
@@ -517,7 +605,7 @@ public abstract record Effect
     ///
     /// The hit-pool sibling of <see cref="DealAutoWounds"/>: where that effect's successes are DIRECT
     /// wounds that skip the armor save, these are ordinary hits and run the full save -> wound pipeline.
-    /// And unlike <see cref="StormOfHits"/> — whose pool must be rolled DECISIVELY because each success
+    /// And unlike the deleted Storm of X burst (#438) — whose pool had to be rolled DECISIVELY because each success
     /// picks a target, and you cannot pick a fractional target — the successes here are a hit COUNT, so
     /// they stay fractional under the probabilistic roller (the #100 dice invariant).
     ///
@@ -740,12 +828,16 @@ public abstract record Effect
     /// forced move the bearer is the caster, so the caster directs where the
     /// enemy is displaced rather than the victim choosing for itself.
     /// </summary>
-    public sealed record TriggeredMove(float MaxInches, bool IsOptional) : Effect
+    /// <para>#434: <see cref="OncePerRoundKey"/> - OPR 3.6 Mind Control's "Units may only be moved once per round in
+    /// this way" (see <see cref="RuleOperation.InvokeTriggeredMove.OncePerRoundKey"/>). Null (the default, what old data
+    /// parses to) is unrestricted.</para>
+    public sealed record TriggeredMove(float MaxInches, bool IsOptional, string? OncePerRoundKey = null) : Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.InvokeTriggeredMove(
-                ruleInvocation.EffectiveTarget, MaxInches, IsOptional, ruleInvocation.Bearer.PlayerID));
+                ruleInvocation.EffectiveTarget, MaxInches, IsOptional, ruleInvocation.Bearer.PlayerID,
+                OncePerRoundKey));
         }
     }
 
@@ -954,47 +1046,229 @@ public abstract record Effect
     }
 
     /// <summary>
-    /// On a charge, rolls <see cref="DiceCount"/> impact dice (each 2+ a hit) before
-    /// strikes. Covers Impact(X) — the dice count is the rule's argument — and, with
-    /// <see cref="ArmorPenetration"/> &gt; 0, Heavy Impact ("Impact(X) with hits that have AP(1)").
+    /// On a charge, rolls impact dice (each 2+ a hit) before either unit attacks. Covers Impact(X) - X is the
+    /// rule's argument, <see cref="DiceCount"/> - and, with <see cref="ArmorPenetration"/> &gt; 0, Heavy Impact
+    /// ("Counts as having Impact(X) with hits that have AP(1)").
+    /// <para>
+    /// #447: X is PER MODEL. Impact is a "this model" rule like every rule a model carries, so a 5-model unit with
+    /// Impact(1) rolls 5 dice. The effect emits X x the living models carrying THIS attachment
+    /// (<see cref="RuleInvocation.Attachment"/>, #422), so the dice sum across sources without double counting:
+    /// </para>
+    /// <list type="bullet">
+    ///   <item>attached to the unit (its profile): every living NATIVE model - a joined hero does not inherit the
+    ///         host's rules (the #006 merge relocated the hero's own rules onto its model);</item>
+    ///   <item>attached to models (a joined hero's own Impact, a #407 per-model grant such as "replace one CCW
+    ///         with Rotor Blade Attack (Impact(3))"): the living models carrying that attachment;</item>
+    ///   <item>granted to the unit by a token (an aura or "gains Impact" buff, never statically attached): every
+    ///         living model, hero included, as grants cover the current unit (#183's rule);</item>
+    ///   <item>an argument-less copy (a literal X, the only shape a grant can carry) fires once per bearer whatever
+    ///         the attachment count (the evaluator's dedup), so it counts every carrier of the definition.</item>
+    /// </list>
+    /// <para>
+    /// One attachment shared by several models (a fresh army's model grant) fires once and counts them all; a
+    /// resumed game rehydrates one attachment per model and fires once per model, counting one each - the same
+    /// total. Only living models count, so casualties taken before the charge (a Dangerous terrain test at the
+    /// start of the activation, #446) shrink the pool.
+    /// </para>
+    /// <para>
+    /// #447 D1 (reversed by the owner 2026-11-01): only the carriers IN MELEE REACH roll. The charge-contact stage
+    /// brings the charger's models within melee range of the target (<c>ResolveImpactHitsStage.ModelsInMeleeReach</c>,
+    /// the melee stage's own 3" strike reach) as the participant's models, and the effect counts carriers among
+    /// <see cref="RuleInvocation.ParticipantModels"/>; a strung-out unit with 2 of 5 carriers in reach rolls 2 dice.
+    /// The op still carries the living carrier count wherever they stand (<c>Carriers</c>), so the stage can say
+    /// "2 of 5 models in melee range". No participant models (a hand-built invocation, the AI's CombatMath, which
+    /// models no positions) means every living carrier counts, as before.
+    /// </para>
     /// </summary>
     public sealed record ChargeImpactHits(ValueSource DiceCount, int ArmorPenetration = 0) : Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
-            operations.Add(new RuleOperation.ChargeImpactHits(
-                DiceCount.Resolve(ruleInvocation), ArmorPenetration));
+            int perModel = DiceCount.Resolve(ruleInvocation);
+            int carriers = CountCarriers(ruleInvocation);
+            if (perModel <= 0 || carriers <= 0)
+            {
+                // Nobody carrying this copy is left alive (e.g. the host's Impact once only its joined hero
+                // stands): it brings no dice. Tracing reports "condition passed but ... produced no operations".
+                return;
+            }
+
+            // #447 D1: the carriers among the models the participant brought - the charger's models in melee reach
+            // at charge contact. A zero-dice op still goes out when carriers stand out of reach, so the stage can
+            // explain the missing roll ("0 of 5 models in melee range").
+            int inReach = ruleInvocation.ParticipantModels == null
+                ? carriers
+                : CountCarriers(ruleInvocation, ruleInvocation.ParticipantModels);
+
+            operations.Add(new RuleOperation.ChargeImpactHits(perModel * inReach, ArmorPenetration, inReach,
+                Carriers: carriers, PerModel: perModel));
+        }
+
+        /// <summary>
+        /// The living models carrying THIS attachment (#447's per-model accounting, see the type doc) - shared with
+        /// <see cref="DealAutoWounds"/> (#434: Ravage(X) is per model the same way, so a joined hero's own Ravage
+        /// counts the hero and the host's counts the host's models). <paramref name="among"/> restricts the count to
+        /// those models (#447 D1: the charger's models in melee reach); null counts the bearer's every model. Which
+        /// models CARRY the copy is always read off the whole unit, so the subset changes the count, never the kind.
+        /// </summary>
+        internal static int CountCarriers(RuleInvocation invocation, IReadOnlyList<IModel>? among = null)
+        {
+            IUnit unit = invocation.Bearer;
+            IReadOnlyList<IModel> counted = among ?? unit.Models;
+            Dispatch.ResolvedRule? attachment = invocation.Attachment;
+            SpecialRuleDefinition? definition = invocation.Definition;
+            if (attachment == null || definition == null)
+            {
+                // Off the passive dispatch path (a hand-built invocation): treat it as unit-wide.
+                return counted.Count(m => m.GetIsAlive());
+            }
+
+            ModelID? heroId = unit.JoinedHeroModelId;
+            bool IsJoinedHero(IModel model) => heroId is ModelID hid && model.ID == hid;
+            bool argless = attachment.Arguments.Count == 0;
+            bool Matches(Dispatch.ResolvedRule rule) => argless ? rule.Definition == definition : rule.Equals(attachment);
+
+            if (invocation.Weapon != null)
+            {
+                // No core Impact rides a weapon (the stage passes no charger weapons), but a charge-contact rule
+                // that did would count the models wielding a weapon carrying it.
+                return counted.Count(m => m.GetIsAlive() && m.Weapons.Any(w => w.RuleDefinitions.Any(Matches)));
+            }
+
+            bool onUnit = unit.RuleDefinitions.Any(Matches);
+            bool onAnyModel = unit.Models.Any(m => m.RuleDefinitions.Any(Matches));
+            bool granted = argless
+                ? RuleGrantQueries.UnitHasGrantedRule(unit, definition)
+                : !onUnit && !onAnyModel; // an argumented copy found on no carrier came from somewhere unit-wide
+
+            return counted.Count(m => m.GetIsAlive()
+                && (granted || m.RuleDefinitions.Any(Matches) || (onUnit && !IsJoinedHero(m))));
         }
     }
 
     /// <summary>
-    /// Reduces the charger's impact dice by one per living model of the bearer's unit.
-    /// Covers Counter's companion facet — "the charging unit rolls -1 Impact die per model in the
-    /// Counter unit." A defender-seat effect at charge contact: it resolves the bearer's living-model
-    /// count and emits a negative <see cref="RuleOperation.ChargeImpactHits"/> that folds into the same
-    /// <see cref="IImpactSink"/> as the attacker's Impact(X), so the stage rolls the net dice. A
-    /// "Counter model" is one carrying a weapon with this rule (#027 weapon scope); the unit-attached
-    /// fallback counts every living model, preserving the pre-weapon-scope behavior.
+    /// #422 Brace(X): "Enemies charging this unit get -X total Impact rolls, unless this unit is Fatigued"
+    /// (Core Rules v3.6.0). A defender-seat effect at charge contact: it resolves to
+    /// <see cref="DicePerModel"/> x the living models carrying this rule and emits that as a NEGATIVE
+    /// <see cref="RuleOperation.ChargeImpactHits"/>, which folds into the same <see cref="IImpactSink"/> as the
+    /// charger's Impact(X), so <c>ResolveImpactHitsStage</c> rolls the net dice and skips at zero or below (the
+    /// floor). The Fatigue clause is the entry's condition (<see cref="Condition.CountsAsFatiguedInMelee"/>),
+    /// not this effect's business.
+    /// <para>
+    /// Who counts. Brace is a weapon rule (AoF spears carry Brace(1); "Brace in Melee" puts Brace(1) on a
+    /// model's weapons), so a model counts when one of its MELEE weapons carries the rule; attached to the unit
+    /// itself (no carrying weapon) every living model counts. "Total" is read as the SUM over those models -
+    /// Brace(2) on three models cancels 6 dice (#422 decision). An (X) rule fires once per distinct
+    /// attachment (the evaluator's dedup), so with an argument it counts only the models carrying THIS
+    /// attachment (<see cref="RuleInvocation.Attachment"/>): a fresh army shares one attachment across a weapon
+    /// entry's copies and fires once, while a resumed game rehydrates one attachment per weapon and fires once
+    /// per weapon - counting every carrier on every firing would multiply the reduction there. An
+    /// argument-less copy (Brace in Melee's literal 1) fires once per bearer whatever the attachment count,
+    /// so it counts every carrier of the definition.
+    /// </para>
     /// </summary>
-    public sealed record ReduceImpactDicePerModel : Effect
+    public sealed record CancelImpactDice(ValueSource DicePerModel) : Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
-            int counterModels = ruleInvocation.Weapon == null || ruleInvocation.Definition == null
-                ? ruleInvocation.Bearer.Models.Count(m => m.GetIsAlive())
-                : ruleInvocation.Bearer.Models.Count(m => m.GetIsAlive()
-                    && m.Weapons.Any(w => w.RuleDefinitions.Any(r => r.Definition == ruleInvocation.Definition)));
-
-            if (counterModels > 0)
+            int carriers = CountCarriers(ruleInvocation);
+            int dice = DicePerModel.Resolve(ruleInvocation) * carriers;
+            if (dice > 0)
             {
-                operations.Add(new RuleOperation.ChargeImpactHits(-counterModels));
+                operations.Add(new RuleOperation.ChargeImpactHits(-dice, Models: carriers));
             }
+        }
+
+        private static int CountCarriers(RuleInvocation invocation)
+        {
+            if (invocation.Weapon == null || invocation.Definition == null)
+            {
+                return invocation.Bearer.Models.Count(m => m.GetIsAlive());
+            }
+
+            // Melee weapons only: Brace is "on its weapons in melee", and a unit-level mention is re-homed onto
+            // EVERY weapon, so a model whose only Brace copy sits on its rifle brings nothing to the melee.
+            Dispatch.ResolvedRule? attachment = invocation.Arguments.Count > 0 ? invocation.Attachment : null;
+            return invocation.Bearer.Models.Count(m => m.GetIsAlive()
+                && m.Weapons.Any(w => w.IsMelee() && w.RuleDefinitions.Any(r => attachment != null
+                    ? r.Equals(attachment)
+                    : r.Definition == invocation.Definition)));
         }
     }
 
     /// <summary>
-    /// Adds <see cref="Amount"/> to the bearer's wound tally when deciding who won a
-    /// melee. Covers Fear(X) — the amount is the rule's argument.
+    /// #423 Parry(X), Core Rules v3.6.0: "When this unit takes hits in melee, roll X dice per model with this rule in
+    /// it, up to as many dice as hits taken. For each 6+ one hit is ignored (defender picks which)." A defender-seat
+    /// effect at <see cref="Rules.Foundation.EHookID.Melee_OnHitsTaken"/>: it resolves X and names the living models
+    /// carrying THIS attachment, emitting one <see cref="RuleOperation.ParryDice"/>. <c>ParryHitsStage</c> folds every
+    /// firing through a <c>ParrySink</c> (the highest X per model, so a model with two Parry weapons - no 3.6.0 unit has
+    /// one - rolls X once), rolls min(budget, hits) with the defender's own dice and removes one hit per 6+ from the
+    /// worst hit group first. "Up to as many dice as hits taken" and the one-budget-per-enemy-attack rule (#423 B1) are
+    /// the stage's business, not this effect's.
+    /// <para>
+    /// Who counts: the <see cref="CancelImpactDice"/> accounting. Parry is a weapon rule (AoF Hand Weapons, the GDF
+    /// Daemons' claws), so a model counts when one of its MELEE weapons carries this copy of the rule - a unit-level
+    /// mention is re-homed onto every weapon at army load, so a model whose only Parry copy sits on its bow brings
+    /// nothing to the melee. Attached to the unit itself (a grant, a hand-built invocation), every living model counts.
+    /// An argumented copy counts the models carrying THIS attachment (one shared attachment on a fresh army's weapons,
+    /// one per weapon after a resume rehydrates them - the sink's per-model fold makes both read the same); an
+    /// argument-less copy (a literal X) counts every carrier of the definition.
+    /// </para>
+    /// </summary>
+    public sealed record ParryHits(ValueSource DicePerModel) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            int perModel = DicePerModel.Resolve(ruleInvocation);
+            if (perModel <= 0) return;
+
+            List<ModelID> carriers = Carriers(ruleInvocation);
+            if (carriers.Count == 0)
+            {
+                // Nobody carrying this copy is left alive: no dice. Tracing reports "produced no operations".
+                return;
+            }
+
+            operations.Add(new RuleOperation.ParryDice(perModel, carriers));
+        }
+
+        private static List<ModelID> Carriers(RuleInvocation invocation)
+        {
+            IUnit unit = invocation.Bearer;
+            if (invocation.Weapon == null || invocation.Definition == null)
+            {
+                return unit.Models.Where(m => m.GetIsAlive()).Select(m => m.ID).ToList();
+            }
+
+            Dispatch.ResolvedRule? attachment = invocation.Arguments.Count > 0 ? invocation.Attachment : null;
+            return unit.Models
+                .Where(m => m.GetIsAlive() && m.Weapons.Any(w => w.IsMelee() && w.RuleDefinitions.Any(r => attachment != null
+                    ? r.Equals(attachment)
+                    : r.Definition == invocation.Definition)))
+                .Select(m => m.ID)
+                .ToList();
+        }
+    }
+
+    /// <summary>
+    /// 3.5 Counter's companion facet ("the charging unit rolls -1 Impact die per model with Counter"), which
+    /// Core Rules v3.6.0 dropped from Counter and re-homed as <see cref="CancelImpactDice"/> (Brace) (#422). The
+    /// JSON kind <c>reduceImpactDicePerModel</c> still parses because pre-3.6 army files and the bundled books
+    /// until the #438 re-bake embed "Counter in Melee" with it, and those must keep loading (plan rule 6).
+    /// It emits nothing, so they get 3.6 semantics; <c>RuleValidator.ValidateAuthoring</c> refuses it in new
+    /// data.
+    /// </summary>
+    public sealed record LegacyReduceImpactDicePerModel : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+        }
+    }
+
+    /// <summary>
+    /// Adds <see cref="Amount"/> to the ENEMY's taken-wounds total when deciding who won a melee (#419,
+    /// Core Rules v3.6.0 Fear(X): "enemies count as having taken +X wounds when checking who won"). Covers
+    /// Fear(X) — the amount is the rule's argument. No real wounds are dealt.
     /// </summary>
     public sealed record ExtraMeleeWoundCount(ValueSource Amount) : Effect
     {
@@ -1005,10 +1279,10 @@ public abstract record Effect
     }
 
     /// <summary>
-    /// The bearer strikes before the charging unit resolves its strikes. Covers
-    /// Counter ("Strikes first with this weapon when charged"). The companion facet
-    /// — the charger losing 1 Impact roll per Counter model — is a separate
-    /// Impact-count modifier added when that interaction is modelled.
+    /// The bearer strikes before the charging unit resolves its strikes. Covers Counter
+    /// ("May strike first with this weapon when charged, unless this unit is Fatigued" - the
+    /// Fatigue clause is the entry's condition, #422). 3.5 Counter's companion facet, the
+    /// charger losing Impact rolls, became Brace(X) in 3.6 (<see cref="CancelImpactDice"/>).
     /// </summary>
     public sealed record StrikeFirst : Effect
     {
@@ -1045,6 +1319,22 @@ public abstract record Effect
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.AllowShootAfterRush());
+        }
+    }
+
+    /// <summary>
+    /// #425: the bearer may not shoot once it has moved this activation - Cumbersome's "can't shoot when
+    /// moving" (Core Rules v3.6.0: "May only use Hold or Advance actions, but can't shoot when moving."). The
+    /// mirror of <see cref="ShootAfterRush"/>, authored at the same <see cref="EHookID.Activation_OnActionChoice"/>
+    /// hook: <c>ChooseActionStage.GetCanShoot</c> closes Shoot for a unit that has moved (a 0" Advance included -
+    /// the action, not the distance, is what moved it) when the op is present. Read through
+    /// <see cref="Dispatch.ActionRestrictionQueries.ShootingAfterMovingForbiddenBy"/>.
+    /// </summary>
+    public sealed record NoShootingAfterMoving : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.ForbidShootingAfterMoving());
         }
     }
 
@@ -1091,6 +1381,40 @@ public abstract record Effect
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.EnableReDeployment());
+        }
+    }
+
+    /// <summary>
+    /// #424: the carrying weapon counts as a MELEE weapon whatever its printed range. Conferred by Core Rules
+    /// v3.6.0 <c>Assault</c> ("Counts as both a ranged weapon and a melee weapon."), authored on a weapon-scoped
+    /// rule at <see cref="EHookID.Lifecycle_OnCapabilityQuery"/> like every other capability - so any other rule
+    /// that confers the same thing needs no engine change, and nothing tests for the name "Assault".
+    ///
+    /// <para>A weapon ROLE, not a unit capability: it is read by <c>WeaponRoleQueries</c> off the weapon's own
+    /// rules, resolved once when the weapon is built (the <c>Weapon.EffectKey</c>-at-load precedent, #239) and
+    /// cached on it, because the classification seam runs in hot paths (the AI's search, per-frame UI) and from
+    /// places with no table at all (the Forge card, the list compiler, the importer). Roles are grants only: a
+    /// future "may not be used in melee" is an action restriction beside <c>ActionRestrictionQueries</c>, never a
+    /// negation here.</para>
+    /// </summary>
+    public sealed record EnableMeleeUse : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.EnableMeleeUse());
+        }
+    }
+
+    /// <summary>
+    /// #424: the carrying weapon counts as a RANGED weapon whatever its printed range - the twin of
+    /// <see cref="EnableMeleeUse"/>. Assault authors both arms because the rule says "both"; every 3.6.0 Assault
+    /// weapon has a printed range, so for the corpus this arm only restates what the range already says.
+    /// </summary>
+    public sealed record EnableRangedUse : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.EnableRangedUse());
         }
     }
 
@@ -1159,8 +1483,9 @@ public abstract record Effect
     /// authored as ordinary <see cref="RollModifier"/> entries on the same rule, so the compulsion and
     /// the buff stay separately testable.
     ///
-    /// <para>Authored with <see cref="Condition.AllModelsHaveThisRule"/> per the #267 convention: the
-    /// compulsion binds the WHOLE unit's action, so a joined hero without the rule frees the unit.</para>
+    /// <para>Authored with <see cref="Condition.MostModelsHaveThisRule"/> per the #267 convention (#428: "most
+    /// models" since OPR 3.6): the compulsion binds the WHOLE unit's action, so it binds only while most of the
+    /// unit has the rule - a joined hero without it is one model and no longer frees the unit (#303).</para>
     /// </summary>
     public sealed record CompelClosestTarget : Effect
     {
@@ -1252,7 +1577,7 @@ public abstract record Effect
 
     /// <summary>
     /// The bearer is removed from the table as destroyed and a fresh full-strength copy of it deploys
-    /// within 12\" of any table edge at the start of the next round, after Ambushers (#197 P17c,
+    /// within 9\" of any table edge, over 9\" from enemies (#426, 3.6), at the start of the next round, after Ambushers (#197 P17c,
     /// <c>Reinforcement</c>). Authored at BOTH trigger moments — the bearer's own destruction
     /// (<see cref="Rules.Foundation.EHookID.Lifecycle_OnSelfDestroyed"/>) and the Shaken application
     /// (<see cref="Rules.Foundation.EHookID.Morale_OnShakenApplied"/>) — each gated on the
@@ -1302,8 +1627,9 @@ public abstract record Effect
 
     /// <summary>
     /// Restricts the bearer to declaring only the actions in <see cref="Allowed"/>.
-    /// Covers Immobile (<c>[Hold]</c> only) and Artillery's Hold-only facet. The
-    /// engine drops disallowed actions from the choice set.
+    /// Covers Immobile (<c>[Hold]</c> only) and Cumbersome (<c>[Hold, Advance]</c>, #425). The
+    /// engine drops disallowed actions from the choice set, and a set without Rush caps the
+    /// unit's move at its Advance (<c>MovementActionContext</c>).
     /// </summary>
     public sealed record RestrictActions(IReadOnlyList<EActionType> Allowed) : Effect
     {
@@ -1321,12 +1647,27 @@ public abstract record Effect
     /// into the range check (#102). <see cref="MinResultInches"/> floors the resulting effective range —
     /// a reduction can't drop it below this (e.g. "−6\" to a min. of 6\""); 0 means no floor. Distinct from
     /// <see cref="Effect.RollModifier"/>, which adjusts the roll itself rather than the range threshold.
+    /// <para>
+    /// #432: <see cref="ChargeDelta"/> is the CHARGE half of the same rule - OPR 3.6 writes the range family as
+    /// one effect over both attack kinds: Darkborn / Shadowborn / Shrouded / Wild Veil "that enemy unit gets
+    /// -4"/-2" range to a min. of 6"" (Subject seat: <c>delta -4, chargeDelta -2, minResultInches 6</c>), Melee
+    /// Shrouding "-2" range to a min. of 6"" when charged (<c>delta 0, chargeDelta -2</c>), Highborn / Extra Reach /
+    /// Royal Legion "+4"/+2" range when shooting/charging" (Actor seat: <c>delta 4, chargeDelta 2</c>). Charge range
+    /// is the charge move (3.6: "may only charge if at least one charging model is within charge distance"), so the
+    /// charge half folds into the charge budget: the charger's own (Actor seat) through
+    /// <see cref="Dispatch.RangeRuleQueries.OwnChargeRangeDelta"/> into every charge-budget reader (the movement
+    /// context and its per-model budgets, the AI), the charged unit's (Subject seat) through
+    /// <see cref="Dispatch.MovementRuleQueries.EffectiveChargeDistanceAgainst"/> (the path stage's worst case, the
+    /// AI). <see cref="MinResultInches"/> floors each half the effect changes, and never RAISES a range that was
+    /// already shorter than the floor ("to a min. of 6"" limits a reduction; it does not lengthen a 4" gun).
+    /// Authored at <see cref="Foundation.EHookID.Shooting_OnRangeCheck"/>, the range check for both halves.
+    /// </para>
     /// </summary>
-    public sealed record RangeModifier(int Delta, int MinResultInches = 0) : Effect
+    public sealed record RangeModifier(int Delta, int MinResultInches = 0, int ChargeDelta = 0) : Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
-            operations.Add(new RuleOperation.ApplyRangeModifier(Delta, MinResultInches));
+            operations.Add(new RuleOperation.ApplyRangeModifier(Delta, MinResultInches, ChargeDelta));
         }
     }
 
@@ -1373,8 +1714,51 @@ public abstract record Effect
     }
 
     /// <summary>
+    /// #431 Pierce: "Ignores all positive Defense modifiers on the target". Authored at
+    /// <see cref="EHookID.Shooting_OnHitRollComplete"/> (Actor), where the defender's own Defense bonuses
+    /// (Shielded, Grounded Protection, ... - every positive Save delta in the corpus rides that hook's Subject
+    /// seat) fold into the attack's save modifier. <c>RollToHitStage</c> drops the positive Save deltas from
+    /// that net when the op is present (the attacker's negative ones - Thrust, Destructive - still apply) and
+    /// flags the results, so <c>DetermineSaveRollsNeededStage</c> also drops cover's +1 and any positive granted
+    /// "+X to Defense rolls" buff. AP reduction (Fortified) changes the weapon's AP, not the target's Defense,
+    /// and is unaffected (#431 decision).
+    /// <para>
+    /// Pierce ALSO carries <see cref="IgnoreCover"/>: cover's only effect is that +1, so the targeting
+    /// overlays, the shooting forecast, the AI and the calculator - which ask
+    /// <c>SightRuleQueries.IgnoresCover</c>, not this op - price the weapon the way the save stage resolves it.
+    /// </para>
+    /// </summary>
+    public sealed record IgnorePositiveDefenseModifiers : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.IgnorePositiveDefenseModifiers());
+        }
+    }
+
+    /// <summary>
+    /// #427 Unstoppable: "ignores all negative modifiers to this weapon which are not from this model's special
+    /// rules". Authored Actor-seat at <see cref="EHookID.Shooting_OnHitRollModifier"/> (the to-hit penalties) AND
+    /// at <see cref="EHookID.Shooting_OnHitRollComplete"/> (the AP reductions), so the evaluator sees the marker
+    /// in the same pass as the modifiers it removes. What is ignored: a to-hit penalty
+    /// (<see cref="RuleOperation.ApplyRollModifier"/> of <see cref="ERollKind.Hit"/> below zero), an AP reduction
+    /// (<see cref="RuleOperation.ReduceArmorPenetration"/> - Fortified and its kin), and a granted negative
+    /// "-X to hit" token another unit placed. What is NOT: any modifier produced by a rule on the attacking unit
+    /// itself (its own Imprecise, Unwieldy, Indirect, ...), shooting-range reductions (a reach limit, not a
+    /// modifier to the attack - #427 D2), and the Defense side. See <see cref="RuleOperation.IgnoreNegativeWeaponModifiers"/>.
+    /// </summary>
+    public sealed record IgnoreNegativeWeaponModifiers : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.IgnoreNegativeWeaponModifiers());
+        }
+    }
+
+    /// <summary>
     /// The bearer's attack ignores intervening terrain for line of sight — it may fire at targets it has
-    /// no clear line to, as if in line of sight. Covers Indirect's "target non-LoS as if LoS" facet.
+    /// no clear line to, as if in line of sight. Covers Indirect's "target non-LoS as if LoS" facet (Hold only
+    /// since #425 - the condition, not this effect, carries the gate) and Quick Throw's "always".
     /// (Takedown does NOT grant it - see #314.) Read by the ranged-target enumeration and the occlusion
     /// stage (so the shot isn't blocked) and surfaced per-weapon to the movement + ranged-target resolver
     /// requests, so they can represent that LoS-blocked targets are still shootable with this weapon.
@@ -1388,23 +1772,43 @@ public abstract record Effect
     }
 
     /// <summary>
+    /// #425: the bearer's attack ignores cover granted by Sight Blockers, and only that - Core Rules v3.6.0
+    /// Indirect's "ignores Cover from Sight Blockers" (Cover terrain still counts, unlike
+    /// <see cref="IgnoreCover"/>, which drops every cover bonus). Meaningful together with
+    /// <see cref="IgnoreLineOfSight"/>: only a shot that ignores line of sight can be resolved against a model
+    /// behind a Sight Blocker. Read by <c>SightRuleQueries.SightBlockerCoverFor</c> into the cover verdict
+    /// (<see cref="ESightBlockerCover.Ignored"/>).
+    /// </summary>
+    public sealed record IgnoreSightBlockerCover : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.IgnoreSightBlockerCover());
+        }
+    }
+
+    /// <summary>
     /// Sets the bearer aside during normal deployment to be placed by its own dedicated pass.
     /// Covers Scout (deploy after others, within <see cref="PlacementRangeInches"/>" of the zone)
     /// and Ambush (deploy a later round, over <see cref="PlacementRangeInches"/>" from enemies).
     /// <see cref="Timing"/> selects the pass; <see cref="PlacementRangeInches"/>'s meaning depends on
     /// it (zone-forward-extension for Scout, min-distance-from-enemies for Ambush). Both default so a
     /// bare <c>DeferDeployment()</c> (used by the queue-level shape tests) keeps compiling.
+    /// <see cref="EnemyClearanceInches"/> (#426, <see cref="EDeferTiming.AfterNormalDeployment"/> only) is
+    /// Scout 3.6's "over 9\" away from non-Scout enemy units": the set-aside placement must keep that far from
+    /// every enemy unit that did NOT come through the same set-aside pass. 0 = no enemy clause.
     /// </summary>
     public sealed record DeferDeployment(
         EDeferTiming Timing = EDeferTiming.AfterNormalDeployment,
         float PlacementRangeInches = 0f,
         int MinArrivalRound = 2,
-        bool MandatoryArrival = false) : Effect
+        bool MandatoryArrival = false,
+        float EnemyClearanceInches = 0f) : Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.DeferDeployment(Timing, PlacementRangeInches, MinArrivalRound,
-                MandatoryArrival));
+                MandatoryArrival, EnemyClearanceInches));
         }
     }
 
@@ -1487,11 +1891,17 @@ public abstract record Effect
     /// nothing is asked of the path, only of the destination.
     ///
     /// <para>The die is rolled here, at Apply, exactly as <see cref="Heal"/> rolls its own — the operation
-    /// carries a concrete distance. Multiple entries SUM: Rapid Blink Boost widens "within D3\"" to
+    /// carries a concrete distance. Multiple entries SUM: Enhanced Rapid Blink widens "within D3\"" to
     /// "within 2D3\"" by contributing a second, independently rolled D3, which is the increment discipline
-    /// every other Boost rule follows. The stage folds them into ONE placement rather than prompting twice.</para>
+    /// every other Enhanced rule follows. The stage folds them into ONE placement rather than prompting twice.</para>
+    ///
+    /// <para>#434: <see cref="Move"/> makes it a real MOVE instead - OPR 3.6 rewrote the family as "you may move all
+    /// models with this rule in it by up to D3+1"" (Bounding, Dash, Nimble, Rapid Blink, Wolfborn), so the models
+    /// travel a path that terrain, other units and coherency constrain, through the same optional triggered move the
+    /// post-combat family uses (<see cref="TriggeredMove"/>'s <c>IOperationServices.MoveUnit</c>). False (the default,
+    /// and what an old book or saved list without the field parses to) keeps the 3.5 placement.</para>
     /// </summary>
-    public sealed record RepositionAtActivation(DiceExpression Distance, int PlusInches = 0) : Effect
+    public sealed record RepositionAtActivation(DiceExpression Distance, int PlusInches = 0, bool Move = false) : Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
@@ -1505,25 +1915,30 @@ public abstract record Effect
                 inches += face * results.At(face);
             }
 
-            operations.Add(new RuleOperation.RepositionModels(inches));
+            operations.Add(new RuleOperation.RepositionModels(inches, AsMove: Move));
         }
     }
 
     /// <summary>
     /// A FLAT-distance reposition placement, no dice — the deploy-time twin of
-    /// <see cref="RepositionAtActivation"/>. Covers Fanatic (#197 P21): "after this model is deployed, it
-    /// may be placed anywhere fully within <see cref="MaxInches"/>in of its position." Emits the same
+    /// <see cref="RepositionAtActivation"/>. Covers Fanatic (#197 P21) and, since #426, Vanguard and the AoF
+    /// Drakesworn: "After this model is deployed, it may be placed anywhere fully within 9" of its position,
+    /// over 9" away from non-Vanguard enemy units." (Core Rules v3.6.0 added the enemy clause.) Emits the same
     /// <see cref="RuleOperation.RepositionModels"/> op, so the placement machinery is shared — but folded by
     /// the deployment stage (<c>DeployUnitStage</c>) rather than <c>ActivationStartStage</c>, since it fires
     /// at <see cref="Rules.Foundation.EHookID.Deployment_OnUnitDeployed"/>. Flat rather than reusing
     /// <see cref="RepositionAtActivation"/> with a degenerate die because every <c>DiceExpression</c> rolls
     /// at least one die; the corpus' deploy reposition is a fixed range.
+    /// <para><see cref="EnemyClearanceInches"/> &gt; 0 keeps every placed model over that far from each enemy
+    /// unit, except enemy units carrying <see cref="ExemptEnemyRule"/> (the text's "non-Vanguard"); null
+    /// exempts nobody.</para>
     /// </summary>
-    public sealed record RepositionOnDeploy(float MaxInches) : Effect
+    public sealed record RepositionOnDeploy(float MaxInches, float EnemyClearanceInches = 0f,
+        string? ExemptEnemyRule = null) : Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
-            operations.Add(new RuleOperation.RepositionModels(MaxInches));
+            operations.Add(new RuleOperation.RepositionModels(MaxInches, EnemyClearanceInches, ExemptEnemyRule));
         }
     }
 
@@ -1534,8 +1949,8 @@ public abstract record Effect
     /// Shaken"). Gate it on <see cref="Condition.TokenPresent"/> so the die is only rolled when there is
     /// something to clear.
     ///
-    /// <para>A sink fold, not an executable (#376 Vale Oath Boost): all entries for one token type fold
-    /// to the BEST (lowest) threshold and the stage makes ONE decisive roll at it — so a Boost is
+    /// <para>A sink fold, not an executable (#376 Vale Oath Boost, now Enhanced Vale Oath): all entries for one token type fold
+    /// to the BEST (lowest) threshold and the stage makes ONE decisive roll at it — so an Enhanced rule is
     /// authored as the full boosted band (3), the min-threshold convention (see RerollSink's doctrine
     /// note), and never becomes a second chance. The stage still rolls with <c>RollDecisive</c>, never a
     /// histogram — the outcome is binary (the unit either recovers or does not), so a probabilistic
@@ -1609,8 +2024,8 @@ public abstract record Effect
     }
 
     /// <summary>
-    /// The target takes a dangerous-terrain test immediately, standing still — one d6 per living model,
-    /// a wound on a 1 — rather than the next time it moves. The immediate arm of #197 P8's Dangerous
+    /// The target takes a dangerous-terrain test immediately, standing still — one d6 per wound it would
+    /// take to destroy it (3.6, #420), a wound to the unit on each 1 — rather than the next time it moves. The immediate arm of #197 P8's Dangerous
     /// Terrain Debuff, which two books (Lust Disciples, War Disciples) word as "must immediately take a
     /// Dangerous Terrain test" where the other four say "counts as being in Dangerous Terrain once".
     /// <para>

@@ -6,7 +6,7 @@ using NUnit.Framework;
 namespace FDG.Tests
 {
     // #009 — A unit reduced to half strength or less by shooting takes a morale test; a failed test makes
-    // it Shaken (a non-melee morale failure never Routs — Rout is a melee-only result, GF v3.5.1).
+    // it Shaken (a non-melee morale failure never Routs — Rout is a melee-only result, GF Core Rules v3.6.0 as in v3.5.1).
     //
     // The stage runs ONCE, after the attacker has fired every weapon, and tests each unit it shot at
     // exactly once. "Took wounds" is measured against the defender's wounds at the moment it was first

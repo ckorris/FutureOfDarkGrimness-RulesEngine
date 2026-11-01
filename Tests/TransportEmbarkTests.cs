@@ -172,7 +172,7 @@ namespace FDG.Tests
                 new Weapon("Blade", rangeInches: 0f, attacks: 1, armorPenetration: 0));
             // A chargeable enemy 1.5" off: something has to remain VALID or Choose Action auto-passes
             // without ever prompting, and then there is no menu for the greyed entry to appear on. At 1.5"
-            // it is inside melee range (2") but outside the standoff band (1"), so Pass survives too.
+            // it is inside melee range (3") but outside the standoff band (1"), so Pass survives too.
             MakeEnemy("Cultists", x: 12.5f, z: 10f);
 
             var unitCtx = NewActivation(ctx, squad);

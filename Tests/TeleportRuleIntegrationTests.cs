@@ -72,7 +72,7 @@ namespace FDG.Tests
             Assert.That(offers.Any(o => o.RuleName == CoreRuleCatalog.TeleportRuleName), Is.False);
         }
 
-        // --- #267 all-models gate ---
+        // --- #267 rule-ownership gate (most models since #428 / OPR 3.6) ---
 
         [Test]
         public void GatherOffers_HeroWithTeleportJoinsASquadWithout_TeleportNotOffered()
@@ -85,18 +85,38 @@ namespace FDG.Tests
             var offers = ctx.RuleEvaluator.GatherOffers(new ActionChoiceContext(unit.GetValue()));
 
             Assert.That(offers.Any(o => o.RuleName == CoreRuleCatalog.TeleportRuleName), Is.False,
-                "the unit teleports as a whole, so it may only do so when every model has the rule.");
+                "the unit teleports as a whole, so it may only do so when most models have the rule.");
         }
 
         [Test]
-        public void GatherOffers_HeroWithoutTeleportJoinsASquadWithIt_TeleportNotOffered()
+        public void GatherOffers_HeroWithoutTeleportJoinsASquadWithIt_StillOffered()
         {
-            // The other direction: the hero breaks the squad's own Teleport, because the hero would be
-            // carried along by a placement it has no rule entitling it to.
+            // The other direction. Pre-3.6 the hero broke the squad's own Teleport; #428: OPR 3.6 gates on
+            // "a unit where MOST models have this rule", and three squad models of four is most, so the
+            // squad keeps it and carries the hero along.
             var ctx = new TriggeredMoveTestContext(_store, new NullPlayerRequester());
             DataBinding<UnitData> unit = MakeUnitWithJoinedHero(heroHasTeleport: false, hostHasTeleport: true);
 
             var offers = ctx.RuleEvaluator.GatherOffers(new ActionChoiceContext(unit.GetValue()));
+
+            Assert.That(offers.Any(o => o.RuleName == CoreRuleCatalog.TeleportRuleName), Is.True,
+                "3 of 4 models have Teleport - a joined hero without it no longer breaks it.");
+        }
+
+        [Test]
+        public void GatherOffers_HeroWithoutTeleport_SquadDownToOneModel_NotOffered()
+        {
+            // ...until casualties leave one squad model beside the hero: 1 of 2 is not most.
+            var ctx = new TriggeredMoveTestContext(_store, new NullPlayerRequester());
+            DataBinding<UnitData> unit = MakeUnitWithJoinedHero(heroHasTeleport: false, hostHasTeleport: true);
+            UnitData combined = unit.GetValue();
+            ModelID heroId = combined.JoinedHeroModelId!.Value;
+            foreach (IModel model in combined.Models.Where(m => m.ID != heroId).Take(2))
+            {
+                model.DealWounds(model.TotalWounds);
+            }
+
+            var offers = ctx.RuleEvaluator.GatherOffers(new ActionChoiceContext(combined));
 
             Assert.That(offers.Any(o => o.RuleName == CoreRuleCatalog.TeleportRuleName), Is.False);
         }
@@ -117,9 +137,9 @@ namespace FDG.Tests
         public void GatherOffers_TeleportGrantedToTheUnit_StillOffered_EvenWithAHeroThatLacksIt()
         {
             // Teleport Aura says "this model AND ITS UNIT get Teleport", and it lands as a unit-level
-            // RuleGrant token. AllModelsHaveThisRule counts a unit grant for EVERY living model, hero
+            // RuleGrant token. MostModelsHaveThisRule counts a unit grant for EVERY living model, hero
             // included, so the gate must not kill the aura. The token is added directly here (the way
-            // AllModelsRuleGateIntegrationTests grants Stealth) rather than by firing the aura's
+            // MostModelsRuleGateIntegrationTests grants Stealth) rather than by firing the aura's
             // Lifecycle_OnUnitCreated hook - the grant is the state under test, not how it got there.
             var ctx = new TriggeredMoveTestContext(_store, new NullPlayerRequester(),
                 ruleResolver: CoreRuleCatalog.CreateResolver());
@@ -130,7 +150,7 @@ namespace FDG.Tests
             var offers = ctx.RuleEvaluator.GatherOffers(new ActionChoiceContext(unit.GetValue()));
 
             Assert.That(offers.Any(o => o.RuleName == CoreRuleCatalog.TeleportRuleName), Is.True,
-                "a unit-wide grant covers every model, so the all-models gate passes.");
+                "a unit-wide grant covers every model, so the most-models gate passes.");
         }
 
         // --- ChooseActionStage routing ---
@@ -272,7 +292,7 @@ namespace FDG.Tests
 
         // #267 — a 3-model host with a Hero merged into it, each side optionally carrying Teleport (or the
         // hero carrying Teleport Aura, which grants it to the whole unit). Mirrors
-        // AllModelsRuleGateIntegrationTests' merge harness.
+        // MostModelsRuleGateIntegrationTests' merge harness.
         private DataBinding<UnitData> MakeUnitWithJoinedHero(bool heroHasTeleport, bool hostHasTeleport,
             SpecialRuleDefinition? heroAura = null)
         {

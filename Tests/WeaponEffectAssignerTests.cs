@@ -32,9 +32,12 @@ public class WeaponEffectAssignerTests
     [Test]
     public void Match_FactionNameOverride_BeatsKeywords()
     {
-        // "power" normally reads daemonic; the Saurian Power Claw is a lizard's gauntlet.
-        Assert.That(WeaponEffectAssigner.Match("Saurian Starhost", "Power Claw", isRanged: false),
+        // "power" normally reads daemonic; the Saurian Power Claw is a lizard's gauntlet. #437: the override
+        // is keyed by the 3.6 name and still reached from the 3.5 one (OprBookNames).
+        Assert.That(WeaponEffectAssigner.Match("Saurian Starhosts", "Power Claw", isRanged: false),
             Is.EqualTo("claw-rend"));
+        Assert.That(WeaponEffectAssigner.Match("Saurian Starhost", "Power Claw", isRanged: false),
+            Is.EqualTo("claw-rend"), "the 3.5 book name (bundled until #438, old army files) keeps the override");
         Assert.That(WeaponEffectAssigner.Match("Wormhole Daemons of War", "Power Claw", isRanged: false),
             Is.EqualTo("daemon-arcane-melee"));
     }
@@ -61,6 +64,33 @@ public class WeaponEffectAssignerTests
             Is.EqualTo(("arcane-bolt", "blade-standard")));
         Assert.That(WeaponEffectAssigner.FactionDefaults("Wood Elves"),
             Is.EqualTo(((string?)null, (string?)null)), "an AoF faction is unknown to the GDF table");
+    }
+
+    // #435 / #437: OPR 3.6 renamed the daemon books in both systems ("Rift Daemons of X" in AoF, "Wormhole Daemons
+    // of X" in GDF -> "Daemons of X") and the GDF "Saurian Starhost" -> "Saurian Starhosts". The tables are keyed by
+    // the 3.6 names; the 3.5 names reach the same row through OprBookNames, and each system keeps its OWN row for the
+    // now-shared name "Daemons of X".
+    [TestCase("Change")]
+    [TestCase("Lust")]
+    [TestCase("Plague")]
+    [TestCase("War")]
+    public void FactionDefaults_The36DaemonsBookNames_KeepTheirSets_FromEitherName(string god)
+    {
+        var aof = WeaponEffectAssigner.FactionDefaults($"Daemons of {god}", GameSystems.AgeOfFantasy);
+        var gdf = WeaponEffectAssigner.FactionDefaults($"Daemons of {god}");
+        Assert.That(aof.Ranged, Is.Not.Null);
+        Assert.That(gdf.Ranged, Is.Not.Null);
+        Assert.That(WeaponEffectAssigner.FactionDefaults($"Rift Daemons of {god}", GameSystems.AgeOfFantasy), Is.EqualTo(aof));
+        Assert.That(WeaponEffectAssigner.FactionDefaults($"Wormhole Daemons of {god}"), Is.EqualTo(gdf));
+        Assert.That(WeaponEffectAssigner.FactionDefaults($"Wormhole Daemons of {god}", GameSystems.AgeOfFantasy),
+            Is.EqualTo(((string?)null, (string?)null)), "a GDF-only 3.5 name means nothing in the AoF table");
+    }
+
+    [Test]
+    public void FactionDefaults_SaurianStarhosts_FromEitherName()
+    {
+        Assert.That(WeaponEffectAssigner.FactionDefaults("Saurian Starhosts"), Is.EqualTo(("gauss-particle", "claw-rend")));
+        Assert.That(WeaponEffectAssigner.FactionDefaults("Saurian Starhost"), Is.EqualTo(("gauss-particle", "claw-rend")));
     }
 
     [TestCase("Repeater Crossbow", true, "crossbow-bolt")] // crossbow outranks "bow"
@@ -160,6 +190,67 @@ public class WeaponEffectAssignerTests
         };
         Assert.That(WeaponEffectAssigner.Match("Nobody", ranged, GameSystems.AgeOfFantasy),
             Is.EqualTo("sling-stone"), "a genuinely ranged strafing weapon keeps its ranged voice");
+    }
+
+    // ---------------- #438: OPR 3.6 weapon names ----------------
+
+    [TestCase("Burst Cyclic Rifle", true, "storm-tracer")]       // 3.6's Storm Rifle
+    [TestCase("Anti-Matter Rifle", true, "gravity-pulse")]       // 3.6's Gravity Rifle
+    [TestCase("Dark-Matter Pistol", true, "gravity-pulse")]      // 3.6's Anti-Gravity Pistol
+    [TestCase("Arc-Charger Pistol", true, "gauss-particle")]
+    [TestCase("Neural Psy-Blast", true, "arcane-psychic")]
+    [TestCase("Burst Chem-Pistol", true, "bio-organic")]
+    [TestCase("Backpack HE-Launcher", true, "mortar-artillery")] // the trailing generic-launcher row...
+    [TestCase("Acid Launcher", true, "bio-organic")]             // ...loses to a payload row above it
+    [TestCase("Disposable Mini-GL", true, "mortar-artillery")]
+    [TestCase("Phosphor Sprayers", true, "flame-jet")]
+    [TestCase("Phosphor Spitters", true, "bio-organic")]         // "spit" outranks the trailing phosphor row
+    [TestCase("Radium Cannon", true, "gauss-particle")]
+    [TestCase("Radium Pulse Gun", true, "laser-beam")]           // "pulse" outranks the trailing radium row
+    [TestCase("Overrun", false, "titan-impact")]                 // the 3.6 vehicle/monster ram
+    [TestCase("Magma Sword", false, "energy-blade")]             // 3.6's Plasma Sword
+    [TestCase("Psy-Witch Staff", false, "daemon-arcane-melee")]
+    public void Match_Gdf36Names(string name, bool isRanged, string expected)
+    {
+        Assert.That(WeaponEffectAssigner.Match("Nobody", name, isRanged), Is.EqualTo(expected));
+    }
+
+    [TestCase("Fire Blast", true, "arcane-bolt")]
+    [TestCase("Serpent-God Strike", true, "arcane-bolt")]
+    [TestCase("Haunting Howl", true, "arcane-bolt")]
+    [TestCase("Soul Cannon", true, "ballistic-slug")]            // the trailing caster row loses to "cannon"
+    [TestCase("Throw Giant Boulders", true, "sling-stone")]
+    [TestCase("Toss Logs", true, "sling-stone")]
+    [TestCase("Barbed Net", true, "thrown-spear")]
+    [TestCase("Overrun", false, "titan-impact")]
+    [TestCase("Sweeping Titan Strike", false, "titan-impact")]
+    [TestCase("Jagged Teeth", false, "beast-maw")]
+    [TestCase("Reaping Sickle", false, "spear-pierce")]
+    [TestCase("Sorcerer Staff", false, "energy-blade")]
+    [TestCase("Sword & Staff", false, "blade-standard")]         // the trailing staff row loses to "sword"
+    public void Match_Aof36Names(string name, bool isRanged, string expected)
+    {
+        Assert.That(WeaponEffectAssigner.Match("Nobody", name, isRanged, GameSystems.AgeOfFantasy),
+            Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Match_RangeZeroCrossingStrike_IsABombingRun()
+    {
+        // #431 renamed Strafing "Crossing Strike"; 3.6 bomb racks carry the new name (Strafing stays for 3.5 files).
+        var bombs = new WeaponFileEntry
+        {
+            Name = "Flame Bombs", RangeInches = 0, Attacks = 2,
+            SpecialRules = { new SpecialRuleEntry_Core("Crossing Strike") },
+        };
+        Assert.That(WeaponEffectAssigner.Match("Nobody", bombs), Is.EqualTo("bombing-run"));
+        Assert.That(WeaponEffectAssigner.Match("Nobody", bombs, GameSystems.AgeOfFantasy), Is.EqualTo("bombing-run"));
+    }
+
+    [Test]
+    public void FactionDefaults_VoidspaceStalkers_HasARow()
+    {
+        Assert.That(WeaponEffectAssigner.FactionDefaults("Voidspace Stalkers"), Is.EqualTo(("ballistic-slug", "claw-rend")));
     }
 
     // ---------------- forge-time bake (ListCompiler) ----------------

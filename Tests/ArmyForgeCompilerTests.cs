@@ -210,12 +210,15 @@ public class ArmyForgeCompilerTests
         Assert.That(army.AuxiliaryUnits.Single(u => u.Id == "Changelings [10]").ModelCount, Is.EqualTo(10));
     }
 
-    private static UnitFileEntry CompileOne(RosterUnit unit, params UpgradeChoice[] choices)
+    private static UnitFileEntry CompileOne(RosterUnit unit, params UpgradeChoice[] choices) =>
+        CompileArmy(unit, choices).Units.Single();
+
+    private static BuiltArmyFile CompileArmy(RosterUnit unit, params UpgradeChoice[] choices)
     {
         var book = new BookFile { Name = "T", Units = { unit } };
         var bu = new BuilderUnit { RosterUnitId = unit.Id };
         bu.Choices.AddRange(choices);
-        return ListCompiler.Compile(book, new BuilderList { PointsLimit = 100000, Units = { bu } }).Units.Single();
+        return ListCompiler.Compile(book, new BuilderList { PointsLimit = 100000, Units = { bu } });
     }
 
     [Test]
@@ -611,6 +614,202 @@ public class ArmyForgeCompilerTests
 
         Assert.That(compiled.Weapons.Single(w => w.Name == "Heavy Rifle").Quantity, Is.EqualTo(5));
         Assert.That(compiled.Weapons.Any(w => w.Name == "Flamer"), Is.False, "still swallowed - tracked separately");
+    }
+
+    // ── #438 a counted swap yields to a PASS-THROUGH rival below it ────────────────────────────────────
+
+    // OPR 3.6's Assault Brothers in miniature: "Replace any Heavy Pistol" authored ABOVE a combo that consumes a
+    // pistol and a hand weapon and hands a pistol BACK ("Heavy Pistol, Energy Hammer"). The any-swap used to take
+    // every pistol first, leaving the combo nothing to consume - the Energy Hammer was silently dropped, unpaid.
+    private static RosterUnit AssaultBrothers() => new()
+    {
+        Id = "assault", Name = "Assault Brothers", Quality = 3, Defense = 4,
+        BaseModelCount = 5, MinModels = 5, MaxModels = 5, BasePointCost = 150,
+        Weapons = { Wpn("Heavy Pistol", 5), Wpn("Hand Weapon", 5) },
+        Sections =
+        {
+            new UpgradeSection
+            {
+                Id = "any", Label = "Replace any Heavy Pistol", Variant = UpgradeVariant.Replace,
+                Affects = UpgradeAffects.Any, Targets = { "Heavy Pistol" },
+                Options = { new UpgradeOption { Id = "plasma", Cost = 5, WeaponsGained = { Wpn("Plasma Pistol") } } },
+            },
+            new UpgradeSection
+            {
+                Id = "combo", Label = "Replace one Heavy Pistol and Hand Weapon", Variant = UpgradeVariant.Replace,
+                Affects = UpgradeAffects.One, Targets = { "Heavy Pistol", "Hand Weapon" },
+                Options =
+                {
+                    new UpgradeOption { Id = "hammer", Cost = 10, WeaponsGained = { Wpn("Heavy Pistol"), Wpn("Energy Hammer") } },
+                    new UpgradeOption { Id = "chainsword", Cost = 10, WeaponsGained = { Wpn("Great Chain-Sword") } },
+                },
+            },
+        },
+    };
+
+    [Test]
+    public void ReplaceAny_YieldsToAPassThroughComboBelowIt_AndBothPurchasesLand()
+    {
+        UnitFileEntry compiled = CompileOne(AssaultBrothers(),
+            new UpgradeChoice { SectionId = "combo", OptionId = "hammer", Count = 1 },
+            new UpgradeChoice { SectionId = "any", OptionId = "plasma", Count = 5 });
+
+        Assert.That(compiled.Weapons.Single(w => w.Name == "Plasma Pistol").Quantity, Is.EqualTo(5),
+            "the combo hands its pistol back, so all five still swap");
+        Assert.That(compiled.Weapons.Single(w => w.Name == "Energy Hammer").Quantity, Is.EqualTo(1));
+        Assert.That(compiled.Weapons.Single(w => w.Name == "Hand Weapon").Quantity, Is.EqualTo(4));
+        Assert.That(compiled.Weapons.Any(w => w.Name == "Heavy Pistol"), Is.False);
+        Assert.That(compiled.PointCost, Is.EqualTo(185), "150 + 10 combo + 5x5 plasma");
+    }
+
+    // A rival that does NOT hand the pistol back really competes for the pool (5 pistols, 6 asked), and keeps
+    // the pre-#438 outcome: book order decides, the any-swap above takes its five.
+    [Test]
+    public void ReplaceAny_DoesNotYieldToAConsumingRival()
+    {
+        UnitFileEntry compiled = CompileOne(AssaultBrothers(),
+            new UpgradeChoice { SectionId = "combo", OptionId = "chainsword", Count = 1 },
+            new UpgradeChoice { SectionId = "any", OptionId = "plasma", Count = 5 });
+
+        Assert.That(compiled.Weapons.Single(w => w.Name == "Plasma Pistol").Quantity, Is.EqualTo(5));
+        Assert.That(compiled.Weapons.Any(w => w.Name == "Great Chain-Sword"), Is.False);
+        Assert.That(compiled.PointCost, Is.EqualTo(175), "150 + 5x5 plasma; the starved combo is not charged");
+    }
+
+    // #441: the same condition, exposed for the Forge - the pass-through option is yielded to, the consuming one is
+    // not, and only a swap authored ABOVE the claimant yields.
+    [Test]
+    public void CountedSwapYieldsTo_OnlyAPassThroughOptionBelowTheSwap()
+    {
+        RosterUnit roster = AssaultBrothers();
+        UpgradeSection combo = roster.Sections.Single(s => s.Id == "combo");
+        UpgradeSection any = roster.Sections.Single(s => s.Id == "any");
+        UpgradeOption hammer = combo.Options.Single(o => o.Id == "hammer");
+        UpgradeOption chainsword = combo.Options.Single(o => o.Id == "chainsword");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ListCompiler.CountedSwapYieldsTo(roster, "any", combo, hammer), Is.True, "hands the pistol back");
+            Assert.That(ListCompiler.CountedSwapYieldsTo(roster, "any", combo, chainsword), Is.False, "consumes it");
+            Assert.That(ListCompiler.CountedSwapYieldsTo(roster, "combo", any, any.Options.Single()), Is.False,
+                "a section never yields to one authored above it");
+            Assert.That(ListCompiler.CountedSwapYieldsTo(roster, "missing", combo, hammer), Is.False);
+        });
+    }
+
+    // ── #438 D3 (owner request 2026-11-01): a Replace that never lands says so ──────────────────────────
+
+    // The combo lacks its Hand Weapon, so it can never apply: the compile reports the pick, the unit and the ONE
+    // scarce target (the pistol is there; the MIN-over-targets rule starves it on the hand weapon alone), ASCII,
+    // and still charges nothing for it.
+    [Test]
+    public void AStarvedReplace_IsReported_NamingTheUnitThePickAndTheScarceTarget()
+    {
+        RosterUnit roster = AssaultBrothers();
+        roster.Weapons.RemoveAll(w => w.Name == "Hand Weapon");
+
+        BuiltArmyFile army = CompileArmy(roster, new UpgradeChoice { SectionId = "combo", OptionId = "hammer", Count = 1 });
+
+        Assert.That(army.UnappliedReplaces.Select(u => u.Message), Is.EqualTo(new[]
+        {
+            "Assault Brothers: 'Replace one Heavy Pistol and Hand Weapon -> Heavy Pistol, Energy Hammer' not applied " +
+            "(needs 1 more Hand Weapon)",
+        }));
+        UnappliedReplace line = army.UnappliedReplaces.Single();
+        Assert.That((line.UnitName, line.SectionLabel, line.Gains, line.Shortfall),
+            Is.EqualTo(("Assault Brothers", "Replace one Heavy Pistol and Hand Weapon", "Heavy Pistol, Energy Hammer", 1)));
+        Assert.That(line.Missing, Is.EqualTo(new[] { "1 more Hand Weapon" }));
+        Assert.That(line.Message.All(c => c < 0x80), Is.True, "ASCII");
+        Assert.That(army.Units.Single().PointCost, Is.EqualTo(150), "reporting only: still not charged");
+    }
+
+    // The D3 case itself: the any-swap yields to the pass-through combo, both land, nothing to report.
+    [Test]
+    public void TheD3PassThroughCombo_LandsWithNothingToReport()
+    {
+        BuiltArmyFile army = CompileArmy(AssaultBrothers(),
+            new UpgradeChoice { SectionId = "combo", OptionId = "hammer", Count = 1 },
+            new UpgradeChoice { SectionId = "any", OptionId = "plasma", Count = 5 });
+
+        Assert.That(army.UnappliedReplaces, Is.Empty);
+        Assert.That(army.Units.Single().PointCost, Is.EqualTo(185));
+    }
+
+    // The consuming rival of ReplaceAny_DoesNotYieldToAConsumingRival: six pistols asked of five, so the combo below
+    // starves - and now says which target it ran out of. A partial Any names its own shortfall the same way.
+    [Test]
+    public void AConsumingRivalThatStarves_ReportsItsShortfall()
+    {
+        BuiltArmyFile army = CompileArmy(AssaultBrothers(),
+            new UpgradeChoice { SectionId = "combo", OptionId = "chainsword", Count = 1 },
+            new UpgradeChoice { SectionId = "any", OptionId = "plasma", Count = 5 });
+        Assert.That(army.UnappliedReplaces.Select(u => u.Message), Is.EqualTo(new[]
+        {
+            "Assault Brothers: 'Replace one Heavy Pistol and Hand Weapon -> Great Chain-Sword' not applied " +
+            "(needs 1 more Heavy Pistol)",
+        }));
+
+        BuiltArmyFile partial = CompileArmy(AssaultBrothers(),
+            new UpgradeChoice { SectionId = "any", OptionId = "plasma", Count = 7 });
+        Assert.That(partial.UnappliedReplaces.Single().Message,
+            Is.EqualTo("Assault Brothers: 'Replace any Heavy Pistol -> Plasma Pistol' not applied (needs 2 more Heavy Pistol)"));
+        Assert.That(partial.Units.Single().PointCost, Is.EqualTo(175), "the five that landed are charged, the two are not");
+    }
+
+    // A "Replace all" parks only when it found NO target (EveryMatch); if none ever turns up there is no count to
+    // quote, so the line says the unit has none. The mutual pair of StarvedReplace_ThatIsNeverFed... reports both.
+    [Test]
+    public void AReplaceAllWithNothingToReplace_SaysTheUnitHasNone_AndAMutualPairReportsBoth()
+    {
+        var all = new RosterUnit
+        {
+            Id = "u", Name = "U", Quality = 4, Defense = 4, BaseModelCount = 1, MinModels = 1, MaxModels = 1,
+            BasePointCost = 50,
+            Sections =
+            {
+                new UpgradeSection { Id = "a", Variant = UpgradeVariant.Replace, Affects = UpgradeAffects.All,
+                    Targets = { "Sword" }, Options = { new UpgradeOption { Id = "o", Label = "Axe (A1)", Cost = 5, WeaponsGained = { Wpn("Axe") } } } },
+            },
+        };
+        BuiltArmyFile allArmy = CompileArmy(all, new UpgradeChoice { SectionId = "a", OptionId = "o", Count = 1 });
+        Assert.That(allArmy.UnappliedReplaces.Single().Message,
+            Is.EqualTo("U: 'Replace Sword -> Axe' not applied (the unit has no Sword)"),
+            "a bare section label falls back to its targets; the gains come from the weapon names, not the priced label");
+        Assert.That(allArmy.UnappliedReplaces.Single().Shortfall, Is.EqualTo(0));
+
+        var mutual = new RosterUnit
+        {
+            Id = "u", Name = "U", Quality = 4, Defense = 4, BaseModelCount = 1, MinModels = 1, MaxModels = 1,
+            BasePointCost = 50,
+            Sections =
+            {
+                new UpgradeSection { Id = "a", Label = "Replace Sword", Variant = UpgradeVariant.Replace, Affects = UpgradeAffects.One,
+                    Targets = { "Sword" }, Options = { new UpgradeOption { Id = "o", Cost = 5, WeaponsGained = { Wpn("Axe") } } } },
+                new UpgradeSection { Id = "b", Label = "Replace Axe", Variant = UpgradeVariant.Replace, Affects = UpgradeAffects.One,
+                    Targets = { "Axe" }, Options = { new UpgradeOption { Id = "o", Cost = 5, WeaponsGained = { Wpn("Sword") } } } },
+            },
+        };
+        BuiltArmyFile mutualArmy = CompileArmy(mutual,
+            new UpgradeChoice { SectionId = "a", OptionId = "o", Count = 1 },
+            new UpgradeChoice { SectionId = "b", OptionId = "o", Count = 1 });
+        Assert.That(mutualArmy.UnappliedReplaces.Select(u => u.Message), Is.EqualTo(new[]
+        {
+            "U: 'Replace Sword -> Axe' not applied (needs 1 more Sword)",
+            "U: 'Replace Axe -> Sword' not applied (needs 1 more Axe)",
+        }));
+    }
+
+    // The line is a compile-time finding, not file content: a saved Forge army carries no trace of it.
+    [Test]
+    public void UnappliedReplaces_AreNotSerialized()
+    {
+        RosterUnit roster = AssaultBrothers();
+        roster.Weapons.RemoveAll(w => w.Name == "Hand Weapon");
+        BuiltArmyFile army = CompileArmy(roster, new UpgradeChoice { SectionId = "combo", OptionId = "hammer", Count = 1 });
+
+        string json = JsonSerializer.Serialize(army, RuleJson.Options);
+        Assert.That(json, Does.Not.Contain("UnappliedReplaces").IgnoreCase);
+        Assert.That(JsonSerializer.Deserialize<BuiltArmyFile>(json, RuleJson.Options)!.UnappliedReplaces, Is.Empty);
     }
 
     // ── #324 plural matching ───────────────────────────────────────────────────────────────────────────

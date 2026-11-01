@@ -240,21 +240,23 @@ public enum EHookID
 
     /// <summary>
     /// The charging unit completes its move into combat, before any strikes. Trigger
-    /// for Furious, Thrust, Impact bonuses and Counter resolution.
-    /// Context: attacker, defender, who-charged.
+    /// for the charger's Impact dice (Actor), the charged unit's Brace reduction (Subject,
+    /// #422) and Ravage.
+    /// Context: attacker, defender.
     /// </summary>
     Melee_OnChargeContact = 100,
 
     /// <summary>
-    /// The defender has Counter and strikes first. Fires before the normal charging
-    /// strikes resolve.
+    /// Strike order: the defender's Counter (Subject, unless it counts as Fatigued, #422)
+    /// and the charger's Unwieldy (Actor) swap who swings first. Fires after the impact
+    /// hits and before the normal charging strikes resolve.
     /// Context: attacker, defender.
     /// </summary>
     Melee_OnCounterTrigger = 101,
 
     /// <summary>
     /// Wounds have been tallied on both sides, before morale checks. Trigger for
-    /// Fear's "+X wounds dealt for winner-check" effect.
+    /// Fear's "enemies count as having taken +X wounds" winner-check effect (#419).
     /// Context: attacker, defender, wounds-each.
     /// </summary>
     Melee_OnMeleeResolution = 102,
@@ -267,6 +269,16 @@ public enum EHookID
     /// Context: PostMeleeActionContext, once per combatant.
     /// </summary>
     Melee_OnPostMelee = 103,
+
+    /// <summary>
+    /// #423: the defending unit has just taken hits in melee - a swing's hit roll has resolved (every extra-hit
+    /// and per-hit-AP rule folded) or the charge's Impact hits have landed - and no save has been rolled yet.
+    /// Trigger for Parry(X) (Subject, Core Rules v3.6.0: "When this unit takes hits in melee, roll X dice per
+    /// model with this rule in it, up to as many dice as hits taken. For each 6+ one hit is ignored"). Fired by
+    /// ParryHitsStage once per hit group arrival: each weapon profile the attacker swings, and the Impact hits.
+    /// Context: attacker, defender, hits taken.
+    /// </summary>
+    Melee_OnHitsTaken = 104,
 
     /// <summary>
     /// #197 P16: the attacker and its target are both fixed and no dice have been rolled - the last moment

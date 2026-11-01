@@ -61,6 +61,9 @@ namespace FDG.Tests
             Assert.That(successor.Models.Count, Is.EqualTo(10));
             Assert.That(successor.Tokens.HasToken(TokenType.JoinsRoundInProgress), Is.True,
                 "a mid-round creation may activate this round (owner-ruled), the destruction path included");
+            Assert.That(successor.Tokens.HasToken(TokenType.ArrivedFromReserve), Is.True,
+                "#426 (3.6): 'Units placed via Split can't seize or contest objectives on the round they are " +
+                "placed' - the same lockout marker as Ambush and Spawn");
 
             var zone = requester.PlaceRequest!.DeploymentZone as CircularZone;
             Assert.That(zone, Is.Not.Null, "'fully within 6\" of it' - centred on the corpse");

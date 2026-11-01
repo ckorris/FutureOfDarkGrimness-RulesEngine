@@ -28,7 +28,7 @@ namespace FDG.Stages
             // Non-consuming query (BuildTargetListStage's own evaluation drives the actual rule), so
             // reading it here for both the shooter filter and the target side is safe.
             bool ignoresLineOfSight = !metaData.IsMelee && SightRuleQueries.IgnoresTerrain(
-                metaData.AttackingUnit.GetValue(), metaData.WeaponType, evaluator);
+                metaData.AttackingUnit.GetValue(), metaData.WeaponType, evaluator, metaData.AttackerMoved);
 
             List<Position> from = metaData.IsMelee
                 ? MeleeFiringModels(metaData.AttackingUnit, metaData.DefendingUnit, metaData.WeaponType)
@@ -133,7 +133,7 @@ namespace FDG.Stages
 
         /// <summary>
         /// #276 melee strikers: the carriers of <paramref name="weaponType"/> that are in melee range of
-        /// some living defender model — the same 2"/4" cylinder that gated the swing pool (#017), so a
+        /// some living defender model — the same 3"/4" cylinder that gated the swing pool (#017), so a
         /// carrier standing off from the scrum doesn't animate a swing. Same empty-filter fallback as the
         /// ranged side.
         /// </summary>

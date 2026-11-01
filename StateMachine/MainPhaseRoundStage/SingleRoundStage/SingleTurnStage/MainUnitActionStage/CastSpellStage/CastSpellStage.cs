@@ -55,6 +55,9 @@ namespace FDG.Stages
 
         private const int CAST_SUCCESS_THRESHOLD = 4;
 
+        /// <summary>#442: the base casting roll, for estimators that price the cast the way this stage rolls it.</summary>
+        public const int CastSuccessThreshold = CAST_SUCCESS_THRESHOLD;
+
         // #103 assist text-beat colors - match the GUI highlight: blue for a friendly boost (+), orange for
         // an enemy disruption (-).
         private static readonly TextColor AssistBannerColor = new TextColor(77, 153, 255, 255);
@@ -85,8 +88,8 @@ namespace FDG.Stages
             IUnit caster = context.ActivatingUnit.GetValue();
             PlayerID player = context.ActivatingPlayer();
 
-            // #234 — mirror of ChooseActionStage.GetCanCast's HasAttacked gate: Caster(X) is "at any point
-            // before attacking" (GF v3.5.1). ChooseActionStage won't offer Cast once the unit has attacked,
+            // #234 — mirror of ChooseActionStage.GetCanCast's HasAttacked gate: Caster(X) is "Once per activation,
+            // before attacking" (Core Rules v3.6.0). ChooseActionStage won't offer Cast once the unit has attacked,
             // but this stage is reachable directly, so the rule is enforced here too rather than trusted
             // to the menu.
             if (context.HasAttacked)
@@ -195,7 +198,7 @@ namespace FDG.Stages
             //    Casters add +1 each, enemy Casters subtract 1 each. Their tokens are spent regardless of the
             //    cast's outcome (like the cast cost above). Boost + assists shift the success threshold.
             CastAssistResult assistResult = await CollectCastAssist(context.ActivatingUnit, player, chosen.Name,
-                SpellText.Describe(chosen.Definition));
+                SpellText.Describe(chosen.Definition), DrainReservation(chosen.Effect, targets));
             int assist = assistResult.Net;
 
             // #197 P6 — granted cast-roll modifiers (Casting Debuff / Casting Buff): a signed delta the
@@ -204,7 +207,12 @@ namespace FDG.Stages
             // removed by ConsumeNet, duration grants are left for the token sweep. Read after the cost has
             // been spent so a browsed-and-cancelled spell never burns the debuff.
             int granted = GrantedRollModifiers.ConsumeNet(caster, ERollKind.Cast);
-            int netModifier = boost + assist + granted + castOrigin.RollBonus;
+
+            // #427 - the caster's own passive casting modifiers (Core Rules v3.6.0 Spell Amplifier: "Gets +1 to
+            // casting rolls"): rules at Casting_OnSpellCastAttempt, evaluated live so each narrates itself in the
+            // game log. #429's other "+1 to casting rolls" rules add to this same fold - author them at that hook.
+            int rules = CastRollRules.Net(caster, GameContext.RuleEvaluator, live: true);
+            int netModifier = boost + assist + granted + castOrigin.RollBonus + rules;
 
             // #274 — the caster's own models, reused by every spell visual below.
             List<Position> casterPositions = AttackBeatPositions.AlivePlaced(context.ActivatingUnit);
@@ -232,7 +240,7 @@ namespace FDG.Stages
             // the base 4+ was shifted. Assisters' own contributions were announced as they spent. The result
             // rides an on-screen text beat: blue on success, red on failure. ASCII only (the log font has no
             // em-dash glyph, #151).
-            string breakdown = BuildRollBreakdown(boost, assist, granted, castOrigin.RollBonus);
+            string breakdown = BuildRollBreakdown(boost, assist, granted, castOrigin.RollBonus, rules);
             string tokensSpent = boost > 0
                 ? $"spent {chosen.Threshold + boost} tokens ({chosen.Threshold} cost + {boost} boost)"
                 : $"spent {chosen.Threshold} token{(chosen.Threshold == 1 ? "" : "s")}";
@@ -260,7 +268,10 @@ namespace FDG.Stages
             if (chosen.Effect is Effect.DealHits dealHits)
             {
                 // Synthetic spell weapon: the spell's AP + its pre-resolved weapon rules (shared across targets).
-                Weapon spellWeapon = new Weapon(chosen.Name, rangeInches: 0f, attacks: 0,
+                // #439 (#431 hand-off, OWNER REVIEW D entry): its range is the spell's range, so OPR 3.6's "when
+                // attacking units over half of this weapon's range away" (Smash, Pierce) reads the spell's reach -
+                // a range-0 weapon made that facet unreachable on the seventeen 3.6 spells that name them.
+                Weapon spellWeapon = new Weapon(chosen.Name, rangeInches: chosen.Target.RangeInches, attacks: 0,
                     armorPenetration: dealHits.ArmorPenetration);
                 foreach (ResolvedRule rule in chosen.WeaponRules)
                 {
@@ -378,7 +389,8 @@ namespace FDG.Stages
             return _pendingRun;
         }
 
-        // #034 #5 — each target takes a morale test (its morale Quality, rule-aware via MoraleUtilities);
+        // #034 #5 — each target takes a morale test (its morale Quality - #421: the best of its own, its joined
+        // hero's and a nearby Tough(9)+ Hero's, MoraleUtilities.ResolveMoraleQuality - rule-aware via MoraleUtilities);
         // the spell's on-fail effect is applied only to targets that fail. Deep Hypnosis (move on fail) and
         // Terrifying Fury (fatigue on fail) share this shape.
         private async Task ResolveConditionalSpell(IUnit caster, RuntimeSpell spell,
@@ -393,7 +405,7 @@ namespace FDG.Stages
             {
                 UnitData targetUnit = target.GetValue();
                 MoraleUtilities.MoraleTestOutcome outcome = await MoraleUtilities.TakeMoraleTest(
-                    GameContext, targetUnit, HeroStatRules.GetMoraleQuality(targetUnit));
+                    GameContext, targetUnit, MoraleUtilities.ResolveMoraleQuality(GameContext, targetUnit));
 
                 if (outcome.Passed)
                 {
@@ -454,6 +466,10 @@ namespace FDG.Stages
         // legal target) and, when it can't, the reason shown on the disabled row.
         internal readonly record struct SpellOffer(RuntimeSpell Spell, bool Castable, string? Reason);
 
+        /// <summary>#429 - the disabled-row reason for a line-of-sight spell whose in-range targets are all out of
+        /// sight. Public so the front ends' tests can name it rather than copy the words.</summary>
+        public const string NoTargetInSightReason = "no target in line of sight";
+
         // Every army spell in stable order, each marked castable or carrying its unavailability reason.
         // Affordability is checked before targets so the cheaper check names the blocking condition first.
         // #249: already-tried spells are checked first — that one is permanent for the activation, so it
@@ -486,7 +502,13 @@ namespace FDG.Stages
                 {
                     // From ANY origin: a spell the caster cannot reach itself is still castable through a
                     // relay that can, so gating on the caster's own reach would hide it from the picker.
-                    offer.Add(new SpellOffer(spell, false, "no valid target"));
+                    // #429: a spell that demands line of sight (3.6: its own "in line of sight" clause) and has
+                    // targets in range that are all out of sight says so - the player can fix that by moving.
+                    bool onlyOutOfSight = spell.Target.RequireLineOfSight
+                        && SpellTargeting.HasAnyEligibleTargetFromAny(GameContext, caster, player,
+                            spell.Target with { RequireLineOfSight = false }, origins);
+                    offer.Add(new SpellOffer(spell, false,
+                        onlyOutOfSight ? NoTargetInSightReason : "no valid target"));
                 }
                 else
                 {
@@ -504,7 +526,8 @@ namespace FDG.Stages
         {
             List<ChooseSpellRequest.SpellOption> options = offer
                 .Select(o => new ChooseSpellRequest.SpellOption(SpellOptionLabel(o.Spell),
-                    SpellText.Describe(o.Spell.Definition), o.Spell.Threshold, o.Castable, o.Reason))
+                    SpellText.Describe(o.Spell.Definition), o.Spell.Threshold, o.Castable, o.Reason,
+                    o.Spell.Target.RequireLineOfSight))
                 .ToList();
 
             // How much the roll could still be hindered after the caster commits — enemy Casters in assist
@@ -526,8 +549,20 @@ namespace FDG.Stages
                 .Select(origin => new ChooseSpellRequest.RelayOption(origin.Unit.Name, origin.RollBonus))
                 .ToList();
 
+            // #427/#429 - the picker's "roll needed" and the boost cap start from the caster's OWN threshold: the
+            // base 4+ less every modifier the caster itself carries into the roll - its passive rules (Spell
+            // Amplifier) and its granted cast tokens (a Casting Buff/Debuff spell). Both read-only (live: false,
+            // PeekNet) - the roll folds them again, live, after the cost is spent, through the same sum and clamp.
+            // What is NOT in here depends on choices still to come: the self-boost (this picker), the relay bonus
+            // (which target is picked) and boosters/hinderers (asked after the caster commits).
+            IUnit casterUnit = casterBinding.GetValue();
+            int passive = CastRollRules.Net(casterUnit, GameContext.RuleEvaluator, live: false);
+            int grantedPeek = GrantedRollModifiers.PeekNet(casterUnit, ERollKind.Cast);
+            int ownThreshold = DiceUtilities.ClampSuccessRollNeeded(CAST_SUCCESS_THRESHOLD - passive - grantedPeek);
+            string ownBreakdown = DescribeRollParts(boost: 0, assist: 0, grantedPeek, relay: 0, passive);
+
             ChooseSpellRequest request = new ChooseSpellRequest(player, casterBinding, tokens,
-                CAST_SUCCESS_THRESHOLD, hinderTokens, options, relays);
+                ownThreshold, hinderTokens, options, relays, ownBreakdown);
 
             ChooseSpellReply reply = await GameContext.PlayerRequester
                 .RequestDecision<ChooseSpellRequest, ChooseSpellReply>(request);
@@ -543,19 +578,30 @@ namespace FDG.Stages
             return (spell, boost);
         }
 
-        // "(base 4+, relay +1, self +1, assists -2, granted -1)" — only the parts that apply; empty when the
-        // roll is unmodified. "granted" is the #197 P6 token delta (Casting Debuff / Casting Buff); "relay"
+        // "(base 4+, rules +1, relay +1, self +1, assists -2, granted -1)" — only the parts that apply; empty when
+        // the roll is unmodified. "granted" is the #197 P6 token delta (Casting Debuff / Casting Buff); "relay"
         // is the #197 P23 Spell Conduit bonus, listed first because it is the one the player did not ask
-        // for by name.
-        private static string BuildRollBreakdown(int boost, int assist, int granted, int relay)
+        // for by name; "rules" (#427) is the caster's own passive modifier (Spell Amplifier), also unasked.
+        // #429: every cast-roll modifier the engine knows is one of these five terms, summed once into
+        // netModifier and clamped once (DiceUtilities.ClampSuccessRollNeeded) - there is no second fold.
+        private static string BuildRollBreakdown(int boost, int assist, int granted, int relay, int rules = 0)
         {
-            if (boost == 0 && assist == 0 && granted == 0 && relay == 0) return "";
+            string parts = DescribeRollParts(boost, assist, granted, relay, rules);
+            return parts.Length == 0 ? "" : $" ({parts})";
+        }
+
+        // The breakdown's inner text, "base 4+, rules +1, granted -1", or "" when nothing modifies the roll. Shared by
+        // the cast banner and the picker's ChooseSpellRequest.BaseThresholdNote (#429), so both read the same words.
+        private static string DescribeRollParts(int boost, int assist, int granted, int relay, int rules)
+        {
+            if (boost == 0 && assist == 0 && granted == 0 && relay == 0 && rules == 0) return "";
             List<string> parts = new List<string> { $"base {CAST_SUCCESS_THRESHOLD}+" };
+            if (rules != 0) parts.Add($"rules {(rules > 0 ? "+" : "")}{rules}");
             if (relay != 0) parts.Add($"relay +{relay}");
             if (boost != 0) parts.Add($"self +{boost}");
             if (assist != 0) parts.Add($"assists {(assist > 0 ? "+" : "")}{assist}");
             if (granted != 0) parts.Add($"granted {(granted > 0 ? "+" : "")}{granted}");
-            return $" ({string.Join(", ", parts)})";
+            return string.Join(", ", parts);
         }
 
         private async Task<IReadOnlyList<DataBinding<UnitData>>> PickTargets(PlayerID player, RuntimeSpell spell,
@@ -651,7 +697,8 @@ namespace FDG.Stages
         // whether or not the cast then succeeds, matching the cast cost. Returns a zero net when no one
         // assists, so a game with no nearby Casters sees no prompts and no behaviour change.
         private async Task<CastAssistResult> CollectCastAssist(DataBinding<UnitData> casterBinding,
-            PlayerID casterPlayer, string spellName, string spellDescription)
+            PlayerID casterPlayer, string spellName, string spellDescription,
+            Func<IUnit, int>? reservedOwnTokens = null)
         {
             string casterName = casterBinding.GetValue().Name;
             int net = 0;
@@ -664,8 +711,10 @@ namespace FDG.Stages
 
                 // Re-read per assister rather than reusing FindEligibleAssisters' snapshot: an earlier
                 // assister this round may have drained the accumulator they share.
+                // #439: a drain spell's target may not hinder with the tokens it is about to lose.
+                int reserved = reservedOwnTokens?.Invoke(assister) ?? 0;
                 int available = SpellPurse.Available(GameContext.TableState, GameContext.RuleEvaluator,
-                    assister);
+                    assister) - reserved;
                 if (available <= 0) continue;
 
                 int spent = await AskAssistCount(unitBinding, casterBinding, friendly, available, spellName,
@@ -673,7 +722,7 @@ namespace FDG.Stages
                 if (spent <= 0) continue;
 
                 IReadOnlyList<SpellPurse.Loan> loans = SpellPurse.Spend(GameContext.TableState,
-                    GameContext.RuleEvaluator, assister, spent);
+                    GameContext.RuleEvaluator, assister, spent, reserveOwn: reserved);
                 net += friendly ? spent : -spent;
 
                 // #274 — record the spender for the batched visual played just before the roll.
@@ -707,10 +756,33 @@ namespace FDG.Stages
             return new CastAssistResult(net, boostTokens, hinderTokens, boostSources, hinderSources);
         }
 
+        /// <summary>
+        /// #439 - OPR 3.6 Shifting Form / Burn the Heretic / Aether-Cloud Rune: "which loses 2 spell tokens. Note that
+        /// the target may not spend those spell tokens to prevent this effect." The cast-assist window is where a
+        /// target could spend them (hindering the roll), so each picked target keeps back as many of its OWN tokens
+        /// as the spell would take (lent pools are not its tokens and stay spendable). Null for every other spell.
+        /// Internal for the tests.
+        /// </summary>
+        internal static Func<IUnit, int>? DrainReservation(Effect effect,
+            IReadOnlyList<DataBinding<UnitData>> targets)
+        {
+            if (effect is not Effect.ConsumeToken { TType: var type, Count: > 0 } drain
+                || type != TokenType.SpellTokens)
+            {
+                return null;
+            }
+
+            return unit => targets.Any(t => ReferenceEquals(t.GetValue(), unit))
+                ? Math.Min(drain.Count, unit.Tokens.GetTokenCount(TokenType.SpellTokens))
+                : 0;
+        }
+
         // Living, on-battlefield Caster units (other than the caster) that hold at least one spell token and
         // whose unit is within CASTER_ASSIST_RANGE_INCHES (base-to-base, 3D) of the casting unit. Friendly
         // Casters (same team, or same player when no team is registered — mirroring SpellTargeting) come
         // first, then enemy Casters, each group in store order for a deterministic prompt sequence.
+        // #429: range ONLY, never line of sight - Core Rules v3.6.0 "Models within 18\" of the Caster may spend any
+        // number of spell tokens at the same time before rolling" (pinned by Cast36_ABoosterBehindAWall_*).
         private List<(DataBinding<UnitData> unit, bool friendly)> FindEligibleAssisters(
             DataBinding<UnitData> casterBinding, PlayerID casterPlayer)
         {

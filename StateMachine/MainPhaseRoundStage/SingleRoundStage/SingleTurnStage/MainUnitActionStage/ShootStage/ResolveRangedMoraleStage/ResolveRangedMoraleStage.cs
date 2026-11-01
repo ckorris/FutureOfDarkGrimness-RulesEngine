@@ -1,4 +1,5 @@
 using FDG.Data;
+using FDG.Rules.Dispatch;
 using FDG.Utilities;
 
 namespace FDG.Stages
@@ -35,7 +36,7 @@ namespace FDG.Stages
 
         // A unit left at half strength or less by wounds from shooting must take a morale test; a failed
         // test makes it Shaken (a non-melee morale failure never Routs — Rout is a melee-only result,
-        // GF v3.5.1). The test fires whenever the shoot action wounded the unit and it now sits at half
+        // GF Core Rules v3.6.0, as in v3.5.1). The test fires whenever the shoot action wounded the unit and it now sits at half
         // or less — a unit already below half tests again every activation it takes wounds (#254). The
         // baseline is its wound count when this attacker first targeted it, so a unit shot by three
         // weapons tests at most once, and a targeted-but-unwounded unit doesn't test.
@@ -43,8 +44,16 @@ namespace FDG.Stages
         {
             DataBinding<UnitData> defenderBinding = attacked.Defender;
 
+            // #431 Scourge: wounds the defender only COUNTS as having taken this action ("... if shooting wounds
+            // would trigger Morale Tests") join the check, and are used up by it.
+            float counted = CountedWounds.Take(defenderBinding.GetValue());
+            if (counted > 0f)
+                GameContext.Log($"{defenderBinding.Name()} counts as having taken {counted:0.##} extra wound(s) for morale.");
+
+            // #432: the distance this defender was shot from rides along for the 3.6 "shot from over 9\"" morale
+            // rules (Hive Bond, Hold the Line, Valiant).
             bool? result = await MoraleUtilities.ResolveWoundDrivenMorale(
-                GameContext, defenderBinding, attacked.RemainingWoundsAtStart);
+                GameContext, defenderBinding, attacked.RemainingWoundsAtStart, counted, attacked.ShotFromInches);
 
             if (result == true)
             {
@@ -55,7 +64,7 @@ namespace FDG.Stages
                 GameContext.Log($"{defenderBinding.Name()} is at half strength or less, failed its morale test, and is now Shaken.");
             }
             else if (MoraleUtilities.DescribeSkippedWoundDrivenMorale(
-                         attacked.RemainingWoundsAtStart, defenderBinding.GetValue()) is string reason)
+                         attacked.RemainingWoundsAtStart, defenderBinding.GetValue(), counted) is string reason)
             {
                 GameContext.Log(reason);
             }

@@ -138,12 +138,12 @@ namespace FDG.Stages
                 // the pass where declining it would mean anything.
                 if (gatedByDeadly) continue;
 
-                // #318: and ONLY for a once-per-game weapon. The melee rule is "models within 2" horizontally
-                // and 4" vertically of enemies must strike with all melee weapons" - there is no general
-                // opting out of a swing. Limited's "may only be used once per game" is the one clause that
-                // implies a choice about WHETHER to use it (otherwise the first melee of the game would
-                // always spend it, and "once per game" would mean "in your first fight"), so the exception
-                // is scoped to exactly the weapons that carry it.
+                // #318: and ONLY for a once-per-game weapon. The melee rule is "Models within 3" of enemies
+                // must strike with all melee weapons" (v3.6.0; the 4" vertical reach is our #022 convention) -
+                // there is no general opting out of a swing. Limited's "may only be used once per game" is the
+                // one clause that implies a choice about WHETHER to use it (otherwise the first melee of the
+                // game would always spend it, and "once per game" would mean "in your first fight"), so the
+                // exception is scoped to exactly the weapons that carry it.
                 if (LimitedRules.LimitedRuleName(kvp.Key) == null) continue;
 
                 string holdBackLabel = HOLD_BACK_PREFIX + label;
@@ -207,7 +207,7 @@ namespace FDG.Stages
                 BuildRuleDescriptions(validOptions),
                 secondaryActions: secondaryActions.Count > 0 ? secondaryActions : null,
                 displayName: "Choosing a Melee Weapon",
-                optionRules: BuildOptionRules(weaponByLabel));
+                optionRules: BuildOptionRules(weaponByLabel, GameContext.RuleEvaluator.RuleResolver));
 
             string chosenWeaponStatsName = await GameContext.PlayerRequester
                 .RequestDecision<StringSelectionRequest, string>(request);
@@ -309,7 +309,9 @@ namespace FDG.Stages
         /// </summary>
         private static string BuildUniqueLabel(Weapon weapon, int count, HashSet<string> usedLabels)
         {
-            string label = weapon.GetWeaponNameAndStats(count);
+            // #424: the MELEE line - an Assault pistol is swung here, so its 12" is not part of this pick (the
+            // shoot panel prints it). Its attacks, AP and rules are the same weapon's, and so is the object.
+            string label = weapon.GetWeaponNameAndStats(count, includeRange: false);
             if (usedLabels.Add(label)) return label;
 
             for (int suffix = 2; ; suffix++)
@@ -363,7 +365,7 @@ namespace FDG.Stages
         /// Returns null when no option has a rule at all.</para>
         /// </summary>
         private static Dictionary<string, List<StringSelectionRequest.OptionRule>>? BuildOptionRules(
-            Dictionary<string, Weapon> weaponByLabel)
+            Dictionary<string, Weapon> weaponByLabel, IRuleResolver? resolver)
         {
             Dictionary<string, List<StringSelectionRequest.OptionRule>> optionRules =
                 new Dictionary<string, List<StringSelectionRequest.OptionRule>>(StringComparer.Ordinal);
@@ -379,7 +381,7 @@ namespace FDG.Stages
                 {
                     string? description = string.IsNullOrWhiteSpace(rule.Definition.Description)
                         ? null
-                        : rule.Definition.Description;
+                        : EnhancedRuleGate.HoverDescription(rule.Definition, resolver);   // #441 F7
                     rules.Add(new StringSelectionRequest.OptionRule(rule.RequestedName, description));
                 }
 

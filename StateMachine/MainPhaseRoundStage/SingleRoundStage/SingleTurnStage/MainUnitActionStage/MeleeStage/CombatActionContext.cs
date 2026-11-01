@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using FDG.Data;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Foundation;
+using FDG.Utilities;
 
 namespace FDG.Stages
 {
@@ -14,10 +15,19 @@ namespace FDG.Stages
         public DataBinding<UnitData> Defender { get; }
         public float RemainingWoundsAtStart { get; }
 
-        public AttackedDefender(DataBinding<UnitData> defender, float remainingWoundsAtStart)
+        /// <summary>
+        /// #432: how far away the shooter was when it first targeted this defender (closest living models, base
+        /// to base) - the "shot from over 9\" away" the 3.6 morale rules (Hive Bond, Hold the Line, Valiant) read
+        /// when the shooting triggers a morale test. Null for a defender registered by a non-shooting action.
+        /// </summary>
+        public float? ShotFromInches { get; }
+
+        public AttackedDefender(DataBinding<UnitData> defender, float remainingWoundsAtStart,
+            float? shotFromInches = null)
         {
             Defender = defender;
             RemainingWoundsAtStart = remainingWoundsAtStart;
+            ShotFromInches = shotFromInches;
         }
     }
 
@@ -57,6 +67,14 @@ namespace FDG.Stages
 
         /// <summary>Record that the defender struck back this melee. Idempotent.</summary>
         public void RegisterDefenderStruckBack();
+
+        /// <summary>
+        /// #423 B1: the defender's Parry dice pool for THIS attack - sized by ParryHitsStage when the attack's first
+        /// hits land and spent across every weapon profile the attacker swings. A strike-back is a new context (a
+        /// new attack, a fresh pool); a Counter role swap resets it because the parrying side changes. Handed to each
+        /// melee swing's <see cref="ICombatMetadata.ParryBudget"/> by <see cref="ConsumeAttackIntoContext"/>.
+        /// </summary>
+        public ParryBudget ParryBudget { get; }
 
         /// <summary>
         /// #381/#391: the units the <c>PostCombatMoveGate</c> just repositioned (Harassing family) this
@@ -177,6 +195,23 @@ namespace FDG.Stages
         public float DefenderRemainingWoundsAtStart { get; }
 
         /// <summary>
+        /// #419: the wounds the attacker had already taken THIS ACTIVATION when this melee context snapshotted
+        /// it (with <see cref="AttackerRemainingWoundsAtStart"/>) - read off the activation's wound ledger
+        /// (<see cref="Rules.Dispatch.WoundsTakenThisActivation"/>). Core Rules v3.6.0's melee result compares
+        /// "the number of wounds each unit took during this activation", so a charger that lost a model to a
+        /// Dangerous Terrain test on its charge move carries it into the comparison. 0 for a ranged action.
+        /// Swaps with the roles (<see cref="SwapCombatRoles"/>), like the remaining-wounds snapshots.
+        /// </summary>
+        public float AttackerWoundsTakenBeforeMelee { get; }
+
+        /// <summary>
+        /// #419: as <see cref="AttackerWoundsTakenBeforeMelee"/>, for the defender, snapshotted when it is set
+        /// (<see cref="SetDefender"/>, before any Impact hit) - a Breath Attack or spell that struck it earlier in
+        /// the activation counts toward the wounds it took.
+        /// </summary>
+        public float DefenderWoundsTakenBeforeMelee { get; }
+
+        /// <summary>
         /// Per-model remaining wounds captured at the start of the melee (both units), keyed by model
         /// reference. Empty for a ranged action. Lets a post-melee reflect rule (#197 P11 Retaliate /
         /// Deathstrike) measure exactly how many wounds each rule-bearing MODEL took, and which were killed,
@@ -207,9 +242,19 @@ namespace FDG.Stages
 
         /// <summary>
         /// Add a defender to <see cref="AttackedDefenderRefs"/> and <see cref="AttackedDefenders"/>. Safe to
-        /// call multiple times with the same defender; only the first call snapshots its wounds.
+        /// call multiple times with the same defender; only the first call snapshots its wounds (and, for a
+        /// shooting action, the distance it was shot from - #432).
         /// </summary>
         public void RegisterAttackedDefender(DataBinding<UnitData> defender);
+
+        /// <summary>
+        /// #432: the charge distance <paramref name="unit"/> was charged from in this melee - the pre-charge gap
+        /// (closest models, base to base) snapshotted at the charger's activation start - or null when
+        /// <paramref name="unit"/> was not the charged unit (it IS the charger, the action is not a charge, or the
+        /// snapshot has no entry for it). Read by <c>RollForMoraleStage</c> so the melee loser's morale rules can
+        /// tell "charged from over 6\" away" (Hive Bond, Hold the Line, Valiant).
+        /// </summary>
+        public float? ChargedFromInchesFor(IUnit unit);
 
         /// <summary>
         /// Swaps the attacker and defender roles for the rest of this melee (Counter: the charged unit
@@ -248,6 +293,8 @@ namespace FDG.Stages
 
         public void RegisterDefenderStruckBack() => DefenderStruckBack = true;
 
+        public ParryBudget ParryBudget { get; } = new ParryBudget();
+
         // #381/#391: see the interface doc. Plain mutable hand-off between the Post*Stages and
         // RetreatingStrikePostCombatStage; never survives past the action.
         public List<DataBinding<UnitData>> PostCombatMovers { get; } = new();
@@ -269,6 +316,10 @@ namespace FDG.Stages
         public float AttackerRemainingWoundsAtStart { get; private set; }
 
         public float DefenderRemainingWoundsAtStart { get; private set; }
+
+        public float AttackerWoundsTakenBeforeMelee { get; private set; }
+
+        public float DefenderWoundsTakenBeforeMelee { get; private set; }
 
         public IReadOnlyDictionary<DataReference, float> ModelRemainingWoundsAtStart => _modelRemainingWoundsAtStart;
         private readonly Dictionary<DataReference, float> _modelRemainingWoundsAtStart = new();
@@ -338,7 +389,25 @@ namespace FDG.Stages
             // Snapshot on first sight only. A later weapon aimed at the same unit must not re-baseline its
             // wounds, or the wounds-taken check would be measured against damage we already dealt.
             if (_attackedDefenderRefs.Add(defender.Reference))
-                _attackedDefenders.Add(new AttackedDefender(defender, defender.GetValue().RemainingWounds));
+            {
+                // #432: the shooting distance the ranged morale test's "shot from over 9\"" rules read, taken
+                // before any of this action's shots land (the same closest-models, base-to-base measurement the
+                // hit stages use for the attack itself).
+                float? shotFrom = _isMelee
+                    ? null
+                    : UnitCompareUtilities.MinDistanceBetweenUnits(AttackingUnit.GetValue(), defender.GetValue(),
+                        out _, out _, includeVertical: true);
+                _attackedDefenders.Add(new AttackedDefender(defender, defender.GetValue().RemainingWounds,
+                    shotFrom));
+            }
+        }
+
+        public float? ChargedFromInchesFor(IUnit unit)
+        {
+            if (ChargingUnit == null || _activationContext == null || unit == null) return null;
+            if (unit.ID == ChargingUnit.GetValue().ID) return null;
+
+            return _activationContext.TryGetActivationStartDistanceTo(unit.ID, out float distance) ? distance : null;
         }
 
         private QueryableResults _queryableResults = new QueryableResults();
@@ -397,8 +466,14 @@ namespace FDG.Stages
             }
 
             AttackerRemainingWoundsAtStart = attackingUnit.GetValue().RemainingWounds;
+            AttackerWoundsTakenBeforeMelee = WoundsTakenBeforeMelee(attackingUnit);
             SnapshotModelWounds(attackingUnit);
         }
+
+        // #419: the activation's wound ledger at the moment the melee snapshots this unit. Melee only - the melee
+        // result is its one reader.
+        private float WoundsTakenBeforeMelee(DataBinding<UnitData> unit) =>
+            _isMelee ? WoundsTakenThisActivation.Peek(unit.GetValue()) : 0f;
 
         public void AddResult<TResult>(TResult result)
         {
@@ -508,6 +583,7 @@ namespace FDG.Stages
         {
             DefendingUnit = defendingUnit;
             DefenderRemainingWoundsAtStart = DefendingUnit.GetValue().RemainingWounds;
+            DefenderWoundsTakenBeforeMelee = WoundsTakenBeforeMelee(defendingUnit);
             SnapshotModelWounds(defendingUnit);
         }
 
@@ -528,12 +604,17 @@ namespace FDG.Stages
             (AttackingUnit, DefendingUnit) = (DefendingUnit, AttackingUnit);
             (AttackerRemainingWoundsAtStart, DefenderRemainingWoundsAtStart) =
                 (DefenderRemainingWoundsAtStart, AttackerRemainingWoundsAtStart);
+            (AttackerWoundsTakenBeforeMelee, DefenderWoundsTakenBeforeMelee) =
+                (DefenderWoundsTakenBeforeMelee, AttackerWoundsTakenBeforeMelee);
 
             // The new attacker (the Counter unit) is striking back into the charge, not charging.
             _isCharging = false;
 
             // The former defender is now the attacker; its own Unpredictable rule (if any) must roll fresh.
             _unpredictableBranch = null;
+
+            // #423 B1: the roles flipped, so the unit taking hits - and its Parry pool - is a different one.
+            ParryBudget.Reset();
 
             // The in-range sets swap with the roles: the former defenders are now the attackers (#017).
             (InRangeAttackingModels, InRangeDefendingModels) = (InRangeDefendingModels, InRangeAttackingModels);
@@ -568,7 +649,9 @@ namespace FDG.Stages
                 DefendingUnit, weapon, count, _attackerMoved, _isMelee, _isCharging,
                 chargeOriginDistanceInches: ChargeOriginDistanceAgainstDefender(),
                 unpredictableBranch: ResolveUnpredictableBranch(),
-                burstShotIndex: burstIndex);
+                burstShotIndex: burstIndex,
+                // #423 B1: every melee swing of this attack draws on the one Parry pool; shooting never reads it.
+                parryBudget: _isMelee ? ParryBudget : null);
         }
 
         // #197 (P15): roll the Unpredictable die once per attack action, then reuse it for every weapon of

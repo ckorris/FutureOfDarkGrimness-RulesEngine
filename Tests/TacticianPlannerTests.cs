@@ -211,7 +211,7 @@ namespace FDG.Tests
         public void Approach_StagesOutsideTheEnemyThreatLine_InsteadOfWalkingIntoIt()
         {
             // A5-6 (Chris): charging beats being charged. Approaching brawlers must stop OUTSIDE
-            // the enemy's charge budget + 2" melee cylinder, staged to charge next activation.
+            // the enemy's charge budget + 3" melee cylinder, staged to charge next activation.
             var brawlers = MakeUnit(_us, 5, Blade(attacks: 3), atX: 14f, atZ: 24f);
             var chaff = MakeUnit(_them, 4, Blade(attacks: 1), atX: 44f, atZ: 24f); // 30" out
             _planner.BeginActivation(brawlers);
@@ -668,6 +668,140 @@ namespace FDG.Tests
 
         private static Weapon Rifle() => new Weapon("Rifle", rangeInches: 24f, attacks: 1, armorPenetration: 0);
         private static Weapon Blade(int attacks = 2) => new Weapon("Blade", 0f, attacks, 0);
+
+        // #442 (#432's charge arms): the planner prices its charge with the engine's launch distance - the
+        // activation-start gap - so a Ferocious unit's extra hit is worth something charging from 7" and nothing from 5".
+        [TestCase(7f, true)]
+        [TestCase(5f, false)]
+        public void ChargeCandidate_PricesTheChargeArm_FromTheActivationStartGap(float gap, bool arms)
+        {
+            float ferocious = ChargeCandidateScore(gap, ferocious: true);
+            float plain = ChargeCandidateScore(gap, ferocious: false);
+
+            if (arms) Assert.That(ferocious, Is.GreaterThan(plain + 0.001f), "a charge from over 6\" earns the extra hit");
+            else Assert.That(ferocious, Is.EqualTo(plain).Within(0.0001f), "inside 6\" the arm adds nothing");
+        }
+
+        // #442 (#425): an ENEMY that may not charge (Cumbersome: "may only use Hold or Advance actions") is no melee
+        // threat to a candidate endpoint inside its charge reach - its swords cost the Hold candidate nothing.
+        [Test]
+        public void CumbersomeEnemy_IsNoChargeThreat()
+        {
+            float cumbersome = HoldScoreNextToBrutes(cumbersome: true);
+            float plain = HoldScoreNextToBrutes(cumbersome: false);
+
+            Assert.That(cumbersome, Is.GreaterThan(plain + 0.001f),
+                $"the Cumbersome brutes cannot charge, so standing 8\" from them is cheaper (cumbersome={cumbersome:F4}, plain={plain:F4})");
+        }
+
+        // #442 (#446): standing in Dangerous terrain owes the "activates in it" test (one die per wound to destroy the
+        // unit, each 1 a wound) next activation - a Hold in lava scores lower than the same Hold on open ground, and a
+        // Flying unit, which ignores the test, pays nothing.
+        [TestCase(false, true)]
+        [TestCase(true, false)]
+        public void HoldInDangerousTerrain_PaysTheNextActivationsTest(bool flying, bool expectPenalty)
+        {
+            float lava = HoldScoreOn(ETerrainType.Dangerous, flying);
+            float open = HoldScoreOn(ETerrainType.None, flying);
+
+            if (expectPenalty)
+                Assert.That(lava, Is.LessThan(open - 0.001f), $"lava={lava:F4} open={open:F4}");
+            else
+                Assert.That(lava, Is.EqualTo(open).Within(0.0001f), "Flying ignores Dangerous terrain");
+        }
+
+        private static float HoldScoreOn(ETerrainType type, bool flying)
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var tableState = new TableState(store);
+            var us = new PlayerID(Guid.NewGuid());
+            var them = new PlayerID(Guid.NewGuid());
+            var models = new List<DataBinding<ModelData>>();
+            for (int i = 0; i < 4; i++)
+                models.Add(store.GetDataBinding<ModelData>(store.Create(new ModelData(0.5f,
+                    new List<Weapon> { Rifle() }, new Position(20f, 24f + i * 1.1f), store))));
+            var unit = store.GetDataBinding<UnitData>(store.Create(new UnitData(us, "Squad", 4, 4, modelBindings: models)));
+            store.Create(new ArmyData(us, new List<DataBinding<UnitData>> { unit }));
+            if (flying)
+                unit.GetValue().AttachRuleDefinition(new Rules.Dispatch.ResolvedRule("Flying",
+                    Rules.Dispatch.CoreRuleCatalog.Flying));
+            var foes = new List<DataBinding<ModelData>> { store.GetDataBinding<ModelData>(store.Create(
+                new ModelData(0.5f, new List<Weapon> { Rifle() }, new Position(40f, 25f), store))) };
+            var foe = store.GetDataBinding<UnitData>(store.Create(new UnitData(them, "Foe", 4, 4, modelBindings: foes)));
+            store.Create(new ArmyData(them, new List<DataBinding<UnitData>> { foe }));
+            store.Create(new TerrainData(type, new RectangularZone(18f, 22f, 22f, 30f)));
+
+            var planner = new TacticianPlanner(tableState, new RuleEvaluator(new ProbabilisticDiceRoller()));
+            planner.BeginActivation(unit);
+            MacroAction hold = MacroActionGenerator.Enumerate(new RuleEvaluator(new ProbabilisticDiceRoller()),
+                    tableState, unit)
+                .First(c => c.Intent == EMacroIntent.Hold);
+            return planner.Score(hold);
+        }
+
+        private static float HoldScoreNextToBrutes(bool cumbersome)
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var tableState = new TableState(store);
+            var us = new PlayerID(Guid.NewGuid());
+            var them = new PlayerID(Guid.NewGuid());
+            DataBinding<UnitData> Unit(PlayerID owner, Weapon weapon, float x)
+            {
+                var models = new List<DataBinding<ModelData>>();
+                for (int i = 0; i < 3; i++)
+                    models.Add(store.GetDataBinding<ModelData>(store.Create(new ModelData(0.5f,
+                        new List<Weapon> { weapon }, new Position(x, 24f + i * 1.1f), store))));
+                var binding = store.GetDataBinding<UnitData>(store.Create(new UnitData(owner, $"U{x}", 4, 4,
+                    modelBindings: models)));
+                store.Create(new ArmyData(owner, new List<DataBinding<UnitData>> { binding }));
+                return binding;
+            }
+
+            var gunners = Unit(us, Rifle(), 20f);
+            var brutes = Unit(them, Blade(attacks: 4), 29f);
+            if (cumbersome)
+                brutes.GetValue().AttachRuleDefinition(new Rules.Dispatch.ResolvedRule("Cumbersome",
+                    Rules.Dispatch.CoreRuleCatalog.Cumbersome));
+            var planner = new TacticianPlanner(tableState, new RuleEvaluator(new ProbabilisticDiceRoller()));
+            planner.BeginActivation(gunners);
+
+            MacroAction hold = MacroActionGenerator.Enumerate(new RuleEvaluator(new ProbabilisticDiceRoller()),
+                    tableState, gunners)
+                .First(c => c.Intent == EMacroIntent.Hold);
+            return planner.Score(hold);
+        }
+
+        private static float ChargeCandidateScore(float gap, bool ferocious)
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var tableState = new TableState(store);
+            var us = new PlayerID(Guid.NewGuid());
+            var them = new PlayerID(Guid.NewGuid());
+            DataBinding<UnitData> Unit(PlayerID owner, Weapon weapon, float x)
+            {
+                var models = new List<DataBinding<ModelData>>();
+                for (int i = 0; i < 3; i++)
+                    models.Add(store.GetDataBinding<ModelData>(store.Create(new ModelData(0.5f,
+                        new List<Weapon> { weapon }, new Position(x, 24f + i * 1.1f), store))));
+                var binding = store.GetDataBinding<UnitData>(store.Create(new UnitData(owner, $"U{x}", 4, 4,
+                    modelBindings: models)));
+                store.Create(new ArmyData(owner, new List<DataBinding<UnitData>> { binding }));
+                return binding;
+            }
+
+            var brawlers = Unit(us, Blade(attacks: 3), 20f);
+            if (ferocious)
+                brawlers.GetValue().AttachRuleDefinition(new Rules.Dispatch.ResolvedRule("Ferocious",
+                    RangeConditional36Definitions.ExtraHit("Ferocious")));
+            Unit(them, Rifle(), 21f + gap);
+            var planner = new TacticianPlanner(tableState, new RuleEvaluator(new ProbabilisticDiceRoller()));
+            planner.BeginActivation(brawlers);
+
+            MacroAction charge = MacroActionGenerator.Enumerate(new RuleEvaluator(new ProbabilisticDiceRoller()),
+                    tableState, brawlers)
+                .First(c => c.Intent == EMacroIntent.ChargeToContact && c.Feasibility == EFeasibility.Reachable);
+            return planner.Score(charge);
+        }
 
         private DataBinding<UnitData> MakeUnit(PlayerID owner, int modelCount, Weapon weapon,
             float atX, float atZ, int quality = 4, int defense = 4)

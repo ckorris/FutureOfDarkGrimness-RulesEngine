@@ -107,6 +107,33 @@ namespace FDG.Tests
         }
 
         [Test]
+        public void ADefenderMoved_DropsArtillerysMinusOne_AndTheReportSaysTheInputMatters()
+        {
+            // #459 D4: 3.6 Artillery's Subject arm is -1 to hit for shooters over 12" away, as long as the
+            // artillery unit has not moved this round. The calculator stamps the real MovedThisRound token on the
+            // scratch defender, so the real stage drops the -1; a plain target reports that the input is moot.
+            ArmyListFile shooters = Army(Unit("Shooters", 10, 4, 4, Rifle(10)));
+            ArmyListFile guns = Army(Unit("Guns", 10, 4, 4, rules: new[] { "Artillery" }));
+            ArmyListFile plain = Army(Unit("Targets", 10, 4, 4));
+
+            CombatReport held = CombatCalculator.Run(shooters, guns, new CombatSituation(DistanceInches: 18f));
+            CombatReport moved = CombatCalculator.Run(shooters, guns,
+                new CombatSituation(DistanceInches: 18f, DefenderMoved: true));
+            CombatReport plainMoved = CombatCalculator.Run(shooters, plain,
+                new CombatSituation(DistanceInches: 18f, DefenderMoved: true));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(held.Volleys[0].HitRollNeeded, Is.EqualTo(5), "Artillery that held: -1 to hit it");
+                Assert.That(moved.Volleys[0].HitRollNeeded, Is.EqualTo(4), "Artillery that moved: a plain target");
+                Assert.That(held.DefenderMovedMatters, Is.True, "a rule on the defender reads MovedThisRound");
+                Assert.That(moved.DefenderMovedMatters, Is.True);
+                Assert.That(plainMoved.DefenderMovedMatters, Is.False, "nothing on a plain target reads it");
+                Assert.That(plainMoved.Volleys[0].HitRollNeeded, Is.EqualTo(4), "and the token changes nothing");
+            });
+        }
+
+        [Test]
         public void ToughIsApplied_SoAModelCanSoakMoreThanOneWound()
         {
             // The regression this guards: GameBootstrap.CreateArmy does NOT run the unit-creation rules,
@@ -245,6 +272,27 @@ namespace FDG.Tests
             });
         }
 
+        // #418: the calculator runs the real stages, so a fatigued charge's 6s add no Furious hits there
+        // either. 10 dice: fresh = 5 hits on 4+ plus 10/6 Furious extras; fatigued = only the 10/6 sixes.
+        [Test]
+        public void AFatiguedFuriousCharger_GetsNoExtraHitsFromItsSixes()
+        {
+            CombatSituation charge = new(Mode: ECombatMode.Melee, AttackerCharging: true);
+            ArmyListFile brawlers = Army(Unit("Brawlers", 5, 4, 4, new[] { "Furious" }, Blade(5)));
+            ArmyListFile targets = Army(Unit("Targets", 10, 4, 4));
+
+            CombatReport fresh = CombatCalculator.Run(brawlers, targets, charge);
+            CombatReport tired = CombatCalculator.Run(brawlers, targets, charge with { AttackerFatigued = true });
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(fresh.Volleys[0].ExpectedHits, Is.EqualTo(5f + 10f / 6f).Within(Tolerance),
+                    "fresh: Furious adds one hit per natural 6");
+                Assert.That(tired.Volleys[0].ExpectedHits, Is.EqualTo(10f / 6f).Within(Tolerance),
+                    "fatigued: the 6s hit but don't count as 6s for Furious");
+            });
+        }
+
         [Test]
         public void AChargingImpactUnit_LandsItsHitsBeforeAnythingSwings()
         {
@@ -261,6 +309,114 @@ namespace FDG.Tests
                 Assert.That(impact.ExpectedHits, Is.EqualTo(5f).Within(Tolerance), "6 dice hitting on 2+");
                 Assert.That(impact.ExpectedWounds, Is.EqualTo(2.5f).Within(Tolerance), "half of them saved");
             });
+        }
+
+        // #447: Impact(X) is per model - the calculator asks with the stage's own participants and runs the real
+        // stage, so a 5-model Impact(1) unit brings 5 dice, and the row says where they came from.
+        [Test]
+        public void AMultiModelImpactUnit_RollsOneDiePerModel()
+        {
+            CombatReport charging = CombatCalculator.Run(
+                Army(Unit("Riders", 5, 4, 4, new[] { "Impact(1)" }, Blade(5))),
+                Army(Unit("Targets", 10, 4, 4)),
+                new CombatSituation(Mode: ECombatMode.Melee, AttackerCharging: true));
+
+            VolleyReport impact = charging.Volleys[0];
+            Assert.Multiple(() =>
+            {
+                Assert.That(impact.Weapon.Name, Is.EqualTo("Impact"));
+                Assert.That(impact.AttackDice, Is.EqualTo(5f).Within(Tolerance), "5 models x Impact(1)");
+                Assert.That(impact.ExpectedWounds, Is.EqualTo(5f * 5f / 6f * 0.5f).Within(Tolerance));
+                Assert.That(impact.HitTags, Does.Contain("5 models x Impact(1)"));
+            });
+        }
+
+        [Test]
+        public void AJoinedHerosImpact_AddsItsDiceToTheHosts()
+        {
+            UnitFileEntry knights = Unit("Knights", 3, 4, 4, new[] { "Impact(1)" }, Blade(3));
+            knights.Id = "host";
+            UnitFileEntry hero = Unit("Hero", 1, 4, 4, new[] { "Hero", "Impact(3)" }, Blade(1));
+            hero.JoinsUnitId = "host";
+
+            CombatReport charging = CombatCalculator.Run(Army(knights, hero), Army(Unit("Targets", 10, 4, 4)),
+                new CombatSituation(Mode: ECombatMode.Melee, AttackerCharging: true));
+
+            VolleyReport impact = charging.Volleys[0];
+            Assert.Multiple(() =>
+            {
+                Assert.That(impact.AttackDice, Is.EqualTo(6f).Within(Tolerance), "3 x Impact(1) + the hero's Impact(3)");
+                Assert.That(impact.HitTags, Does.Contain("3 models x Impact(1) + 1 model x Impact(3)"));
+            });
+        }
+
+        // #422: the calculator runs the real ResolveImpactHitsStage, so a fatigued charger's Impact rolls no
+        // dice there either ("..., unless this unit is Fatigued") and no Impact row appears.
+        [Test]
+        public void AFatiguedImpactCharger_GetsNoImpactRow()
+        {
+            CombatReport tired = CombatCalculator.Run(
+                Army(Unit("Ram", 1, 4, 4, new[] { "Impact(6)" }, Blade(1))),
+                Army(Unit("Targets", 10, 4, 4)),
+                new CombatSituation(Mode: ECombatMode.Melee, AttackerCharging: true, AttackerFatigued: true));
+
+            Assert.That(tired.Volleys.Select(volley => volley.Weapon.Name), Is.EqualTo(new[] { "Blade" }));
+        }
+
+        // #423: the calculator runs the real ParryHitsStage, so a Parry defender's hit-ignore roll prices itself - the
+        // hits that landed stay on the row, the save buckets carry what was left after Parry, and the volley's
+        // ParrySummary says why (#441 F4: shown as a "Parry" chip whose hover carries the numbers, not as a note).
+        [Test]
+        public void AParryDefender_IgnoresHitsBeforeTheSaves_AndTheRowSaysSo()
+        {
+            CombatReport report = CombatCalculator.Run(
+                Army(Unit("Swords", 4, 4, 4, Blade(4))),
+                Army(Unit("Elves", 5, 4, 4, HandWeapon(5, parry: 1))),
+                new CombatSituation(Mode: ECombatMode.Melee));
+
+            VolleyReport volley = report.Volleys.Single();
+            Assert.Multiple(() =>
+            {
+                Assert.That(volley.ExpectedHits, Is.EqualTo(4f).Within(Tolerance), "8 attacks at 4+ landed 4 hits");
+                Assert.That(volley.Saves.Sum(bucket => bucket.Hits), Is.EqualTo(4f - 4f / 6f).Within(Tolerance),
+                    "5 x Parry(1) capped at the 4 hits: 4 dice, 2/3 of a hit ignored before the saves");
+                Assert.That(report.ExpectedWounds, Is.EqualTo((4f - 4f / 6f) / 2f).Within(Tolerance), "half of the rest saved");
+                Assert.That(volley.Parry, Is.Not.Null);
+                Assert.That(volley.Parry!.Describe(), Is.EqualTo("4 dice ignored 0.67 of 4 hits before the saves."));
+                Assert.That(volley.Notes.Any(n => n.StartsWith("Parry")), Is.False, "#441 F4: a chip, not a note");
+            });
+        }
+
+        // #423 B1: one Parry pool per attack, shared across the attacker's weapon profiles (as CombatActionContext does).
+        [Test]
+        public void ATwoProfileAttacker_SpendsOneParryPoolAcrossBothRows()
+        {
+            UnitFileEntry beast = Unit("Beast", 1, 4, 4, Blade(1, attacks: 4), Rifle(1, range: 0, attacks: 4, name: "Fangs"));
+            CombatReport report = CombatCalculator.Run(
+                Army(beast),
+                Army(Unit("Elves", 3, 4, 4, HandWeapon(3, parry: 1))),
+                new CombatSituation(Mode: ECombatMode.Melee));
+
+            Assert.That(report.Volleys, Has.Count.EqualTo(2));
+            Assert.Multiple(() =>
+            {
+                Assert.That(report.Volleys[0].Parry?.Describe(), Is.EqualTo("2 dice ignored 0.33 of 2 hits before the saves."),
+                    "the first profile's 2 hits take 2 of the 3 dice");
+                Assert.That(report.Volleys[1].Parry?.Describe(), Is.EqualTo("1 dice ignored 0.17 of 2 hits before the saves."),
+                    "the second profile gets the one die left, not a fresh pool");
+            });
+        }
+
+        [Test]
+        public void ANonParryDefender_GetsNoParrySummary()
+        {
+            CombatReport report = CombatCalculator.Run(
+                Army(Unit("Swords", 4, 4, 4, Blade(4))),
+                Army(Unit("Targets", 5, 4, 4)),
+                new CombatSituation(Mode: ECombatMode.Melee));
+
+            Assert.That(report.Volleys.Single().Parry, Is.Null);
+            Assert.That(report.Volleys.Single().Notes.Any(n => n.StartsWith("Parry")), Is.False);
         }
 
         [Test]
@@ -296,6 +452,82 @@ namespace FDG.Tests
 
             Assert.That(report.Notes, Has.Some.Contains("Strike-back"),
                 "the missing half of a melee must be stated, not silently omitted");
+        }
+
+        // #442 (#432): the charge's launch distance is an input now, and it reaches the real stages - so a Ferocious
+        // charger's extra hit on each natural 6 appears charging from 7" and not from 5" (or when no distance is given).
+        [Test]
+        public void ChargeFrom_ReachesTheChargeArms()
+        {
+            ArmyListFile chargers = Army(Unit("Raiders", 5, 4, 4, new[] { "Ferocious" }, Blade(5, attacks: 3)));
+            chargers.RuleDefinitions.Add(RangeConditional36Definitions.ExtraHit("Ferocious"));
+            ArmyListFile targets = Army(Unit("Targets", 20, 4, 6));
+
+            float Wounds(float from) => CombatCalculator.Run(chargers, targets,
+                new CombatSituation(ECombatMode.Melee, AttackerCharging: true, ChargeFromInches: from)).ExpectedWounds;
+
+            // 15 attacks at 4+ = 7.5 hits, +1/6 per die (2.5) from over 6"; Defense 6 lets 5/6 through.
+            Assert.That(Wounds(7f), Is.EqualTo(10f * 5f / 6f).Within(Tolerance));
+            Assert.That(Wounds(5f), Is.EqualTo(7.5f * 5f / 6f).Within(Tolerance));
+            Assert.That(Wounds(0f), Is.EqualTo(Wounds(5f)).Within(Tolerance), "no distance given: no charge arm");
+        }
+
+        // #442 (#434): Ravage's pre-strike dice run through the real ResolveRavageWoundsStage and get their own row -
+        // unsaveable wounds, before the swings.
+        [Test]
+        public void ARavageUnit_GetsAPreStrikeRow_WithNoSave()
+        {
+            CombatReport report = CombatCalculator.Run(
+                Army(Unit("Brutes", 2, 4, 4, new[] { "Ravage(3)" }, Blade(2))),
+                Army(Unit("Knights", 10, 4, 2)),
+                new CombatSituation(ECombatMode.Melee, AttackerCharging: true));
+
+            VolleyReport ravage = report.Volleys.Single(v => v.Weapon.Name == "Ravage");
+            Assert.Multiple(() =>
+            {
+                Assert.That(ravage.AttackDice, Is.EqualTo(6f).Within(Tolerance), "2 models x Ravage(3)");
+                Assert.That(ravage.ExpectedWounds, Is.EqualTo(1f).Within(Tolerance), "6 dice at 6+, Defense 2 never rolled");
+                Assert.That(report.Volleys.ToList().IndexOf(ravage), Is.LessThan(report.Volleys.Count - 1), "before the swings");
+            });
+        }
+
+        // #424 Assault: one weapon in both reports. The calculator batches through the unit's two pools, so a
+        // Heavy Pistol unit volleys at 10" in shooting mode AND swings the same pistols in melee mode - 5 dice on
+        // 4+ either way, the same stat line, no split copy and no double count of anything.
+        [Test]
+        public void AnAssaultPistolUnit_IsVolleyedInBothModes_WithTheSameWeapon()
+        {
+            WeaponFileEntry pistols = Rifle(5, range: 12, attacks: 1, ap: 1, name: "Heavy Pistol");
+            pistols.SpecialRules.Add(new SpecialRuleEntry_Core("Assault"));
+            ArmyListFile pistoleers = Army(Unit("Pistoleers", 5, 4, 4, pistols));
+            pistoleers.RuleDefinitions.Add(AssaultDefinitions.Assault);
+
+            CombatReport shot = CombatCalculator.Run(pistoleers, Army(Unit("Targets", 10, 4, 4)),
+                new CombatSituation(DistanceInches: 10f));
+            CombatReport swing = CombatCalculator.Run(pistoleers, Army(Unit("Targets", 10, 4, 4)),
+                new CombatSituation(Mode: ECombatMode.Melee));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(shot.Volleys.Select(v => v.Weapon.Name), Is.EqualTo(new[] { "Heavy Pistol" }));
+                Assert.That(shot.Volleys[0].InRange, Is.True, "10\" is within the pistol's 12\"");
+                Assert.That(shot.Volleys[0].ExpectedHits, Is.EqualTo(2.5f).Within(Tolerance));
+                Assert.That(swing.Volleys.Select(v => v.Weapon.Name), Is.EqualTo(new[] { "Heavy Pistol" }),
+                    "the melee report swings the same pistols");
+                Assert.That(swing.Volleys[0].ExpectedHits, Is.EqualTo(2.5f).Within(Tolerance));
+                Assert.That(swing.Volleys[0].Saves.Single().SaveNeeded, Is.EqualTo(5), "Defense 4 + the pistol's AP 1");
+            });
+        }
+
+        [Test]
+        public void APlainPistolUnit_StillHasNoMeleeVolley()
+        {
+            CombatReport swing = CombatCalculator.Run(
+                Army(Unit("Riflemen", 5, 4, 4, Rifle(5, range: 12, name: "Pistol"))),
+                Army(Unit("Targets", 10, 4, 4)),
+                new CombatSituation(Mode: ECombatMode.Melee));
+
+            Assert.That(swing.Volleys, Is.Empty, "control: without the grant a pistol is not swung");
         }
 
         // ---- fixture helpers ---------------------------------------------------------------------
@@ -353,5 +585,13 @@ namespace FDG.Tests
 
         private static WeaponFileEntry Blade(int quantity, int attacks = 2, int ap = 0)
             => Rifle(quantity, range: 0, attacks: attacks, ap: ap, name: "Blade");
+
+        // #423: the AoF Hand Weapon shape - a melee weapon entry carrying Parry(X) as the book writes it.
+        private static WeaponFileEntry HandWeapon(int quantity, int parry)
+        {
+            WeaponFileEntry weapon = Rifle(quantity, range: 0, attacks: 1, name: "Hand Weapon");
+            weapon.SpecialRules.Add(new SpecialRuleEntry_CoreNumeric("Parry", parry));
+            return weapon;
+        }
     }
 }

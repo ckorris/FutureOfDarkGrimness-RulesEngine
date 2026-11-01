@@ -35,6 +35,10 @@ namespace FDG.ArmyBuilding
         /// counting duplicates, so two copies lost out of three are reported as one.</summary>
         public required IReadOnlyList<string> DroppedUnits { get; init; }
 
+        /// <summary>#438 D3: the rebuilt session's Replace purchases the compiler could not land (one line each,
+        /// gear named) - why a rebuilt price can fall below the saved one. Empty when every pick applied.</summary>
+        public IReadOnlyList<UnappliedReplace> UnappliedReplaces { get; init; } = System.Array.Empty<UnappliedReplace>();
+
         /// <summary>True when reopening for editing would change the army. False means the rebuild
         /// reproduces the saved army and can be adopted silently.</summary>
         public bool Differs =>
@@ -98,6 +102,7 @@ namespace FDG.ArmyBuilding
                 SavedPoints = file.TotalPoints,
                 RebuiltPoints = rebuilt.TotalPoints,
                 DroppedUnits = dropped,
+                UnappliedReplaces = rebuilt.UnappliedReplaces,
             };
         }
     }

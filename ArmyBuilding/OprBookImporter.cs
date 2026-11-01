@@ -127,7 +127,7 @@ namespace FDG.ArmyBuilding
                 SpellDefinition? parsed = TryParseSpell(spell, out SpecialRuleDefinition? synthesized);
                 if (parsed is null)
                 {
-                    warn?.Invoke($"Spell '{spell.Name}' skipped: unrecognized effect text \"{spell.Effect}\".");
+                    warn?.Invoke(DescribeSkippedSpell(spell));
                     continue;
                 }
 
@@ -139,8 +139,19 @@ namespace FDG.ArmyBuilding
                 }
             }
 
+            // #437: OPR 3.6 lists a 0-unit PARENT entry per daemon family ("Wormhole Daemons", "Rift Daemons") beside
+            // the real "Daemons of X" books. It imports cleanly to an empty book, which is never what a caller wants -
+            // say so (the --import-opr tool then refuses to write it; see IsParentEntry).
+            if (IsParentEntry(book))
+                warn?.Invoke($"Book '{book.Name}' has no units and no spells - an Army Forge parent entry, not a playable army book.");
+
             return book;
         }
+
+        /// <summary>#437: true for an Army Forge PARENT entry - a book with no units and no spells (OPR 3.6's
+        /// "Wormhole Daemons" / "Rift Daemons", whose content lives in the "Daemons of X" books). Index-driven fetches
+        /// and the bake skip these; the index carries the same fact as <c>unitCount: 0</c>.</summary>
+        public static bool IsParentEntry(BookFile book) => book.Units.Count == 0 && book.Spells.Count == 0;
 
         /// <summary>
         /// Re-parses ONLY the spells of <paramref name="book"/> from its OPR source JSON, leaving every
@@ -171,7 +182,7 @@ namespace FDG.ArmyBuilding
                 SpellDefinition? parsed = TryParseSpell(spell, out SpecialRuleDefinition? synthesized);
                 if (parsed is null)
                 {
-                    warn?.Invoke($"Spell '{spell.Name}' skipped: unrecognized effect text \"{spell.Effect}\".");
+                    warn?.Invoke(DescribeSkippedSpell(spell));
                     continue;
                 }
 
@@ -256,6 +267,9 @@ namespace FDG.ArmyBuilding
                     '“' or '”' => "\"",
                     '…' => "...",
                     ' ' => " ",  // no-break space
+                    // #437: zero-width format characters (the 3.6.0 AoF snapshots carry U+200D in seven books'
+                    // text) have no visible form, so they fold to nothing rather than survive as '?'.
+                    '\u200B' or '\u200C' or '\u200D' or '\u2060' or '\uFEFF' => "",
                     '×' => "x",  // multiplication sign
                     '→' => "->",
                     '≤' => "<=",
@@ -295,6 +309,17 @@ namespace FDG.ArmyBuilding
                 Rules = rules,
                 Items = (unit.Items ?? new()).Select(MapItem).ToList(),
             };
+
+            // #438: a base-loadout item's nested weapons fight too (OPR 3.6 mounts and crews - the Jackals Charger Beast
+            // has NO weapon outside its "Beast Rider", the Goblin Pump Plane's Bombing Run rides in its "Bomber Plane").
+            // They used to be dropped here; one copy per item.
+            foreach (OprGain item in unit.Items ?? new())
+                foreach (OprGain inner in (item.Content ?? new()).Where(c => c.Type == "ArmyBookWeapon"))
+                {
+                    WeaponFileEntry weapon = WeaponFromGain(inner);
+                    weapon.Quantity *= Math.Max(1, item.Count ?? 1);
+                    roster.Weapons.Add(weapon);
+                }
 
             // Resolve the unit's referenced upgrade packages → their sections.
             foreach (string pkgUid in unit.Upgrades ?? new())
@@ -337,35 +362,31 @@ namespace FDG.ArmyBuilding
                     ? new SpecialRuleEntry_Text(r.Name ?? "Rule", r.Rating!.Trim())
                     : new SpecialRuleEntry_Core(r.Name ?? "Rule");
 
-        // #197 (Darkborn): OPR reuses the bare name "Darkborn" for two mechanically different rules across
-        // armies -- Dark Brothers' is the defensive debuff (enemies get -4" range / -2" charge vs this unit),
-        // Dark Prime Brothers' is the offensive self-buff (+3" range / +3" charge). The catalog registers them
-        // under disambiguated names ("Darkborn (Defensive)" / "Darkborn (Offensive)"); the bare name resolves
-        // to neither, so all references were dead. Only the importer has the owning-army context needed to
-        // route the bare name to the right variant, so it does the disambiguation once, at import time, keyed
-        // on the OPR army name -- a re-import stays correct rather than reintroducing the dead bare name.
+        // #197 (Darkborn) -> #432: OPR 3.5 reused the bare name "Darkborn" for two different rules (Dark
+        // Brothers' defensive debuff, Dark Prime Brothers' offensive self-buff), so the importer routed it to the
+        // catalog's "Darkborn (Defensive)" / "Darkborn (Offensive)" by army. OPR 3.6 gives both books the same
+        // rule ("...that enemy unit gets -4"/-2" range to a min. of 6""), defined under the bare name in the GDF
+        // supplement, so the bare name is no longer rewritten. The two catalog entries stay only for pre-3.6 army
+        // files and the not-yet-rebaked books that name them (#436 removes them).
         //
-        // #197 P8 (Dangerous Terrain Debuff): the same reuse, six armies wide. Four books say "pick one
-        // enemy unit within 18" IN LINE OF SIGHT, which counts as being in Dangerous Terrain once (next
-        // time the effect would apply)" - a deferred debuff that only bites when the victim next moves.
-        // Lust Disciples and War Disciples say "pick one enemy unit within 18" [no line of sight], which
-        // must IMMEDIATELY take a Dangerous Terrain test" - it lands on the spot, move or no move. Only
-        // the minority variant is renamed: the bare name keeps the corpus wording for 12 of the 14
-        // references, and one of the two must diverge from its own book either way.
-        private static readonly Dictionary<(string Army, string Rule), string> AmbiguousRuleNames = new()
-        {
-            [("Dark Brothers", "Darkborn")] = "Darkborn (Defensive)",
-            [("Dark Prime Brothers", "Darkborn")] = "Darkborn (Offensive)",
-            [("Lust Disciples", "Dangerous Terrain Debuff")] = "Dangerous Terrain Debuff (Immediate)",
-            [("War Disciples", "Dangerous Terrain Debuff")] = "Dangerous Terrain Debuff (Immediate)",
-        };
+        // #197 P8 (Dangerous Terrain Debuff) -> #434: OPR 3.5 reused the name six armies wide - four books printed
+        // the deferred "counts as being in Dangerous Terrain once (next time the effect would apply)", while Lust
+        // Disciples and War Disciples printed an IMMEDIATE "must take a Dangerous Terrain test", which the importer
+        // renamed to "Dangerous Terrain Debuff (Immediate)" for those two armies. OPR 3.6 prints the deferred text
+        // ("... in line of sight, which counts as being in Dangerous terrain once ...") in all six GDF books (and
+        // all five AoF ones), so nothing is renamed any more. The "(Immediate)" definition stays only for the
+        // not-yet-rebaked 3.5 books and pre-3.6 army files that name it (#436 removes it, #438 re-bakes). The map
+        // and its plumbing stay: a future book that reuses a name for two rules needs exactly this.
+        // Keyed by the book's CURRENT OPR name (#437: callers pass OprBookNames.Current, so a renamed book keeps its row).
+        private static readonly Dictionary<(string Army, string Rule), string> AmbiguousRuleNames = new();
 
         private static void DisambiguateAmbiguousRuleNames(BookFile book)
         {
+            string current = OprBookNames.Current(book.Name, book.GameSystem);
             void Fix(List<SpecialRuleEntry> rules)
             {
                 for (int i = 0; i < rules.Count; i++)
-                    rules[i] = Disambiguate(book.Name, rules[i]);
+                    rules[i] = Disambiguate(current, rules[i]);
             }
 
             foreach (RosterUnit unit in book.Units)
@@ -449,7 +470,11 @@ namespace FDG.ArmyBuilding
 
             return new UpgradeSection
             {
-                Id = s.Id ?? s.Uid ?? Guid.NewGuid().ToString("N")[..8],
+                // #438: the section `uid` first. Army Forge regenerates a section's `id` on EVERY request (two fetches
+                // of the same unchanged book disagree on all of them), while `uid` is stable and unique per unit across
+                // the whole 3.6.0 corpus - so a re-fetch no longer re-keys every saved Forge pick, and a share list's
+                // selectedUpgrades (which carry the uid) match the section directly.
+                Id = s.Uid ?? s.Id ?? Guid.NewGuid().ToString("N")[..8],
                 Label = s.Label ?? string.Empty,
                 // "attachment" ("Take one X attachment") is additive like upgrade — only "replace" swaps.
                 Variant = s.Variant == "replace" ? UpgradeVariant.Replace : UpgradeVariant.Upgrade,
@@ -491,15 +516,7 @@ namespace FDG.ArmyBuilding
             switch (g.Type)
             {
                 case "ArmyBookWeapon":
-                    var weapon = new WeaponFileEntry
-                    {
-                        Name = g.Name ?? "Weapon",
-                        Quantity = Math.Max(1, g.Count ?? 1),
-                        RangeInches = g.Range ?? 0,
-                        Attacks = g.Attacks ?? 0,
-                    };
-                    ApplyRules(weapon, g.SpecialRules);
-                    option.WeaponsGained.Add(weapon);
+                    option.WeaponsGained.Add(WeaponFromGain(g));
                     break;
                 case "ArmyBookRule":
                     option.RulesGained.Add(MapRule(new OprRule { Name = g.Name, Rating = g.Rating }));
@@ -521,7 +538,18 @@ namespace FDG.ArmyBuilding
         //   "…which must take a morale test. If failed, it becomes fatigued."      → Effect.MoraleTestThen(ApplyFatigue)
         //   "…must take a morale test. If failed you may move it by up to 6\"…"    → Effect.MoraleTestThen(TriggeredMove)
         //   "…which moves +2\" when using Advance actions and +4\" when using      → AddRule of a SYNTHESIZED
-        //    Rush/Charge actions once…" / "…which loses AP(1) when shooting once…"   book-embedded rule (below)
+        //    Rush/Charge actions once…" / "…which loses AP(1) on its weapons        book-embedded rule (below)
+        //    when shooting once…"
+        //   "…which loses 2 spell tokens. Note that the target may not spend…"     → Effect.ConsumeToken(SpellTokens)
+        //
+        // #439 (OPR 3.6.0): grants and marks are worded "gets X ON ITS/THEIR WEAPONS when shooting / in melee / when
+        // attacking" (or bare "on their weapons"). The suffix is a scope, not part of the rule's name:
+        // CanonicalGrantName folds it onto the catalog's grant names ("X when shooting", "X in melee", "X when
+        // attacking", bare "X"), and "+6\" range on its weapons when shooting" onto Increased Shooting Range - the
+        // names the auras, the supplement's Buff/Mark abilities and the units already grant. Damage spells name 3.6
+        // weapon rules (Smash, Fracture, Pierce, Purge, ...) in their "with" clause; those ride WithRules unchanged,
+        // and "Roll as many dice as hits to see if \"on rolls of 6\" effects trigger" needs no flag (the spell
+        // pipeline always rolls its hits as dice for the on-6 fold - SyntheticHitResolution).
         // A "model" target maps to TargetSelector.SingleModel (the "unit of [1]" wording). AP folds into
         // DealHits.ArmorPenetration like weapon import; other rule names ride WithRules and resolve at army
         // load with the usual skip-unknown tolerance. Anything that doesn't match is SKIPPED with a warning —
@@ -532,14 +560,67 @@ namespace FDG.ArmyBuilding
         // regenerated with the book, so nothing to hand-maintain) and the spell grants it by name with
         // NextTrigger, exactly like the grant family. Each synthesized definition is RuleValidator-checked
         // here; a violation skips the spell rather than shipping a book that fails the load gate.
+        //
+        // Line of sight (#429, Core Rules v3.6.0): the Caster rule no longer requires the target to be in line of
+        // sight - each spell says so itself ("Pick one enemy unit within 18\" in line of sight, ..."). So
+        // TargetSelector.RequireLineOfSight is true exactly when the spell's text carries an "in line of sight"
+        // clause (any casing), whatever its effect shape; a spell without one may target out of sight. In the
+        // 3.6.0 snapshots every such clause sits in the opening "Pick ... within N\"" target clause.
 
         private static readonly Regex SpellShape = new(
             "^pick (?<count>one|two|three|up to two|up to three) (?<aff>enemy|friendly) (?<kind>units?|models?) within (?<range>\\d+)\"",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+        // #429 - the per-spell LoS clause. Matched anywhere in the text: the corpus only ever writes it in the
+        // target clause, and a looser anchor costs nothing while a stricter one would silently drop a variant.
+        private static readonly Regex LineOfSightClause = new(
+            "\\bin line of sight\\b",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        /// <summary>#429 - true when an OPR spell's text demands line of sight to its target (the 3.6 "in line
+        /// of sight" clause). Internal for the importer tests.</summary>
+        internal static bool SpellTextRequiresLineOfSight(string spellText) =>
+            LineOfSightClause.IsMatch(spellText ?? string.Empty);
+
         private static readonly Regex DamageShape = new(
             "which takes? (?<hits>\\d+) hits?(?: with (?<rules>[^.]+))?",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        // #439: the OPR 3.6 weapon-scoped grant suffix - "Shred on its weapons when shooting", "Rending on their weapons
+        // in melee", "Bane on their weapons when attacking", "Indirect on their weapons". Anchored at both ends: it
+        // reads the whole captured grant phrase.
+        private static readonly Regex WeaponScopedGrant = new(
+            "^(?<rule>.+?) on (?:its|their) weapons(?: (?<kind>when shooting|in melee|when attacking))?$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static readonly Regex RangeBonusGrant = new(
+            "^\\+(?<inches>\\d+)\" range$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        /// <summary>#439 - the rule NAME a spell's grant or mark phrase stands for. OPR 3.6 writes the scope into the
+        /// phrase ("gets Shred on its weapons when shooting"); the catalog names the same rules without it ("Shred
+        /// when shooting", "Rending in melee", "Bane when attacking", bare "Indirect" / "Surge" for "on their weapons"),
+        /// and "+6\" range on its weapons when shooting" is Increased Shooting Range (the supplement's Buff / Mark grant
+        /// it under that name too). Phrases without the suffix come back unchanged. Internal for the importer tests.
+        /// </summary>
+        internal static string CanonicalGrantName(string phrase)
+        {
+            string trimmed = (phrase ?? string.Empty).Trim();
+            Match scoped = WeaponScopedGrant.Match(trimmed);
+            if (!scoped.Success) return trimmed;
+
+            string rule = scoped.Groups["rule"].Value.Trim();
+            string kind = scoped.Groups["kind"].Success ? scoped.Groups["kind"].Value.ToLowerInvariant() : string.Empty;
+            if (kind == "when shooting" && RangeBonusGrant.Match(rule) is { Success: true } range)
+            {
+                // Increased Shooting Range is the +6" member; another bonus keeps its phrase name, which resolves
+                // nowhere and so fails BookSpellCoverageTests loudly instead of granting the wrong number.
+                return range.Groups["inches"].Value == "6"
+                    ? "Increased Shooting Range"
+                    : $"+{range.Groups["inches"].Value}\" range when shooting";
+            }
+
+            return kind.Length == 0 ? rule : $"{rule} {kind}";
+        }
 
         private static readonly Regex GrantShape = new(
             "which gets? (?<rule>.+?) once",
@@ -560,8 +641,10 @@ namespace FDG.ArmyBuilding
 
         // "...which friendly units get X against once" — the mark family (#034): the rule lands on friendlies
         // ATTACKING the picked target, i.e. Effect.MarkTarget.
+        // #439: the verb is optional - AoF Dragon Empire's Ancestral Guidance reads "which friendly units Indirect on
+        // their weapons against once" in the 3.6.0 source (the "get" dropped); the mark is the only reading.
         private static readonly Regex MarkShape = new(
-            "which friendly units gets? (?<rule>.+?) against",
+            "which friendly units (?:gets? )?(?<rule>.+?) against",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         // "...which moves +2\" when using Advance actions and +4\" when using Rush/Charge actions once" —
@@ -570,10 +653,24 @@ namespace FDG.ArmyBuilding
             "which moves? (?<adv>[+-]?\\d+)\" when using Advance actions and (?<rc>[+-]?\\d+)\" when using Rush/Charge actions once",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-        // "...which loses AP(1) when shooting once" — Corrode Weapons. Synthesizes an attacker-side
-        // ReduceArmorPenetration rule (same floored-at-AP(0) primitive Fortified uses defender-side).
+        // "...which loses AP(1) on its weapons when shooting once" — Corrode Weapons (3.5 wrote it without "on its
+        // weapons"; #439 accepts both). Synthesizes an attacker-side ReduceArmorPenetration rule (same
+        // floored-at-AP(0) primitive Fortified uses defender-side).
         private static readonly Regex ApLossShape = new(
-            "which loses AP\\((?<ap>\\d+)\\) when shooting once",
+            "which loses AP\\((?<ap>\\d+)\\)(?: on (?:its|their) weapons)? when shooting once",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        // #439: "...which loses 2 spell tokens. Note that the target may not spend those spell tokens to prevent this
+        // effect." — OPR 3.6 Shifting Form / Burn the Heretic / Aether-Cloud Rune. Effect.ConsumeToken(SpellTokens) on
+        // the target (Spell Drain's primitive); the note is enforced by CastSpellStage's cast-assist collection.
+        private static readonly Regex SpellTokenLossShape = new(
+            "which loses? (?<count>\\d+) spell tokens?",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        // #439: "Units may only be moved once per round in this way." after a morale-test move (Deep Hypnosis,
+        // Seductive Invocation) - the limit Mind Control carries since #434.
+        private static readonly Regex OncePerRoundMoveClause = new(
+            "units may only be moved once per round in this way",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         // "...which counts as being in Dangerous/Difficult Terrain once" — Cursed Stride / Aura of
@@ -615,6 +712,8 @@ namespace FDG.ArmyBuilding
                 ? ETargetAffinity.Friend
                 : ETargetAffinity.Foe;
             bool singleModel = shape.Groups["kind"].Value.StartsWith("model", StringComparison.OrdinalIgnoreCase);
+            // #429: from the spell's own text, never from its shape (3.6 moved LoS out of Caster into each spell).
+            bool lineOfSight = SpellTextRequiresLineOfSight(text);
 
             Match damage = DamageShape.Match(text);
             if (damage.Success)
@@ -635,7 +734,7 @@ namespace FDG.ArmyBuilding
                     }
                 }
                 return new SpellDefinition(spellName, spell.Threshold ?? 1,
-                    new TargetSelector(range, 1, maxCount, affinity, RequireLineOfSight: true, SingleModel: singleModel),
+                    new TargetSelector(range, 1, maxCount, affinity, RequireLineOfSight: lineOfSight, SingleModel: singleModel),
                     new Effect.DealHits(hits, withRules, ap));
             }
 
@@ -645,8 +744,16 @@ namespace FDG.ArmyBuilding
             if (mark.Success)
             {
                 return new SpellDefinition(spellName, spell.Threshold ?? 1,
-                    new TargetSelector(range, 1, maxCount, affinity, RequireLineOfSight: false),
-                    new Effect.MarkTarget(mark.Groups["rule"].Value.Trim()));
+                    new TargetSelector(range, 1, maxCount, affinity, RequireLineOfSight: lineOfSight),
+                    new Effect.MarkTarget(CanonicalGrantName(mark.Groups["rule"].Value)));
+            }
+
+            Match tokenLoss = SpellTokenLossShape.Match(text);
+            if (tokenLoss.Success)
+            {
+                return new SpellDefinition(spellName, spell.Threshold ?? 1,
+                    new TargetSelector(range, 1, maxCount, affinity, RequireLineOfSight: lineOfSight),
+                    new Effect.ConsumeToken(TokenType.SpellTokens, int.Parse(tokenLoss.Groups["count"].Value)));
             }
 
             Match move = MoveShape.Match(text);
@@ -655,14 +762,14 @@ namespace FDG.ArmyBuilding
                 int advance = int.Parse(move.Groups["adv"].Value);
                 int rushCharge = int.Parse(move.Groups["rc"].Value);
                 synthesized = SynthesizeMovementRule(spellName, advance, rushCharge);
-                return SynthesizedGrantOrSkip(spell, spellName, range, maxCount, affinity, ref synthesized);
+                return SynthesizedGrantOrSkip(spell, spellName, range, maxCount, affinity, lineOfSight, ref synthesized);
             }
 
             Match apLoss = ApLossShape.Match(text);
             if (apLoss.Success)
             {
                 synthesized = SynthesizeApLossRule(spellName, int.Parse(apLoss.Groups["ap"].Value));
-                return SynthesizedGrantOrSkip(spell, spellName, range, maxCount, affinity, ref synthesized);
+                return SynthesizedGrantOrSkip(spell, spellName, range, maxCount, affinity, lineOfSight, ref synthesized);
             }
 
             Match terrain = TerrainShape.Match(text);
@@ -672,22 +779,26 @@ namespace FDG.ArmyBuilding
                     ? ECountAsTerrain.Dangerous
                     : ECountAsTerrain.Difficult;
                 synthesized = SynthesizeCountAsTerrainRule(spellName, kind);
-                return SynthesizedGrantOrSkip(spell, spellName, range, maxCount, affinity, ref synthesized);
+                return SynthesizedGrantOrSkip(spell, spellName, range, maxCount, affinity, lineOfSight, ref synthesized);
             }
 
             Match moraleTest = MoraleTestShape.Match(text);
             if (moraleTest.Success)
             {
                 string tail = moraleTest.Groups["tail"].Value;
+                // #439: "Units may only be moved once per round in this way" keys the move by the spell's own name
+                // (D entry in WorkItems/439: the limit is per ability, not shared with the Mind Control rule).
+                string? oncePerRoundKey = OncePerRoundMoveClause.IsMatch(text) ? spellName : null;
                 Effect? onFailure =
                     MoraleFatigueTail.IsMatch(tail) ? new Effect.ApplyFatigue()
                     : MoraleMoveTail.Match(tail) is { Success: true } moveTail
-                        ? new Effect.TriggeredMove(int.Parse(moveTail.Groups["inches"].Value), IsOptional: true)
+                        ? new Effect.TriggeredMove(int.Parse(moveTail.Groups["inches"].Value), IsOptional: true,
+                            OncePerRoundKey: oncePerRoundKey)
                         : null;
                 if (onFailure is null) return null; // unknown consequence — skip whole spell, never half-wrong
 
                 return new SpellDefinition(spellName, spell.Threshold ?? 1,
-                    new TargetSelector(range, 1, maxCount, affinity, RequireLineOfSight: false),
+                    new TargetSelector(range, 1, maxCount, affinity, RequireLineOfSight: lineOfSight),
                     new Effect.MoraleTestThen(onFailure));
             }
 
@@ -707,24 +818,49 @@ namespace FDG.ArmyBuilding
                         _ => ERollKind.Cast,
                     };
                     return new SpellDefinition(spellName, spell.Threshold ?? 1,
-                        new TargetSelector(range, 1, maxCount, affinity, RequireLineOfSight: false),
+                        new TargetSelector(range, 1, maxCount, affinity, RequireLineOfSight: lineOfSight),
                         new Effect.StatModifier(roll, int.Parse(statModifier.Groups["delta"].Value,
                             System.Globalization.NumberStyles.AllowLeadingSign), ELifetime.NextTrigger));
                 }
 
                 return new SpellDefinition(spellName, spell.Threshold ?? 1,
-                    new TargetSelector(range, 1, maxCount, affinity, RequireLineOfSight: false),
-                    new Effect.AddRule(granted, ELifetime.NextTrigger));
+                    new TargetSelector(range, 1, maxCount, affinity, RequireLineOfSight: lineOfSight),
+                    new Effect.AddRule(CanonicalGrantName(granted), ELifetime.NextTrigger));
             }
 
             return null;
         }
 
+        // #439: the target clause with nothing after it - AoF Shadow Stalkers' Combat Possession reads only "Pick up to
+        // two friendly units within 12\", which" in the 3.6.0 source (its generation block has no effect either).
+        private static readonly Regex TruncatedSpellText = new(
+            "^pick [^,]+,\\s*which\\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        /// <summary>#439 - the import warning for a spell <see cref="TryParseSpell"/> could not read. Two kinds, kept
+        /// apart because they mean different things: a source text that stops after its target clause (an OPR data
+        /// defect - nothing to parse) vs. an effect the grammar does not know (a parser gap - scripts/bake-books.sh fails
+        /// the bake on it, so it can never ship as a silently missing spell).</summary>
+        internal static string DescribeSkippedSpell(string? name, string? effect)
+        {
+            string text = (effect ?? string.Empty).Trim();
+            return TruncatedSpellText.IsMatch(text)
+                ? $"Spell '{name}' skipped: {TruncatedSpellWarning} \"{effect}\"."
+                : $"Spell '{name}' skipped: {UnrecognizedSpellWarning} \"{effect}\".";
+        }
+
+        private static string DescribeSkippedSpell(OprSpell spell) => DescribeSkippedSpell(spell.Name, spell.Effect);
+
+        /// <summary>#439 - the warning phrase for a spell effect the grammar does not recognise (the bake fails on it).</summary>
+        public const string UnrecognizedSpellWarning = "unrecognized effect text";
+
+        /// <summary>#439 - the warning phrase for an OPR source spell whose text ends after its target clause.</summary>
+        public const string TruncatedSpellWarning = "the OPR source text is truncated after its target clause";
+
         /// <summary>The grant-family spell wrapper for a synthesized rule: the spell grants
         /// "&lt;Spell&gt; Effect" once (NextTrigger), like any other grant spell. If the synthesized
         /// definition fails validation, the whole spell is skipped (null) — never shipped half-wrong.</summary>
         private static SpellDefinition? SynthesizedGrantOrSkip(OprSpell spell, string spellName, int range,
-            int maxCount, ETargetAffinity affinity, ref SpecialRuleDefinition? synthesized)
+            int maxCount, ETargetAffinity affinity, bool lineOfSight, ref SpecialRuleDefinition? synthesized)
         {
             if (synthesized is null || new Rules.Dispatch.RuleValidator().Validate(synthesized).Count > 0)
             {
@@ -733,7 +869,7 @@ namespace FDG.ArmyBuilding
             }
 
             return new SpellDefinition(spellName, spell.Threshold ?? 1,
-                new TargetSelector(range, 1, maxCount, affinity, RequireLineOfSight: false),
+                new TargetSelector(range, 1, maxCount, affinity, RequireLineOfSight: lineOfSight),
                 new Effect.AddRule(synthesized.Name, ELifetime.NextTrigger));
         }
 
@@ -762,7 +898,7 @@ namespace FDG.ArmyBuilding
         private static SpecialRuleDefinition SynthesizeCountAsTerrainRule(string spellName, ECountAsTerrain kind)
         {
             string consequence = kind == ECountAsTerrain.Dangerous
-                ? "each moving model rolls a d6, taking a wound on a 1"
+                ? "the unit rolls a die per wound it would take to destroy it, taking a wound on each 1"
                 : $"its move is capped at {FDG.GameWideConstants.DIFFICULT_TERRAIN_MOVE_CAP_INCHES:0}\"";
             return new SpecialRuleDefinition($"{spellName} Effect",
                 new[]
@@ -787,8 +923,10 @@ namespace FDG.ArmyBuilding
                     // Attacker-side AP reduction on the shooter's own weapon, floored at AP(0) by the save
                     // stage (the same primitive Fortified applies defender-side). Not(IsMelee) keeps it to
                     // shooting, per the spell text.
+                    // #439: "on its weapons" (OPR 3.6) - the bearer's own spell hits are not its weapons, so they keep
+                    // their AP (the #434 IsNotSpell gate the catalog's "when shooting" grants carry).
                     new HookEntry(EHookID.Shooting_OnHitRollComplete,
-                        new Condition.Not(new Condition.IsMelee()),
+                        new Condition.And(new Condition.Not(new Condition.IsMelee()), new Condition.IsNotSpell()),
                         new Effect.ReduceArmorPenetration(apLoss),
                         ELifetime.ThisAttack),
                 },
@@ -847,17 +985,37 @@ namespace FDG.ArmyBuilding
             return new BaseFileEntry { Shape = EBaseShapeKind.Rectangle, WidthInches = widthMm / MmPerInch, HeightInches = lengthMm / MmPerInch };
         }
 
-        /// <summary>Maps an OPR item (unit-level or gain) to an <see cref="ItemEntry"/>: name + its rule content.
-        /// Non-rule content (nested weapons) is the caller's job to route.</summary>
-        private static ItemEntry MapItem(OprGain g) => new()
+        /// <summary>Maps an OPR item (unit-level or gain) to an <see cref="ItemEntry"/>: name + its rule content, plus
+        /// (#438) a record of its nested weapons. Putting those weapons in the weapon list is the caller's job.</summary>
+        private static ItemEntry MapItem(OprGain g)
         {
-            Name = g.Name ?? "Item",
-            Quantity = Math.Max(1, g.Count ?? 1),
-            Rules = (g.Content ?? new())
-                .Where(c => c.Type == "ArmyBookRule")
-                .Select(c => MapRule(new OprRule { Name = c.Name, Rating = c.Rating }))
-                .ToList(),
-        };
+            List<WeaponFileEntry> weapons = (g.Content ?? new())
+                .Where(c => c.Type == "ArmyBookWeapon").Select(WeaponFromGain).ToList();
+            return new ItemEntry
+            {
+                Name = g.Name ?? "Item",
+                Quantity = Math.Max(1, g.Count ?? 1),
+                Rules = (g.Content ?? new())
+                    .Where(c => c.Type == "ArmyBookRule")
+                    .Select(c => MapRule(new OprRule { Name = c.Name, Rating = c.Rating }))
+                    .ToList(),
+                // #438: recorded so removing the item removes its weapons (ListCompiler.RemoveTarget).
+                Weapons = weapons.Count > 0 ? weapons : null,
+            };
+        }
+
+        private static WeaponFileEntry WeaponFromGain(OprGain g)
+        {
+            var weapon = new WeaponFileEntry
+            {
+                Name = g.Name ?? "Weapon",
+                Quantity = Math.Max(1, g.Count ?? 1),
+                RangeInches = g.Range ?? 0,
+                Attacks = g.Attacks ?? 0,
+            };
+            ApplyRules(weapon, g.SpecialRules);
+            return weapon;
+        }
 
         // ── OPR JSON DTOs (only the fields we consume; lore/image/meta fields are ignored) ──────────────────
 
@@ -871,6 +1029,8 @@ namespace FDG.ArmyBuilding
             public List<OprSpell>? Spells { get; set; }
         }
 
+        // #437: 3.6.0 spells also carry effectSkirmish (the Skirmish-variant text) and costFormula/generation; none
+        // is read - effect + threshold are the whole contract.
         private sealed class OprSpell
         {
             public string? Name { get; set; }
@@ -899,6 +1059,9 @@ namespace FDG.ArmyBuilding
             public string? Square { get; set; }
         }
 
+        // #437 (3.6.0 shape check): attacksMultiplier, originalCount and label ride every weapon but are not read -
+        // `attacks` is already the multiplied figure ("Overrun (A5, Thrust)" is attacks 5, attacksMultiplier 5; the
+        // label agrees with `attacks` on every labelled 3.6.0 weapon) and `count` is the unit total.
         private sealed class OprWeapon
         {
             public string? Name { get; set; }
@@ -961,6 +1124,8 @@ namespace FDG.ArmyBuilding
             public List<OprGain>? Gains { get; set; }
         }
 
+        // #437: 3.6.0 costs[] entries also carry exactCost (the unrounded algorithm value) and questCost (campaign
+        // pricing); Army Forge charges `cost`, so only it is read.
         internal sealed class OprOptionCost
         {
             public int? Cost { get; set; }

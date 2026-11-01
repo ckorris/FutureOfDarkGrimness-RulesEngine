@@ -80,6 +80,30 @@ namespace FDG
         }
 
         /// <summary>
+        /// #420: "the number of wounds it would take to fully destroy" the unit - the sum, over its LIVING
+        /// models, of each model's remaining wounds (Tough-aware: a Tough(6) hero with 2 wounds taken
+        /// counts 4, three Tough(3) models count 9, a plain model counts 1). The pool size of every 3.6
+        /// "roll as many dice as the wounds it would take to destroy it" test: the Dangerous terrain test
+        /// (movement, the forced Debuff, a destroyed transport's spillout) and No Retreat.
+        /// <para>
+        /// A joined hero's model is part of <see cref="IUnit.Models"/>, so its wounds count. Dead models
+        /// contribute nothing, even one with overkill recorded against it. The total is FLOORED (with a
+        /// float-noise epsilon): under the probabilistic roller a fractional tail cannot buy a whole die -
+        /// the P17d Reanimation precedent - while the wounds those dice yield stay fractional.
+        /// </para>
+        /// </summary>
+        public static int GetWoundsToDestroy(this IUnit unit)
+        {
+            float total = 0f;
+            foreach (IModel model in unit.Models)
+            {
+                if (!model.GetIsAlive()) continue;
+                total += Math.Max(0f, model.TotalWounds - model.WoundsDealt);
+            }
+            return (int)MathF.Floor(total + AssignWoundsResults.WoundEpsilon);
+        }
+
+        /// <summary>
         /// Whether the unit is at half strength or less, the threshold the morale rules use to
         /// decide Rout vs. Shaken (and the wound-driven morale trigger). The measure is
         /// shape-dependent, matching the GDF rulebook:
@@ -103,6 +127,50 @@ namespace FDG
             int startingModels = unit.Models.Count;
             int livingModels = unit.Models.Count(model => model.GetIsAlive());
             return livingModels * 2 <= startingModels;
+        }
+
+        /// <summary>
+        /// #431: <see cref="GetIsAtHalfStrength"/> for a unit that also COUNTS as having taken
+        /// <paramref name="countedWounds"/> more wounds than it has (OPR 3.6 Scourge, "... count as having taken 2
+        /// extra wounds ... if shooting wounds would trigger Morale Tests"). Nothing is dealt; the wounds are
+        /// allocated virtually in the mandatory order (already-wounded models first, then the rank and file in
+        /// unit order, a joined hero last - <c>AssignWoundsResults</c>' order), and a model counts as gone only
+        /// when the counted wounds cover all it has left. A single model compares its remaining wounds less the
+        /// counted ones against its Tough. Zero or less counted wounds is exactly <see cref="GetIsAtHalfStrength"/>.
+        /// </summary>
+        public static bool GetIsAtHalfStrength(this IUnit unit, float countedWounds)
+        {
+            if (countedWounds <= 0f)
+            {
+                return unit.GetIsAtHalfStrength();
+            }
+
+            if (unit.Models.Count == 1)
+            {
+                return (unit.RemainingWounds - countedWounds) * 2f <= unit.MaxWounds;
+            }
+
+            ModelID? heroId = unit.JoinedHeroModelId;
+            IEnumerable<IModel> order = unit.Models
+                .Where(model => model.GetIsAlive())
+                .OrderBy(model => heroId is ModelID hid && model.ID == hid ? 2 : model.WoundsDealt > 0f ? 0 : 1);
+
+            float budget = countedWounds;
+            int livingModels = 0;
+            foreach (IModel model in order)
+            {
+                float remaining = model.TotalWounds - model.WoundsDealt;
+                if (budget + AssignWoundsResults.WoundEpsilon >= remaining)
+                {
+                    budget -= remaining;
+                    continue; // counts as removed
+                }
+
+                budget = 0f; // a partly-covered model stands; nothing spills past it
+                livingModels++;
+            }
+
+            return livingModels * 2 <= unit.Models.Count;
         }
 
         /// <summary>
@@ -171,7 +239,10 @@ namespace FDG
 
         // #197 Strafing: "this weapon may only be used in this way" - a strafe weapon is excluded from BOTH
         // attack pools. The melee exclusion is the one that bites: every corpus strafe weapon has range 0,
-        // and IsMelee() is defined as "range 0", so a bomb rack would otherwise be swung in close combat.
+        // and IsMelee() is "range 0 or grants melee use", so a bomb rack would otherwise be swung in close combat.
+        // #424 Assault: one weapon can be in BOTH pools - the same Weapon object, with the same attacks, AP and
+        // rules, is fired by the shooting flow and swung by the melee flow. Nothing here tests the range directly;
+        // IWeaponExtensions.IsMelee / IsRanged is the one classification seam.
         public static List<Weapon> GetMeleeWeapons(this IUnit unit)
         {
             return unit.AllWeapons(u => u.IsMelee() && !Rules.Dispatch.StrafingRules.IsStrafeOnly(u));

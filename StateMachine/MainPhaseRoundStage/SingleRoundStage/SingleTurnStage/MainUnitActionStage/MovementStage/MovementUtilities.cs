@@ -788,6 +788,26 @@ namespace FDG.Stages
                 .Where(t => t.TerrainType.HasFlag(ETerrainType.Dangerous))
                 .ToList());
 
+        /// <summary>
+        /// #446: whether <paramref name="model"/>, standing where it is, is IN a Dangerous-flagged piece - the
+        /// "or that activate in it" half of the Dangerous terrain rule. The same footprint test the move uses
+        /// (<see cref="DoesPathCrossDangerousTerrain"/>): the model's true base (shape + resting facing, #150)
+        /// overlapping the piece counts, swept over zero length - i.e. the static pose test. So a base that
+        /// pokes into the piece is in it, exactly as a base that clips it on a move crosses it; a model whose
+        /// base stops short of the edge is not.
+        /// </summary>
+        public static bool IsModelInDangerousTerrain(IModel model, IEnumerable<ITerrain> terrain)
+        {
+            Float2 at = new Float2(model.Position.x, model.Position.z);
+            foreach (ITerrain piece in terrain)
+            {
+                if (!piece.TerrainType.HasFlag(ETerrainType.Dangerous)) continue;
+                if (SweptBaseGeometry.DoesSweptBaseIntersectZone(piece.Shape, at, at, model.BaseShape, model.Facing))
+                    return true;
+            }
+            return false;
+        }
+
         /// <summary>Public sibling of the Dangerous check (#155): whether the move's swept path touches any
         /// Difficult-flagged piece. Lets a move-preview resolver know a model's committed waypoints have
         /// already crossed Difficult terrain, so the rest of its move is subject to
@@ -1607,6 +1627,24 @@ namespace FDG.Stages
             Hull = BaseShape.Footprint(Center, Facing);
             Zone = BaseShape.ToZone(Center, Facing);
             CircumscribedRadiusInches = BaseShape.CircumscribedRadiusInches;
+        }
+
+        /// <summary>
+        /// #427: this footprint grown by <paramref name="inches"/> on every side - the keep-out zone an
+        /// obstacle-stop move (pile-in) treats as the obstacle when the thing may not be touched. A disc's
+        /// radius and a rectangle's half-extents each grow by the margin (a rectangle's corners are squared
+        /// off rather than rounded, which over-keeps by a fraction of an inch at the corner only). A shape
+        /// of any other kind is returned unchanged.
+        /// </summary>
+        public EnemyModelFootprint Inflated(float inches)
+        {
+            IBaseShape grown = BaseShape switch
+            {
+                CircleBase circle => new CircleBase(circle.RadiusInches + inches),
+                RectangleBase rect => new RectangleBase(rect.WidthInches + 2f * inches, rect.HeightInches + 2f * inches),
+                _ => BaseShape,
+            };
+            return new EnemyModelFootprint(Center, BaseRadiusInches + inches, UnitKey, Uncontactable, grown, Facing);
         }
     }
 }

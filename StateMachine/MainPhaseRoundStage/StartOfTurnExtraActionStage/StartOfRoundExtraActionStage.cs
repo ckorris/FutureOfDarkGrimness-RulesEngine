@@ -34,7 +34,7 @@ namespace FDG.Stages
             // round 2, Rapid Ambush "including the first"); Aircraft that flew off the table edge
             // return from round 2. Reinforcement copies land AFTER the ambushers, per their own text
             // ("at the beginning of the next round after Ambushers have been deployed").
-            await BringOnReserves(context.RoundCount);
+            await BringOnReserves(context);
             await PlaceReinforcements();
             if (context.RoundCount >= 2)
             {
@@ -96,60 +96,108 @@ namespace FDG.Stages
         /// never placed during deployment) to its owner this round; on accept, places it anywhere over
         /// its rule's range from enemy units via the normal PlaceObjectsRequest flow. Each unit's own
         /// <c>MinArrivalRound</c> gates when it is first offered (#197 P22 Rapid Ambush).
+        /// <para>#426: "Players alternate in placing Ambush units, starting with the player that activates
+        /// next" (3.5 and 3.6 alike; arrivals used to run in army-store order). One arrival per turn, players
+        /// in this round's activation order (<see cref="PlacementAlternation"/>). A turn walks the player's
+        /// eligible units in army-list order: a declined unit stays in reserve for the round and is not asked
+        /// again, the first accepted (or mandatory) one is placed and ends the turn, and a player who declines
+        /// everything left is done for the round.</para>
         /// </summary>
-        private async Task BringOnReserves(int roundCount)
+        private async Task BringOnReserves(IMainPhaseContext context)
         {
+            int roundCount = context.RoundCount;
+            var queues = new Dictionary<PlayerID, Queue<UnitData>>();
+            var participants = new List<PlayerID>();
+
             foreach (ArmyData army in GameContext.GameDataStore.GetAllValues<ArmyData>().ToList())
             {
                 foreach (DataBinding<UnitData> unitBinding in army.UnitBindings.ToList())
                 {
                     UnitData unit = unitBinding.GetValue();
+                    if (!IsArrivalDue(unit, roundCount)) continue;
 
-                    if (!unit.GetIsAlive()) continue;
-                    if (!ReserveRules.IsInReserve(unit)) continue;
-                    if (!TryGetLaterRoundDefer(unit, out RuleOperation.DeferDeployment defer,
-                            out string reserveRuleName)) continue;
-                    if (roundCount < defer.MinArrivalRound) continue;
-
-                    // A mandatory arrival (Ambush Re-Deployment's return leg) is placed, not offered -
-                    // the owner ruled the unit MUST come back at the next round start. Only the spot is
-                    // the player's to choose.
-                    bool bringOn = defer.MandatoryArrival
-                        || await GameContext.PlayerRequester.RequestDecision<YesNoRequest, bool>(
-                            new YesNoRequest(unit.PlayerID, $"Deploy {unit.Name} from Ambush this round?",
-                                defaultAnswer: true,
-                                displayName: $"Deciding Whether to Deploy {unit.Name} from Ambush"));
-
-                    if (!bringOn) continue;
-
-                    await PlaceFromReserve(unit, defer.PlacementRangeInches,    // clears the reserve state
-                        displayName: $"Deploying {unit.Name} from Ambush");
-                    // The pending-return marker (if this arrival IS the Ambush Re-Deployment return) is
-                    // spent by arriving; a plain Ambush unit never carries it, so this is a safe no-op.
-                    unit.Tokens.RemoveTokens(TokenType.PendingAmbushArrival);
-                    // A unit that arrives from reserve can't seize or contest objectives the round it
-                    // arrives. Mark it so ReconcileObjectivesStage excludes its models from this round's
-                    // objective check; the RoundEnd clear trigger sweeps the marker after that check.
-                    unit.Tokens.AddToken(TokenDefinitionCatalog.Create(TokenType.ArrivedFromReserve));
-
-                    // #399: the arrival itself, before the banner names it. Emitted here rather than
-                    // inside PlaceFromReserve so it stays scoped to units that came out of NOWHERE -
-                    // the Aircraft return leg shares that helper but flies back on from a table edge,
-                    // which is a different kind of entrance and deliberately keeps its banner alone.
-                    await PresentArrival(unit, reserveRuleName);
-
-                    await GameContext.Announce($"{unit.Name} arrives from Ambush!", new TextColor(255, 170, 60, 255));
+                    if (!queues.TryGetValue(unit.PlayerID, out Queue<UnitData>? queue))
+                    {
+                        queues[unit.PlayerID] = queue = new Queue<UnitData>();
+                        participants.Add(unit.PlayerID);
+                    }
+                    queue.Enqueue(unit);
                 }
+            }
+
+            await PlacementAlternation.RunAsync(context.TeamActivateOrder, participants,
+                player => queues.TryGetValue(player, out Queue<UnitData>? queue) && queue.Count > 0,
+                player => TakeArrivalTurn(queues[player], roundCount));
+        }
+
+        // Alive, still in reserve, carrying a later-round defer whose earliest round has come.
+        private bool IsArrivalDue(UnitData unit, int roundCount) =>
+            unit.GetIsAlive()
+            && ReserveRules.IsInReserve(unit)
+            && TryGetLaterRoundDefer(unit, out RuleOperation.DeferDeployment defer)
+            && roundCount >= defer.MinArrivalRound;
+
+        // One player's Ambush turn: offer their units in order until one arrives (ending the turn) or none is
+        // left. Every dequeue consumes work, which is what lets the alternation terminate.
+        private async Task TakeArrivalTurn(Queue<UnitData> queue, int roundCount)
+        {
+            while (queue.Count > 0)
+            {
+                UnitData unit = queue.Dequeue();
+                // Re-checked at the unit's turn: the snapshot was taken before anyone placed anything.
+                if (!IsArrivalDue(unit, roundCount)) continue;
+                TryGetLaterRoundDefer(unit, out RuleOperation.DeferDeployment defer, out string reserveRuleName);
+
+                // A mandatory arrival (Ambush Re-Deployment's return leg) is placed, not offered -
+                // the owner ruled the unit MUST come back at the next round start. Only the spot is
+                // the player's to choose.
+                bool bringOn = defer.MandatoryArrival
+                    || await GameContext.PlayerRequester.RequestDecision<YesNoRequest, bool>(
+                        new YesNoRequest(unit.PlayerID, $"Deploy {unit.Name} from Ambush this round?",
+                            defaultAnswer: true,
+                            displayName: $"Deciding Whether to Deploy {unit.Name} from Ambush"));
+
+                if (!bringOn) continue;
+
+                await PlaceFromReserve(unit, defer.PlacementRangeInches,    // clears the reserve state
+                    displayName: $"Deploying {unit.Name} from Ambush");
+                // The pending-return marker (if this arrival IS the Ambush Re-Deployment return) is
+                // spent by arriving; a plain Ambush unit never carries it, so this is a safe no-op.
+                unit.Tokens.RemoveTokens(TokenType.PendingAmbushArrival);
+                // A unit that arrives from reserve can't seize or contest objectives the round it
+                // arrives. Mark it so ReconcileObjectivesStage excludes its models from this round's
+                // objective check; the RoundEnd clear trigger sweeps the marker after that check.
+                unit.Tokens.AddToken(TokenDefinitionCatalog.Create(TokenType.ArrivedFromReserve));
+
+                // #399: the arrival itself, before the banner names it. Emitted here rather than
+                // inside PlaceFromReserve so it stays scoped to units that came out of NOWHERE -
+                // the Aircraft return leg shares that helper but flies back on from a table edge,
+                // which is a different kind of entrance and deliberately keeps its banner alone.
+                await PresentArrival(unit, reserveRuleName);
+
+                await GameContext.Announce($"{unit.Name} arrives from Ambush!", new TextColor(255, 170, 60, 255));
+                return;
             }
         }
 
         /// <summary>
+        /// Reinforcement's arrival band (Core Rules v3.6.0 book text, #426): "place a new copy of it fully
+        /// within 9" of any table edge, over 9" away from enemy units" (3.5: within 12" of any table edge, no
+        /// enemy clause).
+        /// </summary>
+        public const float ReinforcementEdgeBandInches = 9f;
+
+        /// <summary> Reinforcement's "over 9" away from enemy units" (#426). </summary>
+        public const float ReinforcementEnemyClearanceInches = 9f;
+
+        /// <summary>
         /// #197 P17c: places every queued Reinforcement copy (held in reserve with
         /// <see cref="TokenType.PendingReinforcementArrival"/> by the reinforce service) "fully within
-        /// 12\" of any table edge". MANDATORY - the "you may" was spent at the removal, so only the
-        /// spot is the player's - and running right after <see cref="BringOnReserves"/> is the rule's
-        /// own "after Ambushers have been deployed". The ArrivedFromReserve stamp IS the rule's
-        /// "can't seize or contest objectives on the round they deploy".
+        /// 9\" of any table edge, over 9\" away from enemy units" (#426, 3.6 numbers: the band and the flat
+        /// enemy minimum ride on the request, so every resolver reads them). MANDATORY - the "you may" was
+        /// spent at the removal, so only the spot is the player's - and running right after
+        /// <see cref="BringOnReserves"/> is the rule's own "after Ambushers have been deployed". The
+        /// ArrivedFromReserve stamp IS the rule's "can't seize or contest objectives on the round they deploy".
         /// </summary>
         private async Task PlaceReinforcements()
         {
@@ -164,9 +212,10 @@ namespace FDG.Stages
                     if (!unit.Tokens.HasToken(TokenType.PendingReinforcementArrival)) continue;
 
                     var zone = new TableEdgeBandZone(GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES,
-                        GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES, bandWidthInches: 12f);
+                        GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES, bandWidthInches: ReinforcementEdgeBandInches);
                     var request = new PlaceObjectsRequest<ModelData>(unit.PlayerID,
-                        $"Placing Reinforcements ({unit.Name})", zone, unit.ModelBindings);
+                        $"Placing Reinforcements ({unit.Name})", zone, unit.ModelBindings,
+                        minDistanceFromEnemiesInches: ReinforcementEnemyClearanceInches);
                     List<PlacedObjectEntry<ModelData>> placements = await PlacementCommitGuard
                         .RequestClearPlacement(GameContext, request);
 

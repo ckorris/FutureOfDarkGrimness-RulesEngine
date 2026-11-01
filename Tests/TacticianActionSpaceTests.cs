@@ -90,7 +90,7 @@ namespace FDG.Tests
             {
                 IReadOnlyList<SearchEdge> edges = tree.EdgesOf(tree.Root, unit);
                 // #191 search perf pass 2: a charge from range is prescribed as the MOVE it is (the
-                // engine's Charge menu entry is only offered to a unit already in the 2" melee
+                // engine's Charge menu entry is only offered to a unit already in the 3" melee
                 // cylinder; the planner takes Charge on the re-entry). The edge is recognised by its
                 // macro, and its action name must be Move for these units 8" apart.
                 SearchEdge? charge = edges.FirstOrDefault(e =>

@@ -279,7 +279,7 @@ namespace FDG.Tests
             int historyLength = ReplayResumeTests.Read(prior!).Events.Count;
 
             var net = new LoopbackNetworkHost();
-            var game = new NetworkedGame { HostVm = new LobbyViewModel_Host("Host", "Saved Game", "", net, loaded, prior) };
+            var game = new NetworkedGame { HostVm = new LobbyViewModel_Host("Host", "Saved Game", "", net, loaded, priorReplay: prior) };
             game.HostVm.PresentationClockFactory = () => new InstantPresentationClock();
             game.ClientVm = await Join(net.Connect("Client"), "Client");
             game.HostPlayer = game.HostVm.PlayerInfos.Single(p => p.PlayerType == EPlayerType.Local).PlayerID;

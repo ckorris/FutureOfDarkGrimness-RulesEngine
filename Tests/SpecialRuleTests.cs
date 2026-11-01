@@ -593,12 +593,14 @@ namespace FDG.Tests
             saveOps.HasOperation<RuleOperation.ApplyRollModifier>(op => op.Roll == ERollKind.Save && op.Delta == -1);
         }
 
-        // Indirect (core) — -1 to hit when shooting after moving.
+        // The AfterMoving condition driving a shoot-after-move penalty. (This was 3.5 Indirect's -1; Core Rules
+        // v3.6.0 dropped it - #425 - so the definition here is a stand-in named for what it is, kept because the
+        // condition still gates live rules: Indirect's Hold-only facets and Artillery's +1 read Not(AfterMoving).)
         [Test]
-        public void Indirect_WhenShootingAfterMoving_AppliesMinus1ToHit()
+        public void AfterMovingCondition_WhenShootingAfterMoving_AppliesMinus1ToHit()
         {
             var harness = new TestRuleHarness();
-            harness.Register(new SpecialRuleDefinition("Indirect",
+            harness.Register(new SpecialRuleDefinition("Moving Penalty",
                 new[]
                 {
                     new HookEntry(EHookID.Shooting_OnHitRollModifier,
@@ -608,7 +610,7 @@ namespace FDG.Tests
                 },
                 NoAbilities));
 
-            IUnit attacker = harness.BuildUnit("P1", modelCount: 3, "Indirect");
+            IUnit attacker = harness.BuildUnit("P1", modelCount: 3, "Moving Penalty");
             IUnit target = harness.BuildUnit("P2", modelCount: 5);
 
             var ops = harness.Evaluate(attacker, ERuleSeat.Actor,
@@ -831,9 +833,10 @@ namespace FDG.Tests
             ops.HasOperation<RuleOperation.MultiplyHits>(op => op.Multiplier == 3);
         }
 
-        // Impact(X) (core) — rolls X impact dice on the charge.
+        // Impact(X) (core) — rolls X impact dice per carrying model on the charge (#447: a 3-model unit's
+        // Impact(2) is 6 dice, not 2).
         [Test]
-        public void Impact_OnCharge_RollsArgumentImpactDice()
+        public void Impact_OnCharge_RollsArgumentImpactDicePerModel()
         {
             var harness = new TestRuleHarness();
             var impact = new SpecialRuleDefinition("Impact",
@@ -853,7 +856,7 @@ namespace FDG.Tests
 
             var ops = harness.Evaluate(attacker, ERuleSeat.Actor, new ChargeContactContext(attacker, defender));
 
-            ops.HasOperation<RuleOperation.ChargeImpactHits>(op => op.DiceCount == 2);
+            ops.HasOperation<RuleOperation.ChargeImpactHits>(op => op.DiceCount == 6 && op.Models == 3);
         }
 
         // Fear(X) (core) — counts as +X wounds when deciding who won melee.
@@ -909,15 +912,13 @@ namespace FDG.Tests
                 op.TokenToGrant.Type == TokenType.SpellTokens && op.TokenToGrant.Count == 2);
         }
 
-        // Artillery (core) — +1 to hit when shooting at enemies over 9" away. Reuses
-        // the roll-modifier vocabulary. The other facets — enemies get -2 to hit from
-        // over 9", and the unit may only Hold — are separate entries (RangeModifier /
-        // RestrictActions) added when modelled.
+        // A distance-gated +1 to hit (the shape of the pre-3.6 Artillery facet; the real 3.6 Artillery - Hold and
+        // over 12" - is pinned by ArtilleryRuleIntegrationTests, #425). Reuses the roll-modifier vocabulary.
         [Test]
-        public void Artillery_WhenShootingBeyond9_AddsOneToHit()
+        public void DistanceGatedHitBonus_WhenShootingBeyond9_AddsOneToHit()
         {
             var harness = new TestRuleHarness();
-            harness.Register(new SpecialRuleDefinition("Artillery",
+            harness.Register(new SpecialRuleDefinition("Long Shot",
                 new[]
                 {
                     new HookEntry(EHookID.Shooting_OnHitRollModifier,
@@ -927,7 +928,7 @@ namespace FDG.Tests
                 },
                 NoAbilities));
 
-            IUnit attacker = harness.BuildUnit("P1", modelCount: 1, "Artillery");
+            IUnit attacker = harness.BuildUnit("P1", modelCount: 1, "Long Shot");
             IUnit target = harness.BuildUnit("P2", modelCount: 5);
 
             var ops = harness.Evaluate(attacker, ERuleSeat.Actor, new HitRollModifierContext(attacker, target, DistanceInches: 12f));
@@ -963,9 +964,8 @@ namespace FDG.Tests
                 op => op.Unit == attacker && op.TokenToGrant.Type == usedMarker);
         }
 
-        // Counter (core) — a charged bearer strikes first. The companion facet (the
-        // charger loses 1 Impact roll per Counter model) is an Impact-count modifier
-        // added when that interaction is modelled.
+        // Counter (core) — a charged bearer strikes first. (3.5's companion facet, the charger
+        // losing Impact rolls, is Brace(X) in 3.6 - #422, BraceRuleIntegrationTests.)
         [Test]
         public void Counter_WhenCharged_StrikesFirst()
         {

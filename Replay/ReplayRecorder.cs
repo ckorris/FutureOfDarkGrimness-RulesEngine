@@ -432,14 +432,18 @@ namespace FDG.Replay
         {
             ReplayHeader header;
             ReplayEvent[] events;
+            ReplaySummary summary;
             lock (_lock)
             {
                 header = _header ?? throw new InvalidOperationException("Nothing to export: the replay recorder was never started.");
                 events = _events.ToArray();
+                // #457: the running tally has counted exactly these events (Append and Seed add to both under this
+                // lock), so the header's summary need not be recounted from them.
+                summary = _tally.ToSummary();
             }
 
             using MemoryStream stream = new MemoryStream();
-            ReplayWriter.WriteGzip(header, events, stream);
+            ReplayWriter.WriteGzip(header, events, stream, summary);
             return stream.ToArray();
         }
 

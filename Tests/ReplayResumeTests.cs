@@ -228,6 +228,9 @@ namespace FDG.Tests
             Assert.That(summary.Steps, Is.EqualTo(new ReplayTimeline(document).Steps.Count), "the summary counts both sessions");
             Assert.That(summary.Outcome, Is.EqualTo(resumed.Result.Outcome.ToString()));
             Assert.That(summary.DurationMs, Is.EqualTo(events[^1].T));
+            // #457: the file's header takes the running tally rather than recounting - which, seeded with the saved
+            // history, must still equal a recount of every event written.
+            Assert.That(document.Header.Summary, Is.EqualTo(ReplayTally.Of(events)));
         }
 
         // A #187 recovery save is written after the game ended: its replay ends with GameEnded and no Saved marker (the

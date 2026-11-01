@@ -14,16 +14,19 @@ namespace FDG.Replay
         /// Writes <paramref name="header"/> and then every event, one JSON object per line, gzipped into
         /// <paramref name="output"/>. The stream is left open (callers own it - a file, or a MemoryStream
         /// whose bytes go into a save). The header line carries the summary of the events written (#456);
-        /// <paramref name="header"/> itself is not changed.
+        /// <paramref name="header"/> itself is not changed. <paramref name="summary"/> is that summary when the
+        /// caller already holds it (#457: the recorder's running tally, which saves recounting every request);
+        /// null counts it here.
         /// </summary>
-        public static void WriteGzip(ReplayHeader header, IEnumerable<ReplayEvent> events, Stream output)
+        public static void WriteGzip(ReplayHeader header, IEnumerable<ReplayEvent> events, Stream output,
+            ReplaySummary? summary = null)
         {
             IReadOnlyList<ReplayEvent> written = events as IReadOnlyList<ReplayEvent> ?? events.ToList();
 
             using GZipStream gzip = new GZipStream(output, CompressionLevel.Optimal, leaveOpen: true);
             using StreamWriter writer = new StreamWriter(gzip, Utf8NoBom, bufferSize: 1 << 16);
 
-            WriteLine(writer, header.WithSummary(ReplayTally.Of(written)));
+            WriteLine(writer, header.WithSummary(summary ?? ReplayTally.Of(written)));
             foreach (ReplayEvent replayEvent in written)
             {
                 WriteLine(writer, replayEvent);

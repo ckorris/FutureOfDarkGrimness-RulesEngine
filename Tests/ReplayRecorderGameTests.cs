@@ -148,6 +148,8 @@ namespace FDG.Tests
             // #456: the summary counts steps as the viewer does - the folded single-option requests left out.
             Assert.That(game.Recorder.Summary.Steps, Is.EqualTo(new ReplayTimeline(game.Document).Steps.Count)
                 .And.LessThan(events.OfType<ReplyEvent>().Count()));
+            // #457: the exported header carries the recorder's running tally - the same summary a recount gives.
+            Assert.That(game.Document.Header.Summary, Is.EqualTo(ReplayTally.Of(events)));
 
             // Activations: numbered from 1 within each round; every unit-naming repeat follows its own boundary.
             List<MarkerEvent> activations = Markers(game, EReplayMarker.ActivationStart);

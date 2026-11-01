@@ -6,7 +6,7 @@ namespace FDG.Rules.Foundation;
 ///
 /// The two differ only in melee. A shooting attack is launched from where the shooter stands, so the
 /// launch distance and the live distance are the same. A melee attack is resolved in base contact, so
-/// the live distance is always under <c>MELEE_RANGE_INCHES_HORIZONTAL</c> (2") and a
+/// the live distance is always under <c>MELEE_RANGE_INCHES_HORIZONTAL</c> (3") and a
 /// <see cref="Definitions.Condition.DistanceGreaterThan"/>(9) gate can never pass there — which silently
 /// disabled the melee half of every "when it shoots <b>or charges</b> enemies over 9\" away" rule in the
 /// corpus (#197). The launch distance for a charge is the distance to the defender at the instant the

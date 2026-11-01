@@ -3,9 +3,10 @@ using FDG.Data;
 namespace FDG.Stages
 {
     /// <summary>
-    /// Computes the defender's reactive pile-in moves after a charge. GF v3.5.1 p.9:
-    /// defender models not in base contact must move by up to 3" to get into base contact
-    /// with a charging model, or as close as possible, maintaining unit coherency.
+    /// Computes the defender's reactive pile-in moves after a charge. Core Rules v3.6.0: "Charging
+    /// models must move into base contact with targets, or as close as possible, and then defenders
+    /// must do the same by moving up to 3"." Unit coherency is maintained throughout. The 3" cap is
+    /// unchanged from v3.5.1 (re-checked against the v3.6.0 text in #417).
     /// <para>
     /// #330: "into base contact" is read as maximize-the-contact-count, the way a player would
     /// actually pile in. Contact slots are sampled around every charging model's base and
@@ -77,7 +78,7 @@ namespace FDG.Stages
             // moving toward (third-party enemy units, or a unit it is already engaged with). Without these a
             // defender piling toward its charger could plow straight through a different enemy's base (#159).
             IReadOnlyList<EnemyModelFootprint> otherEnemies =
-                otherEnemyModels ?? System.Array.Empty<EnemyModelFootprint>();
+                WithAircraftStandoff(otherEnemyModels ?? System.Array.Empty<EnemyModelFootprint>());
 
             List<DataBinding<ModelData>> liveChargers = chargingModels
                 .Where(m => m.GetValue().GetIsAlive()).ToList();
@@ -185,6 +186,31 @@ namespace FDG.Stages
                     result.Add(new PileInMove(defender, newPos));
             }
             return result;
+        }
+
+        /// <summary>
+        /// #427 (Core Rules v3.6.0 Aircraft: "can't be moved in contact with"): an uncontactable enemy - an
+        /// Aircraft - is not just a hard obstacle the defender stops AT, as a ground unit is (#159), but one it
+        /// must stop short of by the <see cref="GameWideConstants.ENEMY_STANDOFF_DISTANCE_INCHES"/> standoff band
+        /// the charge and consolidation validators already enforce. Growing its footprint by that band lets
+        /// every obstacle test below (the swept stop, the slot end-state, the residual-overlap revert) keep
+        /// the margin with no per-test special case. Returns the input list when there is no Aircraft.
+        /// </summary>
+        private static IReadOnlyList<EnemyModelFootprint> WithAircraftStandoff(IReadOnlyList<EnemyModelFootprint> enemies)
+        {
+            bool any = false;
+            for (int i = 0; i < enemies.Count && !any; i++) any = enemies[i].Uncontactable;
+            if (!any) return enemies;
+
+            var grown = new List<EnemyModelFootprint>(enemies.Count);
+            foreach (EnemyModelFootprint enemy in enemies)
+            {
+                grown.Add(enemy.Uncontactable
+                    ? enemy.Inflated(GameWideConstants.ENEMY_STANDOFF_DISTANCE_INCHES)
+                    : enemy);
+            }
+
+            return grown;
         }
 
         /// <summary>Count of live defenders in base contact (within <see cref="BTB_EPSILON_INCHES"/> b2b)

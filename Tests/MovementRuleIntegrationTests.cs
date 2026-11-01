@@ -44,23 +44,6 @@ namespace FDG.Tests
         }
 
         [Test]
-        public void VeryFastUnit_DoublesFastsBonuses()
-        {
-            var baseline = new MovementActionContext(_ctx, MakeUnit());
-
-            DataBinding<UnitData> veryFast = MakeUnit();
-            veryFast.GetValue().AttachRuleDefinition(new ResolvedRule("Very Fast", CoreRuleCatalog.VeryFast));
-            var context = new MovementActionContext(_ctx, veryFast);
-
-            Assert.That(context.MaxAdvanceDistance, Is.EqualTo(baseline.MaxAdvanceDistance + 4f).Within(0.001f),
-                "Very Fast adds +4\" to Advance.");
-            Assert.That(context.MaxRushDistance, Is.EqualTo(baseline.MaxRushDistance + 8f).Within(0.001f),
-                "Very Fast adds +8\" to Rush.");
-            Assert.That(context.MaxChargeDistance, Is.EqualTo(baseline.MaxChargeDistance + 8f).Within(0.001f),
-                "Very Fast adds +8\" to Charge.");
-        }
-
-        [Test]
         public void SlowUnit_ReducesAllThreeBudgets()
         {
             var baseline = new MovementActionContext(_ctx, MakeUnit());

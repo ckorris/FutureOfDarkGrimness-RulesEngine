@@ -22,7 +22,7 @@ Players alternate dropping units into their deployment zones, with unit cohesion
 Units activate one at a time, alternating between players, across four rounds. On its activation a unit picks an action — Hold, Advance (6″), Rush (12″), Charge (12″) — and the engine validates the move:
 
 - Paths are blocked by **impassable** terrain.
-- **Dangerous** terrain rolls a d6 per model whose path crosses it and deals a wound on a 1.
+- **Dangerous** terrain: if any model's path crosses it, the unit rolls a d6 per wound it would take to destroy it (3.6), and each 1 is a wound to the unit.
 - **Difficult** terrain caps movement.
 - Cohesion is re-checked so a unit can't tear itself apart by moving.
 

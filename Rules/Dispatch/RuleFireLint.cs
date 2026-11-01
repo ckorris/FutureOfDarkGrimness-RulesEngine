@@ -118,6 +118,7 @@ public static class RuleFireLint
         LintWorld world = LintWorld.Build(definition);
         IReadOnlyList<RuleArgument> args = ArgumentsFor(definition);
         SatisfyCondition(entry.Condition, world, positive: true);
+        SatisfyEffectInputs(entry.Effect, world);
 
         bool conditionEverPassed = false;
         string? applyError = null;
@@ -321,6 +322,8 @@ public static class RuleFireLint
             // question, and emitting (say) a token grant in reply to it does nothing.
             EHookID.Lifecycle_OnCapabilityQuery => op is RuleOperation.EnableCasting
                 or RuleOperation.EnableTransport or RuleOperation.EnableReDeployment
+                // #424: weapon roles are read off the weapon by WeaponRoleQueries at build time.
+                or RuleOperation.EnableMeleeUse or RuleOperation.EnableRangedUse
                 or RuleOperation.EnableSpellLending or RuleOperation.EnableSpellRelay
                 or RuleOperation.EnableBuffRelay
                 or RuleOperation.RepelAmbushers or RuleOperation.AmbushBeacon
@@ -328,7 +331,10 @@ public static class RuleFireLint
 
             // DetermineHitRollStage: shifts the hit threshold and floors Quality. It never reads a Save delta.
             EHookID.Shooting_OnHitRollModifier =>
-                op is RuleOperation.ApplyRollModifier { Roll: ERollKind.Hit } or RuleOperation.QualityFloor,
+                op is RuleOperation.ApplyRollModifier { Roll: ERollKind.Hit } or RuleOperation.QualityFloor
+                    // #427 Unstoppable: the evaluator drops the ignorable to-hit penalties; the stage reads the
+                    // marker to leave a granted negative hit token out of its net.
+                    or RuleOperation.IgnoreNegativeWeaponModifiers,
 
             // RollToHitStage: per-hit AP split, extra hits, hit multiplier, whole-attack Save delta, and the
             // defender's AP reduction. The hit roll is already made, so a Hit delta here is discarded.
@@ -339,11 +345,16 @@ public static class RuleFireLint
                     or RuleOperation.ApplyPerHitSaveModifier
                     or RuleOperation.ReduceArmorPenetration
                     // #197 Hazardous: RollToHitStage sums these and wounds the attacker after the attack.
-                    or RuleOperation.InflictSelfWounds,
+                    or RuleOperation.InflictSelfWounds
+                    // #431 Pierce: RollToHitStage drops the positive Save deltas and flags the save stage.
+                    or RuleOperation.IgnorePositiveDefenseModifiers
+                    // #427 Unstoppable: the evaluator drops the ignorable AP reductions before RollToHitStage sums them.
+                    or RuleOperation.IgnoreNegativeWeaponModifiers,
 
             // SightRuleQueries reads the attacker's weapon-sight flags off CoverIgnoreContext.
             EHookID.Shooting_OnSaveRollModifier =>
-                op is RuleOperation.IgnoreCover or RuleOperation.IgnoreLineOfSight,
+                op is RuleOperation.IgnoreCover or RuleOperation.IgnoreLineOfSight
+                    or RuleOperation.IgnoreSightBlockerCover,
 
             // AssignWoundsStage: the save reroll, injected wounds, the wound-ignore threshold, and
             // the earned follow-up attacks (#376 Bloodthirsty; consumed by the melee swing chain).
@@ -351,10 +362,15 @@ public static class RuleFireLint
                 op is RuleOperation.ApplyReroll { Roll: ERollKind.Save }
                     or RuleOperation.InsertExtraWounds
                     or RuleOperation.IgnoreWound
-                    or RuleOperation.AddBonusAttacks,
+                    or RuleOperation.AddBonusAttacks
+                    // #431 Scourge: banked on the defender for the melee result / shooting morale check.
+                    or RuleOperation.AddCountedWoundsTaken,
 
             EHookID.Shooting_OnPreApplyWound => op is RuleOperation.MultiplyWounds,
             EHookID.Shooting_OnRangeCheck => op is RuleOperation.ApplyRangeModifier,
+
+            // CastSpellStage via CastRollRules: folds the Cast deltas into the cast threshold.
+            EHookID.Casting_OnSpellCastAttempt => op is RuleOperation.ApplyRollModifier { Roll: ERollKind.Cast },
             EHookID.Shooting_OnShootTargetsSelected => op is RuleOperation.TargetIndividualModel,
             EHookID.Shooting_OnPostShoot => op is RuleOperation.InvokeTriggeredMove,
 
@@ -372,7 +388,7 @@ public static class RuleFireLint
             EHookID.Morale_OnMoraleTestComplete =>
                 op is RuleOperation.ApplyReroll { Roll: ERollKind.Morale } or RuleOperation.PassMoraleTest,
 
-            // ReduceImpactDicePerModel folds into the same ChargeImpactHits sink, as a negative dice count.
+            // Brace's CancelImpactDice folds into the same ChargeImpactHits sink, as a negative dice count.
             // #197 P10: Ravage queues InvokeDealAutoWounds here, rolled by ResolveRavageWoundsStage.
             EHookID.Melee_OnChargeContact =>
                 op is RuleOperation.ChargeImpactHits or RuleOperation.InvokeDealAutoWounds,
@@ -380,13 +396,17 @@ public static class RuleFireLint
             // that strikes first (Counter) and a charger that strikes last (Unwieldy) are one outcome.
             EHookID.Melee_OnCounterTrigger =>
                 op is RuleOperation.StrikeFirst or RuleOperation.StrikeLast,
+            // #423: ParryHitsStage folds the defender's Parry dice through the ParrySink and rolls them.
+            EHookID.Melee_OnHitsTaken => op is RuleOperation.ParryDice,
             EHookID.Melee_OnMeleeResolution => op is RuleOperation.ExtraMeleeWoundCount,
             EHookID.Melee_OnPostMelee => op is RuleOperation.InvokeTriggeredMove,
 
             // #197 P20: ChooseActionStage reads AllowShootAfterRush at the same hook it reads RestrictActions
-            // - both are answers to "what may this unit do this activation".
+            // - both are answers to "what may this unit do this activation". #425: Cumbersome's
+            // ForbidShootingAfterMoving is the same kind of answer, read by GetCanShoot.
             EHookID.Activation_OnActionChoice =>
-                op is RuleOperation.RestrictActions or RuleOperation.AllowShootAfterRush,
+                op is RuleOperation.RestrictActions or RuleOperation.AllowShootAfterRush
+                    or RuleOperation.ForbidShootingAfterMoving,
 
             // UnitCreationRules applies the token grants (auras) and folds SetMaxWounds (Tough) and
             // SetDefense (Armor).
@@ -461,8 +481,6 @@ public static class RuleFireLint
         // #381 Retreating Strike: the same op at move-resolved, rolled by the RetreatingStrike stages.
         RuleOperation.InvokeDealAutoWounds => hook is EHookID.Movement_OnMoveThroughEnemy
             or EHookID.Movement_OnMoveResolved,
-        // #197 P10 Storm of X: an action-choice ability enacted by StormStage (routed from ChooseActionStage).
-        RuleOperation.InvokeStorm => hook is EHookID.Activation_OnActionChoice,
         // #197 Surprise Attack: the first-activation hit pool, rolled by SurpriseAttackStage.
         RuleOperation.InvokeDealPooledHits => hook is EHookID.Activation_OnActivationStart,
         // #197 P16 Takedown Strike / Shot: an extra attack run by ResolveExtraAttackStage at the attack window.
@@ -529,6 +547,31 @@ public static class RuleFireLint
             case Condition.TokenPresent token when positive:
                 SeedTokens(world.Bearer, token.TType, token.MinCount);
                 break;
+            // #431: the target-state gates seed the opposing unit (the target of every Actor-seat entry).
+            case Condition.TargetMostModelsDefenseInRange defense when positive:
+                world.Other.Defense = Math.Min(defense.MinDefense, defense.MaxDefense);
+                break;
+            case Condition.TargetShakenOrFatigued when positive:
+                SeedTokens(world.Other, TokenType.Fatigued, 1);
+                break;
+            case Condition.CountsAsFatiguedInMelee when positive:
+                // #422: no corpus rule fires only WHILE Fatigued (Impact/Counter/Brace gate on the negation,
+                // which the default empty state satisfies), but a positive leaf must still be reachable.
+                SeedTokens(world.Bearer, TokenType.Fatigued, 1);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// #434: state an effect's own VALUE reads, as <see cref="SatisfyCondition"/> does for conditions - a pool sized by
+    /// the bearer's tokens (3.6 Regenerative Strength: "roll as many dice as tokens on it",
+    /// <see cref="ValueSource.TokenTotal"/>) produces nothing on an empty container, so seed two.
+    /// </summary>
+    private static void SatisfyEffectInputs(Effect effect, LintWorld world)
+    {
+        if (effect is Effect.DealAutoWounds { DiceCountPerModel: ValueSource.TokenTotal pool })
+        {
+            SeedTokens(world.Bearer, pool.TType, 2);
         }
     }
 
@@ -671,7 +714,8 @@ public static class RuleFireLint
                 break;
             case EHookID.Shooting_OnHitRollComplete:
                 // chargeOrigin varies independently of the live distance: a melee swing is always resolved in
-                // base contact, so only the charge's launch distance can satisfy AttackedFromOverInches there.
+                // base contact, so only the charge's launch distance can satisfy AttackedFromOverInches there
+                // (and #432's attackingFromOver / attackedFromOver charge arm, which also needs isCharging).
                 // Without a far-origin variant, every "shoots or charges over 9in away" rule's melee arm would
                 // look unfireable to the lint.
                 foreach (float distance in new[] { NearInches, FarInches })
@@ -706,7 +750,9 @@ public static class RuleFireLint
                 }
                 break;
             case EHookID.Shooting_OnSaveRollModifier:
-                yield return new CoverIgnoreContext(attacker);
+                // #425: both sides of the Hold gate (Indirect's facets fire only when the attacker has not moved).
+                yield return new CoverIgnoreContext(attacker, AttackerMoved: false);
+                yield return new CoverIgnoreContext(attacker, AttackerMoved: true);
                 break;
             case EHookID.Shooting_OnSaveRollComplete:
                 foreach (bool isMelee in new[] { false, true })
@@ -723,6 +769,16 @@ public static class RuleFireLint
                 // save-side rules (not distance-gated).
                 yield return new SaveRollCompleteContext(attacker, defender, OneOfEachFace(),
                     TerrainPieces: OriginTerrain);
+                // #431 (Obliterate): a Tough-majority defender on the save side too - the hit-side variants'
+                // twin, Actor seat only for the same reason.
+                if (seat == ERuleSeat.Actor)
+                {
+                    foreach (bool isMelee in new[] { false, true })
+                    {
+                        yield return new SaveRollCompleteContext(attacker, world.ToughOther, OneOfEachFace(),
+                            isMelee, IsSpell: false, DistanceInches: NearInches);
+                    }
+                }
                 break;
             case EHookID.Shooting_OnPreApplyWound:
                 yield return new PreApplyWoundContext(attacker, defender);
@@ -744,6 +800,10 @@ public static class RuleFireLint
             case EHookID.Melee_OnCounterTrigger:
                 yield return new CounterTriggerContext(attacker, defender);
                 break;
+            case EHookID.Melee_OnHitsTaken:
+                // #423: three hits landing, so Parry's "up to as many dice as hits taken" has something to cap.
+                yield return new MeleeHitsTakenContext(attacker, defender, HitsTaken: 3f);
+                break;
             case EHookID.Melee_OnMeleeResolution:
                 yield return new MeleeResolutionContext(attacker, defender);
                 break;
@@ -752,9 +812,21 @@ public static class RuleFireLint
                 break;
             case EHookID.Morale_OnPreMoraleTest:
                 yield return new PreMoraleTestContext(bearer);
+                // #432: tests triggered by a long shot and by a long charge, so the "+1 to Morale Test rolls when
+                // shot/charged from over 9"/6" away" family (attackedFromOver) proves fireable on each arm.
+                yield return new PreMoraleTestContext(bearer, ShotFromInches: FarInches);
+                yield return new PreMoraleTestContext(bearer, ChargedFromInches: FarInches);
+                // #435: tests triggered by shooting and by melee, so Banner's "+1 to Morale Test rolls triggered by
+                // shooting/melee" (moraleTestFromShootingOrMelee) proves fireable on each.
+                yield return new PreMoraleTestContext(bearer, Cause: EMoraleTestCause.Shooting);
+                yield return new PreMoraleTestContext(bearer, Cause: EMoraleTestCause.Melee);
                 break;
             case EHookID.Morale_OnMoraleTestComplete:
                 yield return new MoraleTestContext(bearer);
+                break;
+            case EHookID.Casting_OnSpellCastAttempt:
+                // #427 Spell Amplifier: the caster's own casting-roll modifiers.
+                yield return new SpellCastAttemptContext(bearer);
                 break;
         }
     }
@@ -787,6 +859,16 @@ public static class RuleFireLint
         /// <summary> The bearer's carrying weapon for weapon-scoped rules; null for unit rules. </summary>
         public Weapon? Weapon { get; private init; }
 
+        private static readonly IReadOnlySet<EHookID> MeleeHooks = new HashSet<EHookID>
+        {
+            EHookID.Melee_OnChargeContact, EHookID.Melee_OnCounterTrigger,
+            EHookID.Melee_OnMeleeResolution, EHookID.Melee_OnPostMelee, EHookID.Melee_OnHitsTaken,
+        };
+
+        private static bool IsMeleeOnly(SpecialRuleDefinition definition) =>
+            definition.Passive.Count > 0 && definition.Activated.Count == 0
+            && definition.Passive.All(entry => MeleeHooks.Contains(entry.HookID));
+
         public static LintWorld Build(SpecialRuleDefinition definition)
         {
             var store = GameDataStore.GameDataStoreBuilder.GetDefault();
@@ -794,7 +876,11 @@ public static class RuleFireLint
             Weapon? weapon = null;
             if (definition.Scope == ERuleScope.Weapon)
             {
-                weapon = new Weapon("Lint weapon", rangeInches: 24f, attacks: 1, armorPenetration: 0);
+                // #422: a weapon rule that only ever acts in the melee pipeline (Brace counts the models whose
+                // MELEE weapons carry it) is carried on a melee weapon, as in play; everything else keeps the
+                // ranged lint weapon it always had.
+                float range = IsMeleeOnly(definition) ? 0f : 24f;
+                weapon = new Weapon("Lint weapon", rangeInches: range, attacks: 1, armorPenetration: 0);
                 weapon.AttachRuleDefinition(
                     new ResolvedRule(definition.Name, definition, ArgumentsFor(definition)));
             }

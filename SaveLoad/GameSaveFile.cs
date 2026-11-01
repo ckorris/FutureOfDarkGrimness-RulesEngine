@@ -17,6 +17,14 @@ namespace FDG.SaveLoad
 
         public int Version { get; set; }
 
+        /// <summary>
+        /// The OPR ruleset the save was written under (<see cref="OprRulesVersion.CurrentStamp"/>, "OPR v3.6.0"),
+        /// written since the 3.6 upgrade (#444 D2). Null on a file from before then - which is exactly how such a
+        /// save is recognised as legacy (<see cref="LegacySaveNotice"/>). Advisory only: it never gates the load,
+        /// unlike <see cref="Version"/>, and so needs no schema-version bump.
+        /// </summary>
+        public string? RulesVersion { get; set; }
+
         public List<SavedTypeEntry> TypeMap { get; set; } = new List<SavedTypeEntry>();
 
         public List<ReferenceJsonValuePair> Entries { get; set; } = new List<ReferenceJsonValuePair>();

@@ -29,9 +29,9 @@ namespace FDG.Tests
     //   * TWO trigger hooks. Deployment as well as activation start - so the buff exists before the unit
     //     has ever activated. The deployment arm cannot use a once-per-X cost (the "used" marker is keyed
     //     on the RULE name, so it would still be closed at the unit's first activation), hence Cost.Free.
-    //   * the ALL-MODELS gate on the CHOICE, not on the effect. Which only works because GatherOffers now
-    //     hands the invocation its Definition; without that, Condition.AllModelsHaveThisRule silently
-    //     evaluates to true and the gate is no gate at all.
+    //   * the ownership gate on the CHOICE, not on the effect (most models since #428). Which only works
+    //     because GatherOffers now hands the invocation its Definition; without that,
+    //     Condition.MostModelsHaveThisRule silently evaluates to true and the gate is no gate at all.
     //
     // The two effects themselves are Sturdy's and Changebound's bodies verbatim - both already shipped and
     // covered - so what is asserted here is that the right one lands, at the right time, for the right long.
@@ -92,7 +92,7 @@ namespace FDG.Tests
                 new TargetSelector(RangeInches: 0f, MinCount: 1, MaxCount: 1, ETargetAffinity.Self,
                     RequireLineOfSight: false),
                 new Effect.AddRule(grantedRule, ELifetime.UntilNextActivation),
-                new Condition.AllModelsHaveThisRule(),
+                new Condition.MostModelsHaveThisRule(),
                 Label: label);
 
         /// <summary>Sturdy's body: +1 to defense rolls when shot or charged from over 9in away.</summary>
@@ -101,7 +101,7 @@ namespace FDG.Tests
             {
                 new HookEntry(EHookID.Shooting_OnHitRollComplete,
                     new Condition.And(new Condition.AttackedFromOverInches(9f),
-                        new Condition.AllModelsHaveThisRule()),
+                        new Condition.MostModelsHaveThisRule()),
                     new Effect.RollModifier(ERollKind.Save, +1), ELifetime.ThisAttack, ERuleSeat.Subject),
             },
             Array.Empty<ActivatedAbility>(), Description: GuardText);
@@ -112,7 +112,7 @@ namespace FDG.Tests
             {
                 new HookEntry(EHookID.Shooting_OnHitRollModifier,
                     new Condition.And(new Condition.AttackedFromOverInches(9f),
-                        new Condition.AllModelsHaveThisRule()),
+                        new Condition.MostModelsHaveThisRule()),
                     new Effect.RollModifier(ERollKind.Hit, -1), ELifetime.ThisAttack, ERuleSeat.Subject),
             },
             Array.Empty<ActivatedAbility>(), Description: EvasionText);
@@ -212,7 +212,7 @@ namespace FDG.Tests
                 "choosing the defense-roll effect must not also confer the to-hit debuff.");
         }
 
-        // --- the all-models gate on the choice ---
+        // --- the most-models gate on the choice (#428) ---
 
         [Test]
         public void TheChoice_IsOffered_WhenEveryModelHasTheRule()
@@ -228,11 +228,11 @@ namespace FDG.Tests
         [Test]
         public void TheChoice_IsNotOffered_WhenOnlySomeModelsHaveTheRule()
         {
-            // "a unit where ALL models have this rule". The rule is on one model of two, so the unit does
-            // not qualify - but the offer is gathered from that model's carrier, so only the ability's
-            // availability condition can stop it. Before GatherOffers passed the Definition through,
-            // AllModelsHaveThisRule took its "no rule identity to check" arm and returned true, and this
-            // unit was offered a buff it is not entitled to.
+            // "a unit where MOST models have this rule" (#428). The rule is on one model of two - half, not
+            // most - so the unit does not qualify, but the offer is gathered from that model's carrier, so
+            // only the ability's availability condition can stop it. Before GatherOffers passed the
+            // Definition through, the gate took its "no rule identity to check" arm and returned true, and
+            // this unit was offered a buff it is not entitled to.
             TestRuleHarness harness = Harness();
             IUnit unit = harness.BuildUnit("P1", 2);
             ((ModelData)unit.Models[0]).AttachRuleDefinition(harness.Resolver.Resolve(RuleName));
@@ -243,7 +243,7 @@ namespace FDG.Tests
         [Test]
         public void TheChoice_IsOfferedAgain_OnceTheOddModelOutIsDead()
         {
-            // AllModelsHaveThisRule counts only LIVING models, so a unit whose non-carrier casualty has
+            // MostModelsHaveThisRule counts only LIVING models, so a unit whose non-carrier casualty has
             // been removed does qualify. Pins that the gate is evaluated at offer time, not at army load.
             TestRuleHarness harness = Harness();
             IUnit unit = harness.BuildUnit("P1", 2);

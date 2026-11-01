@@ -39,7 +39,7 @@ namespace FDG.Tests
                     ELifetime.ThisAttack),
                 new HookEntry(EHookID.Shooting_OnHitRollComplete,
                     new Condition.UnmodifiedRollEquals(1),
-                    new Effect.SelfWoundOnUnmodifiedRoll(OnRollValue: 1),
+                    new Effect.SelfWoundOnUnmodifiedRoll(OnRollValue: 1, CountFromBlastOrDeadly: true),
                     ELifetime.ThisAttack),
             },
             Array.Empty<ActivatedAbility>(),
@@ -283,6 +283,143 @@ namespace FDG.Tests
         }
 
         // ---- Harness ---------------------------------------------------------------------------------
+
+        // ---- #434: OPR 3.6 - "on unmodified results of 1 to hit THIS MODEL takes one wound, or X wounds if this
+        // weapon has the Blast(X)/Deadly(X) rule" ----------------------------------------------------------------
+
+        [Test]
+        public async Task TheModelThatFired_TakesTheWound_NotTheFrontOfTheUnit()
+        {
+            // Three riflemen, the LAST one carries the hazardous gun. 3.5 wounded the unit (the first model died);
+            // 3.6 wounds the model that fired.
+            Weapon gun = HazardousGun();
+            DataBinding<UnitData> squad = MakeMixedUnit(gun, carrierIndexes: 2, models: 3);
+
+            await RunStageWith(squad, gun, face: 1, attacks: 1);
+
+            List<IModel> models = squad.GetValue().Models.ToList();
+            Assert.That(models[2].GetIsAlive(), Is.False, "the gunner takes it");
+            Assert.That(models[0].GetIsAlive() && models[1].GetIsAlive(), Is.True, "nobody else does");
+        }
+
+        [Test]
+        public async Task ABlastThreeWeapon_DealsThreeWoundsPerOne()
+        {
+            Weapon cannon = HazardousGun("Blast", 3);
+            DataBinding<UnitData> crew = MakeMixedUnit(cannon, carrierIndexes: 0, models: 1, tough: 6);
+
+            await RunStageWith(crew, cannon, face: 1, attacks: 1);
+
+            Assert.That(WoundsDealt(crew), Is.EqualTo(3f), "X = Blast(3)");
+        }
+
+        [Test]
+        public async Task ADeadlyThreeWeapon_OnAOneWoundGunner_KillsOnlyTheGunner()
+        {
+            // Deadly(3) on a 1-wound carrier: the gunner takes what fits, the rest is lost - not spilled onto the
+            // squad.
+            Weapon melta = HazardousGun("Deadly", 3);
+            DataBinding<UnitData> squad = MakeMixedUnit(melta, carrierIndexes: 0, models: 3);
+
+            await RunStageWith(squad, melta, face: 1, attacks: 1);
+
+            List<IModel> models = squad.GetValue().Models.ToList();
+            Assert.That(models[0].GetIsAlive(), Is.False);
+            Assert.That(models.Skip(1).All(m => m.GetIsAlive()), Is.True, "the overflow is lost");
+            Assert.That(WoundsDealt(squad), Is.EqualTo(1f));
+        }
+
+        [Test]
+        public async Task TwoOnes_FromTwoGunners_LandOnePerGunner()
+        {
+            Weapon gun = HazardousGun("Deadly", 2);
+            DataBinding<UnitData> squad = MakeMixedUnit(gun, carrierIndexes: new[] { 0, 1 }, models: 3, tough: 3);
+
+            await RunStageWith(squad, gun, face: 1, attacks: 2);
+
+            List<IModel> models = squad.GetValue().Models.ToList();
+            Assert.That(models[0].WoundsDealt, Is.EqualTo(2f));
+            Assert.That(models[1].WoundsDealt, Is.EqualTo(2f), "one die's worth per model that fired");
+            Assert.That(models[2].WoundsDealt, Is.EqualTo(0f));
+        }
+
+        [Test]
+        public void ThePlan_HandlesAFractionalLastDie()
+        {
+            // Probabilistic roller: 1.5 natural 1s at X = 2 -> 2 wounds on the first gunner, 1 on the second.
+            DataBinding<UnitData> squad = MakeMixedUnit(HazardousGun("Deadly", 2), carrierIndexes: new[] { 0, 1 },
+                models: 2, tough: 3);
+            IReadOnlyList<IModel> carriers = squad.GetValue().Models.ToList();
+
+            List<PendingModelWound> plan = CasualtyPresentation.PlanCarrierWounds(carriers, totalWounds: 3f,
+                woundsPerDie: 2f);
+
+            Assert.That(plan.Select(p => p.Wounds), Is.EqualTo(new[] { 2f, 1f }));
+        }
+
+        [Test]
+        public void TheEffect_ReadsTheFiringWeaponsBlastOrDeadly_AndRoundTripsThroughJson()
+        {
+            Effect effect = new Effect.SelfWoundOnUnmodifiedRoll(1, CountFromBlastOrDeadly: true);
+            string json = System.Text.Json.JsonSerializer.Serialize(effect, FDG.Rules.Serialization.RuleJson.Options);
+            Assert.That(System.Text.Json.JsonSerializer.Deserialize<Effect>(json, FDG.Rules.Serialization.RuleJson.Options),
+                Is.EqualTo(effect));
+
+            // Data written before #434 has no countFromBlastOrDeadly: one wound per 1, as before.
+            string legacy = "{\"kind\":\"selfWoundOnUnmodifiedRoll\",\"onRollValue\":1,\"count\":1}";
+            Assert.That(System.Text.Json.JsonSerializer.Deserialize<Effect>(legacy, FDG.Rules.Serialization.RuleJson.Options),
+                Is.EqualTo(new Effect.SelfWoundOnUnmodifiedRoll(1, 1, CountFromBlastOrDeadly: false)));
+        }
+
+        private Weapon HazardousGun(string? companion = null, int x = 0)
+        {
+            var gun = new Weapon("Overcharged Gun", rangeInches: 24f, attacks: 1, armorPenetration: 0);
+            gun.AttachRuleDefinition(_resolver.Resolve(RuleName));
+            if (companion != null)
+                gun.AttachRuleDefinition(new ResolvedRule(companion, companion == "Blast" ? CoreRuleCatalog.Blast
+                    : CoreRuleCatalog.Deadly, new RuleArgument[] { new RuleArgument.Int(x) }));
+            return gun;
+        }
+
+        private DataBinding<UnitData> MakeMixedUnit(Weapon carried, object carrierIndexes, int models, int tough = 1)
+        {
+            int[] carriers = carrierIndexes is int one ? new[] { one } : (int[])carrierIndexes;
+            var modelBindings = new List<DataBinding<ModelData>>();
+            for (int i = 0; i < models; i++)
+            {
+                var weapons = new List<Weapon> { new Weapon("Rifle", 24f, 1, 0) };
+                if (carriers.Contains(i)) weapons.Add(carried);
+                var model = new ModelData(0.5f, weapons, new Position(i, 0), _store);
+                if (tough > 1) model.SetMaxWounds(tough);
+                modelBindings.Add(_store.GetDataBinding<ModelData>(_store.Create(model)));
+            }
+
+            var player = new PlayerID(Guid.NewGuid());
+            var unit = new UnitData(player, "Squad", quality: 4, defense: 4, modelBindings: modelBindings);
+            DataBinding<UnitData> binding = _store.GetDataBinding<UnitData>(_store.Create(unit));
+            _store.Create(new ArmyData(player, new List<DataBinding<UnitData>> { binding }));
+            return binding;
+        }
+
+        // The production pair with ONE weapon instance, as FireStage hands it to both stages.
+        private async Task RunStageWith(DataBinding<UnitData> attacker, Weapon fired, int face, int attacks)
+        {
+            DataBinding<UnitData> defender = MakeUnit("Targets", modelCount: 5);
+            var ctx = new TestGameContext(_store, new FixedFaceDiceRoller(face), ruleResolver: _resolver);
+
+            var hit = new RollToHitStage<ICombatMetadata>(ctx, new NoOpLayer<ICombatMetadata>());
+            hit.NextStage.Bind("done");
+            CombatMetadata hitMeta = MakeMetadata(ctx, attacker, defender, fired, attacks);
+            await hit.Enter(hitMeta);
+            Assert.That(hitMeta.QueryForResult(out RollToHitResults results), Is.True);
+
+            var apply = new ApplyWoundsStage<ICombatMetadata>(ctx, new NoOpLayer<ICombatMetadata>());
+            apply.NextStage.Bind("done");
+            CombatMetadata applyMeta = MakeMetadata(ctx, attacker, defender, fired, attacks);
+            applyMeta.AddResult(results);
+            applyMeta.AddResult(new AssignWoundsResults(defender, totalWoundsToAssign: 0f));
+            await apply.Enter(applyMeta);
+        }
 
         // Drives the two production stages that matter, in the order FireStage / SwingMeleeWeaponStage /
         // StrafingStage chain them: RollToHitStage counts the overheat onto its results, ApplyWoundsStage

@@ -45,7 +45,7 @@ namespace FDG.ArmyBuilding
             };
 
             foreach (BuilderUnit bu in list.Units)
-                army.Units.Add(CompileUnitDetailed(book, bu).Unit);
+                army.Units.Add(CompileUnitDetailed(book, bu, army.UnappliedReplaces).Unit);
 
             MergeCombinedUnits(list, army);
 
@@ -183,8 +183,12 @@ namespace FDG.ArmyBuilding
 
         /// <summary>Compiles one unit and also returns its final wargear items (post-replaces), which the
         /// builder UI needs for display and target-availability. The item's rules are already flattened into
-        /// the returned unit's SpecialRules — the item list is presentation/targeting metadata.</summary>
-        public static (UnitFileEntry Unit, List<ItemEntry> Items) CompileUnitDetailed(BookFile book, BuilderUnit bu)
+        /// the returned unit's SpecialRules — the item list is presentation/targeting metadata.
+        /// <para>#438 D3: <paramref name="unapplied"/>, when given, receives one <see cref="UnappliedReplace"/> per
+        /// Replace purchase the loadout could not afford even after the #323 retry - reporting only, the compile
+        /// itself is unchanged.</para></summary>
+        public static (UnitFileEntry Unit, List<ItemEntry> Items) CompileUnitDetailed(BookFile book, BuilderUnit bu,
+            ICollection<UnappliedReplace>? unapplied = null)
         {
             RosterUnit roster = book.Units.FirstOrDefault(u => u.Id == bu.RosterUnitId)
                 ?? throw new InvalidOperationException($"Roster unit '{bu.RosterUnitId}' not found in book '{book.Name}'.");
@@ -288,6 +292,7 @@ namespace FDG.ArmyBuilding
             }
 
             ApplyStarvedReplaces(unit, items, starved, perModelItems);
+            if (unapplied != null) ReportUnappliedReplaces(unit, items, starved, unapplied);
 
             // #197 Sergeant: champion marks attach AFTER every section has applied - a later "Replace all
             // Hand Weapons" must not eat the mark; the champion attacks with whatever the unit ends up
@@ -340,8 +345,9 @@ namespace FDG.ArmyBuilding
 
         /// <summary>
         /// #324 — copies a single-target "replace all" must leave behind for swaps authored BELOW it that
-        /// compete for the same weapon and have already been bought. Zero for anything else, so the ordering
-        /// of every other section is untouched.
+        /// compete for the same weapon and have already been bought. #438 adds counted (One/Any) swaps, which
+        /// leave copies only for later PASS-THROUGH rivals (see <see cref="HandsBack"/>). Zero for anything
+        /// else, so the ordering of every other section is untouched.
         /// <para>Only rivals authored LATER are counted: an earlier one has already taken its copies out of
         /// the pool by the time this section applies, and reserving again would double-count it.</para>
         /// <para>Scoped to SINGLE-target all-swaps by owner decision (2026-08-02). The 88 corpus pairs whose
@@ -353,35 +359,84 @@ namespace FDG.ArmyBuilding
         private static int ReservedForLaterSwaps(RosterUnit roster, BuilderUnit bu, UpgradeChoice choice,
             UpgradeSection section)
         {
-            if (section.Variant != UpgradeVariant.Replace || section.Affects != UpgradeAffects.All
-                || section.Targets.Count != 1)
-                return 0;
+            if (section.Variant != UpgradeVariant.Replace) return 0;
+            bool singleTargetAll = section.Affects == UpgradeAffects.All && section.Targets.Count == 1;
+            bool counted = section.Affects != UpgradeAffects.All;
+            if (!singleTargetAll && !counted) return 0;
 
             int index = roster.Sections.FindIndex(s => s.Id == section.Id);
-            string target = ParseTarget(section.Targets[0]).Name;
             int reserved = 0;
 
-            foreach (UpgradeChoice rival in bu.Choices)
+            foreach (string rawTarget in section.Targets)
             {
-                if (rival == choice || rival.SectionId == section.Id) continue;
+                string target = ParseTarget(rawTarget).Name;
+                int forTarget = 0;
 
-                int rivalIndex = roster.Sections.FindIndex(s => s.Id == rival.SectionId);
-                if (rivalIndex <= index) continue;
-
-                UpgradeSection rivalSection = roster.Sections[rivalIndex];
-                if (!CompetesForTarget(rivalSection, target)) continue;
-
-                reserved += rivalSection.Affects switch
+                foreach (UpgradeChoice rival in bu.Choices)
                 {
-                    UpgradeAffects.One => 1,
-                    UpgradeAffects.Any => rivalSection.MaxApplications > 0
-                        ? Math.Min(Math.Max(0, rival.Count), rivalSection.MaxApplications)
-                        : Math.Max(0, rival.Count),
-                    _ => 0,
-                };
+                    if (rival == choice || rival.SectionId == section.Id) continue;
+
+                    int rivalIndex = roster.Sections.FindIndex(s => s.Id == rival.SectionId);
+                    if (rivalIndex <= index) continue;
+
+                    UpgradeSection rivalSection = roster.Sections[rivalIndex];
+                    if (!CompetesForTarget(rivalSection, target)) continue;
+                    // #438: a counted swap only yields to a PASS-THROUGH rival - one whose option hands the target
+                    // back (3.6 Assault Brothers: "Replace one Heavy Pistol and Hand Weapon -> Heavy Pistol, Energy
+                    // Hammer" below "Replace any Heavy Pistol"). Taking every pistol first starved the combo for good
+                    // (it needs a pistol to consume), silently dropping the purchase; yielding costs the counted swap
+                    // nothing, because the rival returns the copy and the parked remainder is retried (#323).
+                    if (counted && !HandsBack(rivalSection, rival, target)) continue;
+
+                    forTarget += rivalSection.Affects switch
+                    {
+                        UpgradeAffects.One => 1,
+                        UpgradeAffects.Any => rivalSection.MaxApplications > 0
+                            ? Math.Min(Math.Max(0, rival.Count), rivalSection.MaxApplications)
+                            : Math.Max(0, rival.Count),
+                        _ => 0,
+                    };
+                }
+
+                reserved = Math.Max(reserved, forTarget);
             }
 
             return reserved;
+        }
+
+        /// <summary>#438 — whether <paramref name="rival"/>'s chosen option gains a weapon or item matching
+        /// <paramref name="target"/>, i.e. the rival consumes a copy and hands one back.</summary>
+        private static bool HandsBack(UpgradeSection rivalSection, UpgradeChoice rival, string target)
+        {
+            UpgradeOption? option = rivalSection.Options.FirstOrDefault(o => o.Id == rival.OptionId);
+            return option != null && HandsBack(option, target);
+        }
+
+        private static bool HandsBack(UpgradeOption option, string target) =>
+            option.WeaponsGained.Any(w => TargetMatches(w.Name, target))
+            || option.ItemsGained.Any(i => TargetMatches(i.Name, target));
+
+        /// <summary>
+        /// #441 — whether the counted (One/Any) Replace <paramref name="countedSwapId"/> leaves copies for a purchase
+        /// of <paramref name="claimantOption"/> in <paramref name="claimant"/>: the swap is authored ABOVE the
+        /// claimant, the claimant competes for one of the swap's targets, and the option hands that target back
+        /// (#438 D3's pass-through combo - 3.6 Assault Brothers' "Replace one Heavy Pistol and Hand Weapon -> Heavy
+        /// Pistol, Energy Hammer" below "Replace any Heavy Pistol"). The condition <see cref="ReservedForLaterSwaps"/>
+        /// yields on, shared with the Forge so it offers the combo the compiler will honour even after the
+        /// counted swap has taken every copy.
+        /// </summary>
+        public static bool CountedSwapYieldsTo(RosterUnit roster, string countedSwapId, UpgradeSection claimant,
+            UpgradeOption claimantOption)
+        {
+            int index = roster.Sections.FindIndex(s => s.Id == countedSwapId);
+            int claimantIndex = roster.Sections.FindIndex(s => s.Id == claimant.Id);
+            if (index < 0 || claimantIndex < 0 || index >= claimantIndex) return false;
+
+            UpgradeSection swap = roster.Sections[index];
+            if (swap.Variant != UpgradeVariant.Replace || swap.Affects == UpgradeAffects.All) return false;
+            return swap.Targets
+                .Select(t => ParseTarget(t).Name)
+                .Any(target => CompetesForTarget(claimant, target) && HandsBack(claimantOption, target));
         }
 
         /// <summary>#324 — whether a counted (One/Any) Replace draws on the same weapon an all-swap targets,
@@ -474,13 +529,58 @@ namespace FDG.ArmyBuilding
         }
 
         /// <summary>
-        /// #407: rules that describe the model that bought them rather than the unit. Tough is the only one
-        /// routed today (owner's call, 2026-10-28): it is the one the corpus actually gets wrong - 16
-        /// "Weapon Team" sites in HDF and AoF Ratmen. Shielded, Caster, Fear and the like still fold
-        /// unit-wide from a one-model item; deciding each of those is follow-up work.
+        /// #438 D3 (owner request): once <see cref="ApplyStarvedReplaces"/> has reached its fixpoint, every parked
+        /// Replace still owing applications is a purchase the compile neither applied nor charged. One
+        /// <see cref="UnappliedReplace"/> each, naming the scarce target(s): for a counted swap those whose matched
+        /// copies fall short of what is still owed (the MIN-over-targets rule of <see cref="AvailableApplications"/>,
+        /// so a combo short of only its Hand Weapon names the Hand Weapon), for an All every target (its pool is the
+        /// MAX, which is zero only when nothing matches).
+        /// </summary>
+        private static void ReportUnappliedReplaces(UnitFileEntry unit, List<ItemEntry> items,
+            List<(UpgradeSection Section, UpgradeOption Option, int Remaining)> starved,
+            ICollection<UnappliedReplace> unapplied)
+        {
+            foreach ((UpgradeSection section, UpgradeOption option, int remaining) in starved)
+            {
+                if (remaining <= 0) continue;
+                bool isAll = section.Affects == UpgradeAffects.All;
+
+                var missing = new List<string>();
+                foreach (string target in section.Targets)
+                {
+                    (string name, int perApplication) = ParseTarget(target);
+                    int matched = MatchedCount(unit.Weapons, items, target);
+                    if (isAll) missing.Add(name);
+                    else if (matched < remaining) missing.Add($"{(remaining - matched) * perApplication} more {name}");
+                }
+
+                string gains = string.Join(", ",
+                    option.WeaponsGained.Select(w => w.Name).Concat(option.ItemsGained.Select(i => i.Name)));
+                if (gains.Length == 0) gains = option.Label;
+
+                unapplied.Add(new UnappliedReplace
+                {
+                    UnitName = unit.Name,
+                    SectionLabel = string.IsNullOrWhiteSpace(section.Label)
+                        ? "Replace " + string.Join(" and ", section.Targets)
+                        : section.Label,
+                    Gains = gains,
+                    Shortfall = isAll ? 0 : remaining,
+                    Missing = missing,
+                });
+            }
+        }
+
+        /// <summary>
+        /// #407: rules that describe the model that bought them rather than the unit. Tough was the first one
+        /// routed (owner's call, 2026-10-28): it is the one the corpus actually gets wrong - 16
+        /// "Weapon Team" sites in HDF and AoF Ratmen. #447 added Impact and Heavy Impact: the engine now sums
+        /// Impact(X) per model carrying it, so a one-model item ("Replace one CCW: Rotor Blade Attack
+        /// (Impact(3))" on 3 Hover Bikers) folded unit-wide would roll 9 dice instead of 3. Shielded, Caster,
+        /// Fear and the like still fold unit-wide from a one-model item; deciding each of those is follow-up work.
         /// </summary>
         private static readonly HashSet<string> ModelPersonalRuleNames =
-            new(StringComparer.OrdinalIgnoreCase) { "Tough" };
+            new(StringComparer.OrdinalIgnoreCase) { "Tough", "Impact", "Heavy Impact" };
 
         // #407: a One/Any section's items belong to the models that bought them. An All section, or a
         // section that adds models, keeps the unit-wide fold.
@@ -509,6 +609,13 @@ namespace FDG.ArmyBuilding
             {
                 ItemEntry template = bought.First().Item;
                 int held = items.Where(i => i.Name == template.Name).Sum(i => i.Quantity);
+
+                // #447: every model still holds the item after the purchase - a 3.6 "Replace one Lance and Trample ->
+                // Trample (Impact(1))" swap hands the one model back the Trample its profile gave every model. It is
+                // the unit's, so the fold covers it; a one-model grant would also stop the fold (it skips placed
+                // (item, rule) pairs) and strip the profile copy from the other models.
+                if (held >= unit.ModelCount) continue;
+
                 int models = Math.Min(held, bought.Sum(p => Math.Max(1, p.Item.Quantity) * p.Applications));
 
                 foreach (SpecialRuleEntry rule in template.Rules)
@@ -792,6 +899,21 @@ namespace FDG.ArmyBuilding
                 int take = Math.Min(items[i].Quantity, remaining);
                 items[i].Quantity -= take;
                 remaining -= take;
+
+                // #438: an item that bundles weapons (a 3.6 mount or crew) takes them with it - "Replace Beast
+                // Gunner" must not leave the gunner's Fumigator behind.
+                foreach (WeaponFileEntry bundled in items[i].Weapons ?? new List<WeaponFileEntry>())
+                {
+                    int owed = Math.Max(1, bundled.Quantity) * take;
+                    for (int w = 0; w < weapons.Count && owed > 0; w++)
+                    {
+                        if (!SameProfile(weapons[w], bundled)) continue;
+                        int drop = Math.Min(weapons[w].Quantity, owed);
+                        weapons[w].Quantity -= drop;
+                        owed -= drop;
+                    }
+                }
+                weapons.RemoveAll(w => w.Quantity <= 0);
             }
             items.RemoveAll(i => i.Quantity <= 0);
         }
@@ -842,6 +964,7 @@ namespace FDG.ArmyBuilding
         {
             Name = i.Name, Quantity = i.Quantity,
             Rules = new List<SpecialRuleEntry>(i.Rules),
+            Weapons = i.Weapons?.Select(CloneWeapon).ToList(),
         };
 
         // Internal: OprListImporter (#241) reuses this to consolidate identical weapon profiles.
@@ -855,7 +978,10 @@ namespace FDG.ArmyBuilding
 
         // Two weapons merge only if their whole profile matches — name alone isn't enough (a rule difference
         // would otherwise be silently lost into an existing entry).
-        private static bool SameProfile(WeaponFileEntry a, WeaponFileEntry b) =>
+        // Public for #441 F6: the Forge card attributes a compiled weapon row to the mount/crew item that bundles
+        // it (#438 D4) by the SAME key the compiler merged it under, so the card never splits a row the compiler
+        // would have merged or merges two it kept apart.
+        public static bool SameProfile(WeaponFileEntry a, WeaponFileEntry b) =>
             a.Name == b.Name && a.RangeInches == b.RangeInches && a.Attacks == b.Attacks &&
             a.ArmorPenetration == b.ArmorPenetration && a.SpecialRules.SequenceEqual(b.SpecialRules);
 

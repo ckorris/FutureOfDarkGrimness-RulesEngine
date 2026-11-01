@@ -69,7 +69,13 @@ namespace FDG.Ai.Tactician
         // above; the search's scratch planner begins an activation per unit it enumerates.
         private readonly Dictionary<DataReference, EnemyFacts> _enemyFacts = new();
         private readonly Dictionary<DataReference, MeleeEstimate> _meleeSelfVsEnemy = new();
-        private readonly Dictionary<DataReference, MeleeEstimate> _meleeEnemyVsSelf = new();
+        // #442: the enemy's charge into us is keyed by its launch distance too (half-inch buckets), because the
+        // "charged from over 6"" arms (a Changebound defender, a Ferocious charger) depend on where the endpoint is.
+        private readonly Dictionary<(DataReference Enemy, int HalfInches), MeleeEstimate> _meleeEnemyVsSelf = new();
+        // #442: base-to-base distance from the active unit (its transport while embarked) to each enemy at
+        // activation START - the engine's charge-origin snapshot (UnitActionContext.SnapshotDistancesToEnemies).
+        // Survives the activation-start move's memo reset, since the engine measured before that move too.
+        private readonly Dictionary<DataReference, float> _chargeOrigins = new();
 
         // #191 search perf: the three shooting estimates Score asks for per (candidate x enemy). Unlike
         // the melee pair above they are NOT board-fixed - each carries the candidate's endpoint through
@@ -94,6 +100,10 @@ namespace FDG.Ai.Tactician
         // Strider / Flying, read once per activation (see UnitRoute).
         private bool? _ignoresAllTerrain;
         private bool? _ignoresDifficultTerrain;
+        // #425 Cumbersome, read once per activation: may the active unit shoot after moving, and may it
+        // declare a Charge at all? (ActionRestrictionQueries - the gates ChooseActionStage applies.)
+        private bool? _activeShootsAfterMoving;
+        private bool? _activeMayCharge;
         // #359: advance lanes of the friendlies that have not activated yet this round - the
         // endpoints the lane-block penalty charges against. Endpoint-independent, built lazily.
         private List<LaneGeometry.AdvanceLane>? _advanceLanes;
@@ -277,12 +287,17 @@ namespace FDG.Ai.Tactician
             _enemyFacts.Clear();
             _meleeSelfVsEnemy.Clear();
             _meleeEnemyVsSelf.Clear();
+            _chargeOrigins.Clear();
             _shotEstimates.Clear();
             _objectiveProjections = null;
             _moveBudgets.Clear();
             _routeGrid = null;
             _ignoresAllTerrain = null;
             _ignoresDifficultTerrain = null;
+            _activeShootsAfterMoving = null;
+            _activeMayCharge = null;
+            _drainAttempted = false;
+            _drainTarget = null;
             _advanceLanes = null;
             _terrainSnapshot = null;
             _sightSnapshot = null;
@@ -300,6 +315,11 @@ namespace FDG.Ai.Tactician
             try
             {
             if (_activeUnit == null) return null;
+
+            // #442 (#429 Spell Drain): a free, layered before-attack ability - taken first, at most once per
+            // activation (the attempt latch also guards a target pick that could not complete).
+            string? drain = SpellDrainChoice(validOptions);
+            if (drain != null) return drain;
 
             // #191 B1 5b: a prescribed action is the authority for this activation - taken before
             // every scoring branch below, which is what removes the policy-thinking cost from a
@@ -530,6 +550,152 @@ namespace FDG.Ai.Tactician
             return move.Count == 0 ? null : move;
         }
 
+        /// <summary>What <see cref="AimActivationStartMove"/> advises for an optional triggered move.</summary>
+        public enum ETriggeredMoveAim
+        {
+            /// <summary>The planner has no say (not this activation's unit, or the activation is already planned):
+            /// the caller keeps its own policy.</summary>
+            NoClaim,
+            /// <summary>The activation's best plan stands where it is (a Hold): decline the move.</summary>
+            Stay,
+            /// <summary>Move toward <c>Goal</c>, the endpoint the activation's best plan heads for.</summary>
+            Toward,
+        }
+
+        // The options Choose Action normally offers an unrestricted unit; the pre-plan below scores candidates against
+        // these because the real menu does not exist yet at activation start. A charge the engine would not offer is
+        // already absent from the candidates (MacroActionGenerator gates on MayDeclare and reach).
+        private static readonly string[] PrePlanOptions =
+        {
+            ChooseActionStage.SHOOT_CHOICE_NAME, ChooseActionStage.MOVEMENT_CHOICE_NAME,
+            ChooseActionStage.CHARGE_CHOICE_NAME, ChooseActionStage.PASS_CHOICE_NAME,
+        };
+
+        /// <summary>
+        /// #442 (#434's activation-time reposition family - Wolfborn, Bounding, Rapid Blink, Nimble, Wave-Step - raised
+        /// as an optional triggered move at activation START, before Choose Action): where to spend it. The activation
+        /// is planned now, from where the unit stands (the search's prescribed macro when one is pending), and the free
+        /// move heads for that plan's endpoint, so the real Choose Action re-plans from a point already that much
+        /// further along; a Hold plan stays put. Every activation memo is reset afterwards - the move changes the board
+        /// the memos were computed on.
+        /// </summary>
+        public (ETriggeredMoveAim Kind, Position Goal) AimActivationStartMove(DataBinding<UnitData> unit)
+        {
+            if (_activeUnit == null || _plan != null) return (ETriggeredMoveAim.NoClaim, default);
+            if (!ReferenceEquals(unit, _activeUnit) && !unit.Reference.Equals(_activeUnit.Reference))
+                return (ETriggeredMoveAim.NoClaim, default);
+
+            MacroAction? best = _hasPrescribedAction && _prescribedMacro != null ? _prescribedMacro : null;
+            if (best == null)
+            {
+                float bestScore = float.NegativeInfinity;
+                foreach (MacroAction candidate in MacroActionGenerator.Enumerate(_evaluator, _tableState,
+                    _activeUnit, seeThroughFriendlyUnits: _seeThroughFriendlyUnits))
+                {
+                    if (ActionNameFor(candidate, PrePlanOptions) == null) continue;
+                    float score = Score(candidate);
+                    if (score > bestScore)
+                    {
+                        bestScore = score;
+                        best = candidate;
+                    }
+                }
+            }
+
+            Position here = Centroid(_activeUnit.GetValue());
+            // #442: the engine snapshots charge origins at activation start, BEFORE this move - keep ours from then.
+            var origins = new Dictionary<DataReference, float>();
+            foreach (DataBinding<UnitData> enemy in EnemyBindings(_activeUnit.GetValue().PlayerID))
+                origins[enemy.Reference] = ChargeOriginTo(enemy);
+            BeginActivation(_activeUnit); // the triggered move changes the board every memo above was built on
+            foreach (KeyValuePair<DataReference, float> origin in origins) _chargeOrigins[origin.Key] = origin.Value;
+            if (best == null) return (ETriggeredMoveAim.NoClaim, default);
+            if (best.Intent == EMacroIntent.Hold || Distance(here, best.ProjectedCentroid) < 0.5f)
+            {
+                _decisionLog?.Invoke($"activation-start move {unit.GetValue().Name}: stay ({best.Intent})");
+                return (ETriggeredMoveAim.Stay, default);
+            }
+            _decisionLog?.Invoke($"activation-start move {unit.GetValue().Name}: toward " +
+                $"({best.ProjectedCentroid.x:F1},{best.ProjectedCentroid.z:F1}) [{best.Intent}]");
+            return (ETriggeredMoveAim.Toward, best.ProjectedCentroid);
+        }
+
+        // --- #442 (#429): Spell Drain -----------------------------------------------------------------
+        // "Once per activation, before attacking, pick one enemy model within 18" in line of sight, which must take a
+        // Morale Test. If failed, it loses 2 spell tokens." Both bots used to skip every before-attack ability; the
+        // Tactician now takes a drain-shaped one (MoraleTestThen -> ConsumeToken(SpellTokens)) whenever an enemy it
+        // could pick holds tokens it might fail to keep, aimed at the most tokens expected to go.
+        private bool _drainAttempted;
+        private DataBinding<UnitData>? _drainTarget;
+
+        /// <summary>
+        /// The enemy the Tactician picked Spell Drain for this activation, handed to the before-attack target pick
+        /// once and then cleared (null: no pending drain - the pick is not ours).
+        /// </summary>
+        public DataBinding<UnitData>? TakePendingDrainTarget()
+        {
+            DataBinding<UnitData>? target = _drainTarget;
+            _drainTarget = null;
+            return target;
+        }
+
+        /// <summary>Expected spell tokens a drain of <paramref name="count"/> takes from <paramref name="enemy"/>:
+        /// what it holds (capped) times the chance it fails the rule-forced Morale Test.</summary>
+        public float ExpectedDrain(DataBinding<UnitData> enemy, int count = 2)
+        {
+            UnitData unit = enemy.GetValue();
+            int held = unit.Tokens.GetTokenCount(TokenType.SpellTokens);
+            if (held <= 0) return 0f;
+            float pass = TacticalAnalysis.MoralePassChance(_tableState, _evaluator, unit,
+                Rules.Foundation.EMoraleTestCause.Other, failureCausesShakenOrRout: false);
+            return Math.Min(count, held) * (1f - pass);
+        }
+
+        private string? SpellDrainChoice(IReadOnlyList<string> validOptions)
+        {
+            if (_drainAttempted || _activeUnit == null) return null;
+            UnitData self = _activeUnit.GetValue();
+            IEnumerable<ResolvedRule> rules = self.RuleDefinitions.Concat(self.Models
+                .Where(m => m.GetIsAlive()).SelectMany(m => m.RuleDefinitions));
+            foreach (ResolvedRule rule in rules)
+            {
+                string? option = validOptions.FirstOrDefault(o => o == rule.RequestedName || o == rule.Definition.Name);
+                if (option == null) continue;
+                foreach (ActivatedAbility ability in rule.Definition.Activated)
+                {
+                    if (ability.TriggerHook != EHookID.Activation_OnBeforeAttackAction
+                        || ability.TargetSelector.TargetAffinity != ETargetAffinity.Foe
+                        || ability.Effect is not Effect.MoraleTestThen { OnFailure: Effect.ConsumeToken consume }
+                        || consume.TType != TokenType.SpellTokens)
+                        continue;
+
+                    DataBinding<UnitData>? best = null;
+                    float bestValue = 0.05f; // a free ability, but not one worth a pick that drains nothing
+                    foreach (DataBinding<UnitData> enemy in EnemyBindings(self.PlayerID))
+                    {
+                        if (!SpellValuation.WithinRangeAndSight(_tableState, self, enemy, ability.TargetSelector,
+                                _seeThroughFriendlyUnits)) continue;
+                        float value = ExpectedDrain(enemy, consume.Count);
+                        if (value > bestValue) { bestValue = value; best = enemy; }
+                    }
+                    if (best == null)
+                    {
+                        // Asked once per activation: nothing this activation does changes who holds tokens.
+                        _drainAttempted = true;
+                        _decisionLog?.Invoke($"spell-drain {self.Name}: no enemy in reach holds tokens to lose");
+                        continue;
+                    }
+
+                    _drainAttempted = true;
+                    _drainTarget = best;
+                    _decisionLog?.Invoke($"spell-drain {self.Name} -> {best.GetValue().Name} " +
+                        $"(expected {bestValue:F2} tokens)");
+                    return option;
+                }
+            }
+            return null;
+        }
+
         // --- casting (A5) ---------------------------------------------------------------------------
 
         /// <summary>
@@ -730,11 +896,12 @@ namespace FDG.Ai.Tactician
                 incoming = Math.Max(incoming, CombatMath.EstimateShooting(_evaluator, enemyBinding,
                     transport, new AttackContext(theirReach, AttackerMoved: true)).ExpectedWounds);
                 // #355: an impact-only enemy can still charge this transport.
-                if (ChargeContactRules.CanFightInMelee(enemy)
+                if (ChargeContactRules.CanFightInMelee(enemy) && TacticalAnalysis.MayCharge(enemy, _evaluator)
                     && MeleeReachOf(enemyBinding, transport.GetValue()) >= d - 1f)
                 {
                     incoming = Math.Max(incoming, CombatMath.EstimateMelee(_evaluator, enemyBinding,
-                        transport).AttackerAttack.ExpectedWounds);
+                        transport, chargeOriginInches: TacticalAnalysis.ChargeOriginDistance(_tableState, enemy,
+                            transport.GetValue())).AttackerAttack.ExpectedWounds);
                 }
             }
             if (incoming >= TacticianWeights.TransportEvacuationFraction
@@ -805,7 +972,8 @@ namespace FDG.Ai.Tactician
             UnitData self = _activeUnit!.GetValue();
             Position end = candidate.ProjectedCentroid;
             Position now = Centroid(self);
-            bool meleeCapable = self.GetMeleeWeapons().Count > 0;
+            // #425: a unit that may not declare a Charge (Cumbersome) earns no approach credit for one.
+            bool meleeCapable = self.GetMeleeWeapons().Count > 0 && ActiveMayCharge();
 
             float offense = 0f;
             float retaliation = 0f;
@@ -821,6 +989,9 @@ namespace FDG.Ai.Tactician
             float shootingTotal = 0f;
             float shootingBlocked = 0f;
             float meleeReaching = 0f;
+            // #459: does this candidate move the unit at all? MovementStage stamps MovedThisRound only for a path
+            // longer than 0" (#333 / #425 D4), so a Hold and a zero-length plan both leave the unit "unmoved".
+            bool candidateMoves = candidate.Intent != EMacroIntent.Hold && Distance(now, end) > 0.0001f;
             foreach (DataBinding<UnitData> enemyBinding in EnemyBindings(self.PlayerID))
             {
                 UnitData enemy = enemyBinding.GetValue();
@@ -858,7 +1029,9 @@ namespace FDG.Ai.Tactician
                         new AttackContext(Math.Max(1f, endDistance),
                             AttackerMoved: candidate.Intent != EMacroIntent.Hold,
                             SightFactor: hasLane ? 1f : 0f));
-                    offense = Math.Max(offense, ValueFraction(shot.ExpectedWounds, enemy));
+                    // #442 (#434 Hazardous): a volley that wounds its own shooters is worth that much less.
+                    offense = Math.Max(offense, ValueFraction(shot.ExpectedWounds, enemy)
+                        - ValueFraction(shot.ExpectedSelfWounds, self));
                 }
 
                 // Approach value (#191 A4 gate fix - the mechanism behind the two failed gates:
@@ -895,7 +1068,7 @@ namespace FDG.Ai.Tactician
                             ? RouteMetrics.RemainingFrom(route, end, routeTerrain, routeRadius)
                             : endDistance) - reach);
                         // A5-6 (Chris): charging beats being charged. No credit for walking INSIDE
-                        // the enemy's own threat reach (charge budget + the 2" melee cylinder,
+                        // the enemy's own threat reach (charge budget + the 3" melee cylinder,
                         // +1.5" centroid slack) - the approach stages at their line and takes the
                         // charge on OUR next activation instead of eating theirs.
                         // The stage gap stays a STRAIGHT-line quantity: it models weapon threat,
@@ -917,16 +1090,27 @@ namespace FDG.Ai.Tactician
                 // between the endpoint and where it stands right now is not protection - crediting
                 // it here is what made wall shadows read as safe (#363 facet 3, replaced).
                 float theirReach = Math.Max(1f, endDistance - facts.Advance);
+                // #459: a candidate that moves the unit will have stamped MovedThisRound by the time this fire
+                // arrives, so the estimate prices us as moved (Artillery's unmoved -1 is forfeit); a Hold - or a
+                // plan whose endpoint is where we stand, which the stage does not stamp (#333) - reads the live
+                // token. Fixes the #442 D9 undervaluation of moving an artillery piece.
                 AttackEstimate incoming = ShotEstimate(enemyBinding, _activeUnit, enemyBinding, incoming: true,
-                    new AttackContext(theirReach, AttackerMoved: true));
+                    new AttackContext(theirReach, AttackerMoved: true, DefenderMoved: candidateMoves ? true : null));
                 float incomingValue = ValueFraction(incoming.ExpectedWounds, self);
 
-                // Melee threat: if they can charge the endpoint (charge + 2" melee cylinder),
+                // Melee threat: if they can charge the endpoint (charge + 3" melee cylinder),
                 // count their melee margin too.
-                float meleeThreat =
-                    facts.ThreatReach >= endDistance - 1f && facts.HasMelee
-                        ? 0.5f * ValueFraction(MeleeEnemyVs(enemyBinding).AttackerAttack.ExpectedWounds, self)
-                        : 0f;
+                // #442: priced with the charge launched from where the enemy stands to this endpoint, so the charge
+                // arms (our Changebound's -1, its Ferocious) price; the cover habit's share below keeps the
+                // endpoint-independent, origin-free estimate its denominator (MeleeThreatTotal) is built from.
+                bool canChargeEndpoint = facts.ThreatReach >= endDistance - 1f && facts.HasMelee;
+                float meleeThreat = canChargeEndpoint
+                    ? 0.5f * ValueFraction(MeleeEnemyVs(enemyBinding,
+                        ApproxEdgeGap(endDistance, enemyBinding)).AttackerAttack.ExpectedWounds, self)
+                    : 0f;
+                float meleeHabit = canChargeEndpoint
+                    ? 0.5f * ValueFraction(MeleeEnemyVs(enemyBinding, 0f).AttackerAttack.ExpectedWounds, self)
+                    : 0f;
 
                 // #365 Tier 1, the wall-hugging reflex. Two coarse signals in one currency, both
                 // weighted by threat TO US (so a tank's AP4 Deadly(3) pair dominates when we are the
@@ -948,7 +1132,7 @@ namespace FDG.Ai.Tactician
                 if (!ReferenceEquals(candidate.TargetEnemy, enemy))
                 {
                     bool wantThatFight = meleeThreat > 0f && MeleeApproachAgainst(enemyBinding).Margin > 0f;
-                    if (!wantThatFight) meleeReaching += meleeThreat;
+                    if (!wantThatFight) meleeReaching += meleeHabit;
                     shootingTotal += incomingValue;
                     if (!hasLane) shootingBlocked += incomingValue;
                 }
@@ -1007,7 +1191,8 @@ namespace FDG.Ai.Tactician
                         && facts.ThreatReach >= projDistance - 1f)
                     {
                         projValue = Math.Max(projValue, 0.5f * ValueFraction(
-                            MeleeEnemyVs(enemyBinding).AttackerAttack.ExpectedWounds, self));
+                            MeleeEnemyVs(enemyBinding, ApproxEdgeGap(projDistance, enemyBinding))
+                                .AttackerAttack.ExpectedWounds, self));
                     }
                     projectedThreat = Math.Max(projectedThreat, projValue);
                 }
@@ -1052,7 +1237,11 @@ namespace FDG.Ai.Tactician
                  // the wall the rear ranks halve their moves against; clearing it is what the M13
                  // SideStep candidates are for. Endpoint-only, so it compares candidates - the
                  // screen credit and marker deltas above outbid it whenever standing is real work.
-                 - TacticianWeights.MoveLaneBlock * LaneBlockValue(end);
+                 - TacticianWeights.MoveLaneBlock * LaneBlockValue(end)
+                 // #442 (#446): ending in Dangerous terrain costs a full-pool test (one die per wound to destroy the
+                 // unit, each 1 a wound) at the START of the next activation - a certain cost, so it is not
+                 // posture-scaled; priced in the retaliation currency. Flying / Aircraft are exempt.
+                 - TacticianWeights.MoveRetaliation * DangerousEndCost(candidate);
 
             // #264 issue 2: the reachable bonus is a TIE-BREAK between candidates that are already
             // worth something ("if two plans are worth the same, take the one that actually gets
@@ -1121,7 +1310,8 @@ namespace FDG.Ai.Tactician
             // ANYONE. Ward = the friendly that stands to LOSE the most value to the melee threat
             // nearest it (A5-4b margin, so a counter-blade powerhouse still needs no screen).
             List<DataBinding<UnitData>> meleeEnemies = EnemyBindings(self.PlayerID)
-                .Where(e => e.GetValue().GetMeleeWeapons().Count > 0).ToList();
+                .Where(e => e.GetValue().GetMeleeWeapons().Count > 0
+                    && TacticalAnalysis.MayCharge(e.GetValue(), _evaluator)).ToList(); // #442 (#425)
             DataBinding<UnitData>? ward = null;
             DataBinding<UnitData>? threat = null;
             float wardThreatValue = 0f;
@@ -1141,7 +1331,9 @@ namespace FDG.Ai.Tactician
                 // (their move + charge next activation, with a little slack).
                 if (nearest == null || nearestDistance > 26f) continue;
 
-                MeleeEstimate exchange = CombatMath.EstimateMelee(_evaluator, nearest, friendly);
+                MeleeEstimate exchange = CombatMath.EstimateMelee(_evaluator, nearest, friendly,
+                    chargeOriginInches: TacticalAnalysis.ChargeOriginDistance(_tableState, nearest.GetValue(),
+                        friendly.GetValue()));
                 float inbound = ValueFraction(exchange.AttackerAttack.ExpectedWounds, friendly.GetValue());
                 // A5-6: a loaded transport is worth boat + payload - protect the delivery.
                 float plainValue = TacticalAnalysis.UnitValue(friendly.GetValue());
@@ -1367,7 +1559,10 @@ namespace FDG.Ai.Tactician
             if (_enemyFacts.TryGetValue(enemyBinding.Reference, out EnemyFacts cached)) return cached;
             UnitData enemy = enemyBinding.GetValue();
             UnitData self = _activeUnit!.GetValue();
-            var facts = new EnemyFacts(Centroid(enemy), enemy.GetMeleeWeapons().Count > 0,
+            // #442 (#425): HasMelee means "can charge us with melee weapons" everywhere it is read (retaliation,
+            // projected threat, approach staging, the cover habit's melee share) - a Cumbersome enemy may not charge.
+            var facts = new EnemyFacts(Centroid(enemy),
+                enemy.GetMeleeWeapons().Count > 0 && TacticalAnalysis.MayCharge(enemy, _evaluator),
                 BudgetsOf(enemyBinding).Advance,
                 MeleeReachOf(enemyBinding, self));
             _enemyFacts[enemyBinding.Reference] = facts;
@@ -1394,21 +1589,53 @@ namespace FDG.Ai.Tactician
             return estimate;
         }
 
+        // #442: our charge into this enemy is launched from where we stand at activation start.
         private MeleeEstimate MeleeSelfVs(DataBinding<UnitData> enemyBinding)
         {
             if (_meleeSelfVsEnemy.TryGetValue(enemyBinding.Reference, out MeleeEstimate cached)) return cached;
-            MeleeEstimate melee = CombatMath.EstimateMelee(_evaluator, _activeUnit!, enemyBinding);
+            MeleeEstimate melee = CombatMath.EstimateMelee(_evaluator, _activeUnit!, enemyBinding,
+                chargeOriginInches: ChargeOriginTo(enemyBinding));
             _meleeSelfVsEnemy[enemyBinding.Reference] = melee;
             return melee;
         }
 
-        private MeleeEstimate MeleeEnemyVs(DataBinding<UnitData> enemyBinding)
+        // The enemy charging us from <paramref name="chargeOriginInches"/> (0 = launch distance ignored).
+        private MeleeEstimate MeleeEnemyVs(DataBinding<UnitData> enemyBinding, float chargeOriginInches)
         {
-            if (_meleeEnemyVsSelf.TryGetValue(enemyBinding.Reference, out MeleeEstimate cached)) return cached;
-            MeleeEstimate melee = CombatMath.EstimateMelee(_evaluator, enemyBinding, _activeUnit!);
-            _meleeEnemyVsSelf[enemyBinding.Reference] = melee;
+            int halfInches = (int)MathF.Round(Math.Max(0f, chargeOriginInches) * 2f);
+            var key = (enemyBinding.Reference, halfInches);
+            if (_meleeEnemyVsSelf.TryGetValue(key, out MeleeEstimate cached)) return cached;
+            MeleeEstimate melee = CombatMath.EstimateMelee(_evaluator, enemyBinding, _activeUnit!,
+                chargeOriginInches: halfInches / 2f);
+            _meleeEnemyVsSelf[key] = melee;
             return melee;
         }
+
+        /// <summary>
+        /// #442: the charge-origin snapshot for this enemy (see <see cref="_chargeOrigins"/>), measured on first ask.
+        /// </summary>
+        private float ChargeOriginTo(DataBinding<UnitData> enemyBinding)
+        {
+            if (_chargeOrigins.TryGetValue(enemyBinding.Reference, out float cached)) return cached;
+            float origin = TacticalAnalysis.ChargeOriginDistance(_tableState, _activeUnit!.GetValue(),
+                enemyBinding.GetValue());
+            _chargeOrigins[enemyBinding.Reference] = origin;
+            return origin;
+        }
+
+        /// <summary>
+        /// #442: the charge-origin distance to <paramref name="enemy"/> as of this activation's start, if the
+        /// planner measured it - what the melee-defender pick needs AFTER the charge move, when re-measuring would
+        /// read base contact. 0 when it was never measured (no charge arm prices, the conservative default).
+        /// </summary>
+        public float MeasuredChargeOrigin(DataBinding<UnitData> enemy) =>
+            _chargeOrigins.TryGetValue(enemy.Reference, out float origin) ? origin : 0f;
+
+        // #442: base-edge gap between the active unit standing at a hypothetical centroid and this enemy, from a
+        // centroid distance - both units' spreads (centroid to farthest living base edge) taken off.
+        private float ApproxEdgeGap(float centroidDistance, DataBinding<UnitData> enemyBinding) =>
+            Math.Max(0f, centroidDistance - TacticalAnalysis.Spread(_activeUnit!.GetValue())
+                - TacticalAnalysis.Spread(enemyBinding.GetValue()));
 
         private (float Margin, float Reach) MeleeApproachAgainst(DataBinding<UnitData> enemyBinding)
         {
@@ -1550,8 +1777,9 @@ namespace FDG.Ai.Tactician
                     && MeleeReachOf(enemyBinding, friendly) >= d - 1f)
                 {
                     value = Math.Max(value, 0.5f * ValueFraction(CombatMath.EstimateMelee(
-                        _evaluator, enemyBinding, friendlyBinding).AttackerAttack.ExpectedWounds,
-                        friendly));
+                        _evaluator, enemyBinding, friendlyBinding,
+                        chargeOriginInches: TacticalAnalysis.ChargeOriginDistance(_tableState, enemy, friendly))
+                        .AttackerAttack.ExpectedWounds, friendly));
                 }
                 best = Math.Max(best, value);
             }
@@ -1665,14 +1893,38 @@ namespace FDG.Ai.Tactician
         // as Rush) could shoot after - phantom offense that made gunline units "seek cover" or
         // "escort" every round instead of firing (#16 RL-row collapse: Warriors fired 0-1 times
         // per game; the RL row was the only one below the 50% gate line).
-        private static bool CanShootAfter(MacroAction candidate) =>
-            candidate.ActionType is EActionType.Hold or EActionType.Advance;
+        //
+        // #425 Cumbersome ("can't shoot when moving"): only Hold keeps the volley - the engine's shoot gate
+        // closes after ANY move, so an Advance plan must not be credited a shot it can never take.
+        private bool CanShootAfter(MacroAction candidate) =>
+            candidate.ActionType == EActionType.Hold
+            || (candidate.ActionType == EActionType.Advance && ActiveShootsAfterMoving());
+
+        private bool ActiveShootsAfterMoving() =>
+            _activeShootsAfterMoving ??= ActionRestrictionQueries.ShootingAfterMovingForbiddenBy(
+                _activeUnit!.GetValue(), _evaluator) == null;
+
+        private bool ActiveMayCharge() =>
+            _activeMayCharge ??= ActionRestrictionQueries.MayDeclare(
+                _activeUnit!.GetValue(), _evaluator, EActionType.Charge);
 
         // #363: terrain doesn't change inside an activation - one snapshot serves every
         // (candidate x enemy) sight test of the plan. #376 also feeds it to the mobility queries
         // (Grounded Speed) so the planner's numbers match the move resolver's.
         private List<ITerrain> TerrainSnapshot() =>
             _terrainSnapshot ??= _tableState.Terrain.Objects.ToList();
+
+        // #442 (#446): the expected wounds of the "activates in Dangerous terrain" test (WoundsToDestroy / 6) as a
+        // value fraction, when the candidate leaves the unit standing in a Dangerous piece; 0 otherwise.
+        private float DangerousEndCost(MacroAction candidate)
+        {
+            if (IgnoresAllTerrain) return 0f;
+            UnitData self = _activeUnit!.GetValue();
+            if (!TacticalAnalysis.EndsInDangerousTerrain(self,
+                    candidate.Intent == EMacroIntent.Hold ? null : candidate.Move, TerrainSnapshot()))
+                return 0f;
+            return ValueFraction(self.GetWoundsToDestroy() / 6f, self);
+        }
 
         // #384: what a SIGHT test must clear from a candidate endpoint - terrain, plus other
         // friendly units' bases when the see-through-allies house rule is off (official rules).
@@ -1722,7 +1974,7 @@ namespace FDG.Ai.Tactician
                 // The same slack the per-endpoint test uses, so an enemy that reaches SOME endpoint
                 // is always in the denominator it is scored against.
                 if (facts.ThreatReach < Distance(now, facts.Centroid) - envelope - 1f) continue;
-                total += 0.5f * ValueFraction(MeleeEnemyVs(enemyBinding).AttackerAttack.ExpectedWounds, self);
+                total += 0.5f * ValueFraction(MeleeEnemyVs(enemyBinding, 0f).AttackerAttack.ExpectedWounds, self);
             }
             _meleeThreatTotal = total;
             return total;

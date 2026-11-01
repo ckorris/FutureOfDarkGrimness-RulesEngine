@@ -162,3 +162,49 @@ public struct DiceResults : IDiceResults
             : base($"Requested side out of bounds. Must be between 1 and {maxSide}. Given: {providedSide}.") { }
     }
 }
+
+public static class DiceResultsExtensions
+{
+    /// <summary>
+    /// A copy of <paramref name="source"/> over the SAME face range with the given faces zeroed. Unlike the
+    /// <c>Subset*</c> queries, which narrow the range (so <c>At</c> of a dropped face throws), every face stays
+    /// addressable and the dropped ones simply read zero. Faces outside the range are ignored. Shared by the
+    /// per-hit AP split's base remainder and the #418 special-rule view of a fatigued melee roll.
+    /// </summary>
+    public static IDiceResults WithoutFaces(this IDiceResults source, ICollection<int> faces)
+    {
+        if (faces.Count == 0) return source;
+
+        int length = source.SideMax - source.SideMin + 1;
+        float[] values = new float[length];
+        for (int face = source.SideMin; face <= source.SideMax; face++)
+        {
+            values[face - source.SideMin] = faces.Contains(face) ? 0f : source.At(face);
+        }
+
+        return new DiceResults(values, source.SideMin);
+    }
+
+    /// <summary>
+    /// #423: a copy of <paramref name="source"/> over the SAME face range with <paramref name="count"/> rolls removed,
+    /// highest faces first (each face gives up min(its count, what is left) before the next lower one). Fractional
+    /// counts - the probabilistic roller's - remove fractional face shares the same way. Used by the Parry step to take
+    /// ignored hits out of a hit group: which faces go is cosmetic there (the save stages read a hit group's TotalRolls,
+    /// never its faces), and top-down is deterministic. A count at or above the total yields an all-zero copy.
+    /// </summary>
+    public static IDiceResults WithoutTopRolls(this IDiceResults source, float count)
+    {
+        int length = source.SideMax - source.SideMin + 1;
+        float[] values = new float[length];
+        float remaining = count;
+        for (int face = source.SideMax; face >= source.SideMin; face--)
+        {
+            float at = source.At(face);
+            float removed = remaining > 0f ? Math.Min(at, remaining) : 0f;
+            values[face - source.SideMin] = Math.Max(0f, at - removed);
+            remaining -= removed;
+        }
+
+        return new DiceResults(values, source.SideMin);
+    }
+}

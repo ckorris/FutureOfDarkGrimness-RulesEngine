@@ -24,6 +24,9 @@ namespace FDG.Stages
         // Fearless's second-chance die passes on a 4+ regardless of Quality (rulebook fixed threshold).
         private const int FEARLESS_REROLL_PASSES_ON = 4;
 
+        /// <summary>#442: the Fearless re-roll's threshold, for estimators that mirror <see cref="TakeMoraleTest"/>.</summary>
+        public const int FearlessRerollPassesOn = FEARLESS_REROLL_PASSES_ON;
+
         // On-screen banner colours for the two failed-morale outcomes: amber for Shaken (a warning, like
         // the Ambush-arrival / objective banners), red for a Rout (a death).
         private static readonly TextColor ShakenBannerColor = new TextColor(255, 170, 60, 255);
@@ -50,6 +53,120 @@ namespace FDG.Stages
             }
         }
 
+        /// <summary>#421: where the Quality a morale test is taken at came from.</summary>
+        public enum EMoraleQualitySource
+        {
+            /// <summary>The testing unit's own Quality.</summary>
+            Unit = 0,
+            /// <summary>The living, un-Shaken hero joined to the testing unit (#006).</summary>
+            JoinedHero = 1,
+            /// <summary>A friendly Tough(9)+ Hero within 6" of the testing unit (3.6).</summary>
+            HeroAura = 2,
+        }
+
+        /// <summary>
+        /// #421: the Quality a unit takes a Morale Test at and where it came from - the testing unit's own, its
+        /// joined hero's, or a nearby Tough(9)+ Hero's (<see cref="ResolveMoraleQuality"/>). <see cref="HeroName"/>
+        /// names the lending hero for the log line and the roll chip; null for <see cref="EMoraleQualitySource.Unit"/>.
+        /// </summary>
+        public readonly record struct MoraleQuality(int Quality, EMoraleQualitySource Source, string? HeroName = null)
+        {
+            /// <summary>A test at the unit's own (or a caller-chosen) Quality - no hero involved.</summary>
+            public static MoraleQuality Own(int quality) => new(quality, EMoraleQualitySource.Unit);
+
+            /// <summary>
+            /// The threshold and its source as players read it - the morale roll's first chip and its log line:
+            /// "Quality 5+", "Quality 3+ (joined Hero: Captain)", "Quality 3+ (Hero aura: Lord)". ASCII only.
+            /// </summary>
+            public string Describe() => Source switch
+            {
+                EMoraleQualitySource.JoinedHero => $"Quality {Quality}+ (joined Hero: {HeroName ?? "Hero"})",
+                EMoraleQualitySource.HeroAura => $"Quality {Quality}+ (Hero aura: {HeroName ?? "Hero"})",
+                _ => $"Quality {Quality}+",
+            };
+        }
+
+        /// <summary>
+        /// #421: THE seam every morale test reads its Quality from - the melee loser's (<c>DetermineMoraleSaveNeededStage</c>),
+        /// the wound-driven one (<see cref="ResolveWoundDrivenMorale"/>), a spell's (<c>CastSpellStage</c>) and a
+        /// rule's (<c>GameOperationServices.MoraleTestThen</c>: Mind Control, Fatigue Debuff, Spell Drain).
+        /// <para>
+        /// OPR 3.6 Hero: "The Hero's unit, and units within 6\" of friendly Heroes with Tough(9) or higher, may use
+        /// the Hero's Quality for Morale Tests as long as the Hero isn't Shaken." "May use" is a benefit, so the
+        /// engine takes the best Quality on offer with no prompt (#421 D2): the unit's own, its joined hero's
+        /// (<see cref="HeroStatRules.GetMoraleQuality"/>: alive and not Shaken), and that of every friendly
+        /// (team-aware) Tough(9)+ Hero that projects (<see cref="HeroStatRules.TryGetMoraleAuraHero"/>: alive, not
+        /// Shaken, on the table) whose model is within <see cref="HeroStatRules.MoraleAuraRangeInches"/> of the
+        /// testing unit's closest living model. Lower is better; a tie keeps the unit's own, then the joined hero,
+        /// then the nearer aura hero, so a hero is only named when it actually changed the number.
+        /// </para>
+        /// <para>
+        /// Measured when the test is taken, base to base in 3D (<see cref="UnitCompareUtilities.MinDistanceFromModelToUnit"/>,
+        /// the same measure as the casting-support "friendly units within 12\"" scan and every shooting range gate;
+        /// #421 D4). A testing unit that is not on the table is within 6" of nothing and gets no aura.
+        /// </para>
+        /// </summary>
+        public static MoraleQuality ResolveMoraleQuality(IGameContext gameContext, IUnit testingUnit)
+            => ResolveMoraleQuality(gameContext.TableState, testingUnit);
+
+        /// <summary>
+        /// The same resolution from the table state alone - the seam a read-only estimator (the Tactician's morale
+        /// pass chance, #442) prices through, so it reads the very Quality the test will be taken at.
+        /// </summary>
+        public static MoraleQuality ResolveMoraleQuality(ITableState tableState, IUnit testingUnit)
+        {
+            MoraleQuality best = MoraleQuality.Own(testingUnit.Quality);
+
+            if (testingUnit is UnitData { HeroAttachment: { } attachment } host)
+            {
+                int joined = HeroStatRules.GetMoraleQuality(host);
+                if (joined < best.Quality)
+                {
+                    best = new MoraleQuality(joined, EMoraleQualitySource.JoinedHero, attachment.Name ?? "Hero");
+                }
+            }
+
+            if (BestAuraQuality(tableState, testingUnit) is { } aura && aura.Quality < best.Quality)
+            {
+                best = aura;
+            }
+
+            return best;
+        }
+
+        // The best Quality a friendly Tough(9)+ Hero within 6" lends the testing unit, or null when none does.
+        private static MoraleQuality? BestAuraQuality(ITableState tableState, IUnit testingUnit)
+        {
+            if (!testingUnit.GetIsOnBattlefield())
+            {
+                return null;
+            }
+
+            MoraleQuality? best = null;
+            float bestDistance = float.PositiveInfinity;
+            List<ITeam> teams = tableState.Teams.Objects.ToList();
+            foreach (IUnit other in tableState.Units.Objects)
+            {
+                // The testing unit's own Hero is "the Hero's unit" - its own Quality, already the baseline.
+                if (ReferenceEquals(other, testingUnit) || other.ID.Equals(testingUnit.ID)) continue;
+                if (!ITeamExtensions.AreAllied(teams, testingUnit.PlayerID, other.PlayerID)) continue;
+                if (!HeroStatRules.TryGetMoraleAuraHero(other, out HeroStatRules.MoraleAuraHero hero)) continue;
+
+                float distance = UnitCompareUtilities.MinDistanceFromModelToUnit(hero.Model, testingUnit,
+                    includeVertical: true);
+                if (distance > HeroStatRules.MoraleAuraRangeInches) continue;
+
+                if (best == null || hero.Quality < best.Value.Quality
+                    || (hero.Quality == best.Value.Quality && distance < bestDistance))
+                {
+                    best = new MoraleQuality(hero.Quality, EMoraleQualitySource.HeroAura, hero.Name);
+                    bestDistance = distance;
+                }
+            }
+
+            return best;
+        }
+
         /// <summary>
         /// Take a morale test for <paramref name="testingUnit"/> against <paramref name="baseRollNeeded"/>
         /// (its Quality), applying morale special rules. Fires <see cref="EHookID.Morale_OnPreMoraleTest"/>
@@ -58,11 +175,36 @@ namespace FDG.Stages
         /// single decisive die (#090). On a failure it fires <see cref="EHookID.Morale_OnMoraleTestComplete"/>
         /// and, if a morale re-roll is granted (Fearless), rolls one more decisive die that passes on a 4+
         /// regardless of Quality.
+        /// <para>
+        /// #432: <paramref name="shotFromInches"/> / <paramref name="chargedFromInches"/> describe the attack that
+        /// triggered the test - a shooting attack's distance, or the charge the testing unit received - and ride the
+        /// pre-test context (<see cref="PreMoraleTestContext"/>) so OPR 3.6's "+1 to Morale Test rolls when
+        /// shot/charged from over 9\"/6\" away" rules can read them. Null (the default) for tests nothing like that
+        /// triggered (spells, Mind Control, a charger losing its own melee).
+        /// </para>
+        /// <para>
+        /// #435: <paramref name="cause"/> says what triggered the test - shooting (the wound-driven test), melee (the
+        /// loser's test) or anything else (a spell's or a rule's demand, the default) - and rides the same context for
+        /// OPR 3.6 AoF Banner's "+1 to Morale Test rolls triggered by shooting/melee".
+        /// </para>
+        /// </summary>
+        public static Task<MoraleTestOutcome> TakeMoraleTest(IGameContext gameContext, IUnit testingUnit,
+            int baseRollNeeded, bool failureCausesShakenOrRout = false, float? shotFromInches = null,
+            float? chargedFromInches = null, EMoraleTestCause cause = EMoraleTestCause.Other)
+            => TakeMoraleTest(gameContext, testingUnit, MoraleQuality.Own(baseRollNeeded), failureCausesShakenOrRout,
+                shotFromInches, chargedFromInches, cause);
+
+        /// <summary>
+        /// #421: <see cref="TakeMoraleTest(IGameContext, IUnit, int, bool, float?, float?, EMoraleTestCause)"/> at a
+        /// Quality the caller resolved through <see cref="ResolveMoraleQuality"/>, which also says where it came from.
         /// </summary>
         public static async Task<MoraleTestOutcome> TakeMoraleTest(IGameContext gameContext, IUnit testingUnit,
-            int baseRollNeeded, bool failureCausesShakenOrRout = false)
+            MoraleQuality quality, bool failureCausesShakenOrRout = false, float? shotFromInches = null,
+            float? chargedFromInches = null, EMoraleTestCause cause = EMoraleTestCause.Other)
         {
-            // A Shaken unit always fails its morale tests (GF v3.5.1) — no die is rolled. This is what
+            int baseRollNeeded = quality.Quality;
+
+            // A Shaken unit always fails its morale tests (GF Core Rules v3.6.0, as in v3.5.1) — no die is rolled. This is what
             // escalates a Shaken unit that loses a later melee at half strength into a Rout, and keeps an
             // already-Shaken unit Shaken on any other failed test. Checked before the roll so a lucky die
             // can't rescue it.
@@ -82,10 +224,18 @@ namespace FDG.Stages
                 return new MoraleTestOutcome(passed: false, baseRollNeeded, passedViaReroll: false);
             }
 
+            // #421: a Hero lent the Quality - say whose, so the number in the log is never a mystery. (The unit's
+            // own Quality needs no line; the existing pass/fail lines carry the threshold.)
+            if (quality.Source != EMoraleQualitySource.Unit)
+            {
+                gameContext.Log($"{testingUnit.Name} tests morale at {quality.Describe()}.");
+            }
+
             // #245: the NAMED live evaluation - identical to EvaluateAll (logs, spends grants), but each
             // op carries its rule name so the beat's chips can say which rule shifted the test.
             IReadOnlyList<(RuleOperation Op, string RuleName)> named = gameContext.RuleEvaluator.EvaluateAllNamedLive(
-                new PreMoraleTestContext(testingUnit), RuleParticipant.Actor(testingUnit));
+                new PreMoraleTestContext(testingUnit, shotFromInches, chargedFromInches, cause),
+                RuleParticipant.Actor(testingUnit));
             RollModifierSink modifiers = new RollModifierSink();
             modifiers.ApplyFrom(named.Select(n => n.Op).ToList());
             // #033 granted morale modifiers (e.g. a spell's "-1 to morale" debuff) fold in with the same
@@ -104,7 +254,7 @@ namespace FDG.Stages
             await gameContext.Presenter.Present(DiceRolledBeat.FromDecisive(initialRoll, rollNeeded,
                 $"{testingUnit.Name} - Morale Test",
                 passedInitial ? "Passed" : "Failed",
-                modifierTags: ComposeMoraleTags(baseRollNeeded, named, grantedNet)));
+                modifierTags: ComposeMoraleTags(quality, named, grantedNet)));
             if (passedInitial)
             {
                 return new MoraleTestOutcome(passed: true, rollNeeded, passedViaReroll: false);
@@ -115,8 +265,8 @@ namespace FDG.Stages
             // #183 shape: the participant carries the unit's LIVING MODELS, so a rule held on a model
             // rather than the unit (a joined hero's, or a per-model champion upgrade) is visible here at
             // all. Without it MostModelsHaveThisRule could only ever see unit-level attachments, making
-            // its majority arithmetic dead code. Fearless is unaffected - it gates on
-            // AllModelsHaveThisRule, which a lone hero still fails.
+            // its majority arithmetic dead code. Fearless rides the same gate since #428 (3.6: "a unit
+            // where most models have this rule"), so a joined hero without it no longer breaks it.
             IReadOnlyList<RuleOperation> completeOps = gameContext.RuleEvaluator.EvaluateAll(
                 new MoraleTestContext(testingUnit),
                 RuleParticipant.Actor(testingUnit, models: HeroStatRules.LivingModels(testingUnit)));
@@ -189,14 +339,16 @@ namespace FDG.Stages
         /// result of 1-X the unit takes one wound, which can't be ignored." One batched roll, so the
         /// probabilistic roller yields the expected number of low faces rather than N decisive dice.
         /// <para>
-        /// The pool is FLOORED from the unit's remaining wounds, the P17d Reanimation precedent: a
-        /// fractional tail under the probabilistic roller cannot buy a whole die, and dice counts stay
-        /// integral without int-locking a roll-derived value. The wounds themselves stay fractional.
+        /// The pool is <see cref="IUnitExtensions.GetWoundsToDestroy"/> (#420) - the same count the 3.6
+        /// Dangerous terrain test rolls, floored from the unit's remaining wounds (the P17d Reanimation
+        /// precedent: a fractional tail under the probabilistic roller cannot buy a whole die, and dice
+        /// counts stay integral without int-locking a roll-derived value). The wounds themselves stay
+        /// fractional.
         /// </para>
         /// </summary>
         private static async Task RollSelfWoundPool(IGameContext gameContext, IUnit unit, int maxRoll)
         {
-            int pool = (int)unit.RemainingWounds;
+            int pool = unit.GetWoundsToDestroy();
             if (pool <= 0) return;
 
             IDiceResults roll = gameContext.DiceRoller.Roll(6, pool);
@@ -219,8 +371,14 @@ namespace FDG.Stages
         // Internal for tests.
         internal static List<string>? ComposeMoraleTags(int baseRollNeeded,
             IReadOnlyList<(RuleOperation Op, string RuleName)> named, int grantedNet)
+            => ComposeMoraleTags(MoraleQuality.Own(baseRollNeeded), named, grantedNet);
+
+        // #421: the first chip names a lending Hero ("Quality 3+ (Hero aura: Lord)"), and a Hero-sourced test always
+        // shows its chips - the borrowed Quality IS the modifier worth reading, even with nothing else on the roll.
+        internal static List<string>? ComposeMoraleTags(MoraleQuality quality,
+            IReadOnlyList<(RuleOperation Op, string RuleName)> named, int grantedNet)
         {
-            List<string> tags = new List<string> { $"Quality {baseRollNeeded}+" };
+            List<string> tags = new List<string> { quality.Describe() };
             foreach ((RuleOperation op, string ruleName) in named)
             {
                 if (op is not RuleOperation.ApplyRollModifier mod || mod.Roll != ERollKind.Morale || mod.Delta == 0)
@@ -229,20 +387,27 @@ namespace FDG.Stages
             }
             if (grantedNet != 0) tags.Add($"buff {RollTags.Delta(grantedNet)}");
 
-            return tags.Count > 1 ? tags : null;
+            return tags.Count > 1 || quality.Source != EMoraleQualitySource.Unit ? tags : null;
         }
 
         /// <summary>
         /// Whether a wound-driven morale test is due: the unit took wounds (its remaining wounds dropped
         /// below <paramref name="remainingWoundsBefore"/>, the baseline captured when the action began)
         /// and it now sits at half strength or less. The rule tests at the end of ANY activation whose
-        /// wounds leave the unit at half or less (GF v3.5.1) — including a unit that was already below
+        /// wounds leave the unit at half or less (GF Core Rules v3.6.0, as in v3.5.1) — including a unit that was already below
         /// half before this activation's wounds (#254; an earlier crossing-only check skipped those).
+        /// <para>
+        /// #431: <paramref name="countedWounds"/> are wounds the unit only COUNTS as having taken (OPR 3.6
+        /// Scourge, "... if shooting wounds would trigger Morale Tests"; <see cref="Rules.Dispatch.CountedWounds"/>).
+        /// They count as wounds taken, so they alone can make the test due, and they are allocated virtually for
+        /// the half-strength check (<see cref="IUnitExtensions.GetIsAtHalfStrength(IUnit, float)"/>).
+        /// </para>
         /// </summary>
-        public static bool WoundsLeftUnitAtHalfStrength(float remainingWoundsBefore, IUnit unitAfter)
+        public static bool WoundsLeftUnitAtHalfStrength(float remainingWoundsBefore, IUnit unitAfter,
+            float countedWounds = 0f)
         {
-            bool tookWounds = unitAfter.RemainingWounds < remainingWoundsBefore;
-            return tookWounds && unitAfter.GetIsAtHalfStrength();
+            bool tookWounds = unitAfter.RemainingWounds < remainingWoundsBefore || countedWounds > 0f;
+            return tookWounds && unitAfter.GetIsAtHalfStrength(countedWounds);
         }
 
         /// <summary>
@@ -252,13 +417,15 @@ namespace FDG.Stages
         /// Example: a 3-model Tough(3) unit shot to 4/9 wounds with 2 models standing logs
         /// "Hive Guardians took wounds but is above half strength (2/3 models) - no morale test."
         /// </summary>
-        public static string? DescribeSkippedWoundDrivenMorale(float remainingWoundsBefore, IUnit unitAfter)
+        public static string? DescribeSkippedWoundDrivenMorale(float remainingWoundsBefore, IUnit unitAfter,
+            float countedWounds = 0f)
         {
             if (unitAfter.GetIsAlive() == false) return null;
-            if ((unitAfter.RemainingWounds < remainingWoundsBefore) == false)
+            if ((unitAfter.RemainingWounds < remainingWoundsBefore || countedWounds > 0f) == false)
                 return $"{unitAfter.Name} took no wounds - no morale test.";
-            if (unitAfter.GetIsAtHalfStrength() == false)
-                return $"{unitAfter.Name} took wounds but is above half strength ({DescribeStrength(unitAfter)}) - no morale test.";
+            if (unitAfter.GetIsAtHalfStrength(countedWounds) == false)
+                return $"{unitAfter.Name} took wounds but is above half strength ({DescribeStrength(unitAfter)}" +
+                    (countedWounds > 0f ? $", counting {countedWounds:0.##} extra" : "") + ") - no morale test.";
             return null;
         }
 
@@ -275,23 +442,30 @@ namespace FDG.Stages
         /// <summary>
         /// Resolve a wound-driven morale test (shooting): if the unit took wounds and is now at half
         /// strength or less, it tests, and a failure makes it Shaken. A failed non-melee
-        /// morale test never Routs — Rout is a melee-only result (GF v3.5.1: the general morale rule says
+        /// morale test never Routs — Rout is a melee-only result (GF Core Rules v3.6.0, as in v3.5.1: the general morale rule says
         /// a failed test makes a unit Shaken; only the melee-results rule routs a loser at half strength).
         /// Returns null if no test was taken (above half, unwounded, or destroyed outright), true if
         /// passed, false if failed and Shaken. Logging is left to the caller, which knows the wound source.
+        /// <paramref name="countedWounds"/>: #431 Scourge's counted wounds - see
+        /// <see cref="WoundsLeftUnitAtHalfStrength"/>; the caller takes them (<c>CountedWounds.Take</c>).
+        /// <paramref name="shotFromInches"/>: #432, the shooting distance of the attack that wounded the unit, for
+        /// the "shot from over 9\"" morale rules (see <see cref="TakeMoraleTest"/>); null when not known.
         /// </summary>
         public static async Task<bool?> ResolveWoundDrivenMorale(IGameContext gameContext, DataBinding<UnitData> unitBinding,
-            float remainingWoundsBefore)
+            float remainingWoundsBefore, float countedWounds = 0f, float? shotFromInches = null)
         {
             IUnit unit = unitBinding.GetValue();
             if (!unit.GetIsAlive()) return null;                              // wiped out outright — no test
-            if (!WoundsLeftUnitAtHalfStrength(remainingWoundsBefore, unit)) return null;
+            if (!WoundsLeftUnitAtHalfStrength(remainingWoundsBefore, unit, countedWounds)) return null;
 
-            // #006: a living joined hero takes morale on behalf of the unit (its Quality).
+            // #421: the best Quality on offer - the unit's own, its joined hero's, or a Tough(9)+ Hero's within 6".
             // failureCausesShakenOrRout: this test's failure Shakens the unit, so a conversion rule
             // (#197 P7 No Retreat) may rescue it.
-            if ((await TakeMoraleTest(gameContext, unit, HeroStatRules.GetMoraleQuality(unitBinding.GetValue()),
-                    failureCausesShakenOrRout: true)).Passed) return true;
+            // #435: a wound-driven test is the one shooting triggers (a strafe / Crossing Strike attacks "as if it
+            // was shooting" and lands here too) - OPR 3.6 Banner's "triggered by shooting/melee".
+            if ((await TakeMoraleTest(gameContext, unit, ResolveMoraleQuality(gameContext, unit),
+                    failureCausesShakenOrRout: true, shotFromInches: shotFromInches,
+                    cause: EMoraleTestCause.Shooting)).Passed) return true;
 
             await ApplyShakenWithPresentation(gameContext, unitBinding);
             return false;

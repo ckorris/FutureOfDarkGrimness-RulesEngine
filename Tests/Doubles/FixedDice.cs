@@ -25,6 +25,25 @@ namespace FDG.Tests
         }
     }
 
+    // Exactly `ones` of the rolled dice land on a 1 and every other die on a 2 (#420): the dangerous-terrain
+    // pool is one die per wound the unit would need to be destroyed, so a test that wants "one wound" can no
+    // longer say it with an all-1s roller - that is now one wound per die. Honors rollCount like
+    // FixedFaceDiceRoller, and never reports more 1s than dice were rolled.
+    internal sealed class FixedOnesDiceRoller : IDiceRoller
+    {
+        private readonly int _ones;
+        public FixedOnesDiceRoller(int ones) => _ones = ones;
+
+        public IDiceResults Roll(int sideCount, float rollCount)
+        {
+            float[] perSide = new float[sideCount];
+            float ones = Math.Min(_ones, rollCount);
+            perSide[0] = ones;
+            perSide[1] = rollCount - ones;
+            return new DiceResults(perSide, 1);
+        }
+    }
+
     internal class FixedDiceResults : IDiceResults
     {
         private readonly int _value;

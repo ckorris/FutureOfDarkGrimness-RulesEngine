@@ -33,6 +33,22 @@ namespace FDG.Tests
             _player = new PlayerID(System.Guid.NewGuid());
         }
 
+        // #426: Ambush's text is unchanged in Core Rules v3.6.0; the description now quotes it, and the shape
+        // behind it - a later-round defer from round 2, over 9" from enemies - is the one the tests below drive.
+        [Test]
+        public void Catalog_Ambush_CarriesThe36Wording_AndItsShape()
+        {
+            Assert.That(CoreRuleCatalog.Ambush.Description, Is.EqualTo(
+                "May be set aside before deployment. At the start of any round after the first, may be deployed " +
+                "anywhere over 9\" away from enemy units. Players alternate in placing Ambush units, starting " +
+                "with the player that activates next. Units that deploy via Ambush can't seize or contest " +
+                "objectives on the round they deploy."));
+            var defer = (Effect.DeferDeployment)CoreRuleCatalog.Ambush.Passive.Single().Effect;
+            Assert.That(defer.Timing, Is.EqualTo(EDeferTiming.LaterRound));
+            Assert.That(defer.MinArrivalRound, Is.EqualTo(2), "at the start of any round after the first");
+            Assert.That(defer.PlacementRangeInches, Is.EqualTo(9f), "over 9\" away from enemy units");
+        }
+
         [Test]
         public async Task RoundOne_NoArrival()
         {

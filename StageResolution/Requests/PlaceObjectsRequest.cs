@@ -26,8 +26,10 @@ namespace FDG.StageResolution.Requests
 
         /// <summary>
         /// When &gt; 0, placed objects must end at least this far (base-edge ignored; center distance)
-        /// from every live enemy model. Used by Ambush reserve arrival ("over 9" from enemies");
-        /// 0 for normal deployment / Scout (zone containment is the only constraint).
+        /// from every live enemy model. Used by Ambush reserve arrival and Reinforcement ("over 9" from
+        /// enemies"); 0 for normal deployment. Scout and Vanguard-style repositions exempt SOME enemies
+        /// ("non-Scout", "non-Vanguard"), so they carry their clause as <see cref="EnemyKeepOutDiscs"/>
+        /// instead (#426).
         /// </summary>
         public float MinDistanceFromEnemiesInches { get; }
 
@@ -62,11 +64,20 @@ namespace FDG.StageResolution.Requests
         /// #197 P22: additional per-source enemy keep-out regions a placed model must land strictly
         /// outside of, on top of <see cref="MinDistanceFromEnemiesInches"/> (Repel Ambushers: 12" around
         /// each living model of a repelling enemy unit). Built by <c>AmbushArrivalRules</c> at request
-        /// build; empty for every non-Ambush placement. Judge legality through
-        /// <see cref="PlacementDistanceRules"/>, never by reading this list alone — the waiver discs
-        /// below can override it.
+        /// build. #426: also how a clause that exempts some enemies travels - Scout's "over 9" away from
+        /// non-Scout enemy units" and Vanguard's "non-Vanguard" (<c>EnemyKeepOutRules</c>). Judge legality
+        /// through <see cref="PlacementDistanceRules"/>, never by reading this list alone — the waiver
+        /// discs below can override it.
         /// </summary>
         public IReadOnlyList<PlacementDisc> EnemyKeepOutDiscs { get; }
+
+        /// <summary>
+        /// #426: one line, worded by the stage, saying what <see cref="EnemyKeepOutDiscs"/> are - the reason
+        /// a resolver shows when a spot lands inside one ("Too close to a non-Scout enemy unit - ..."). Built
+        /// from the same numbers as the discs, so no front end restates a distance. Empty = the discs are
+        /// Ambush's Repel Ambushers keep-aways, which the resolvers word themselves.
+        /// </summary>
+        public string EnemyKeepOutNote { get; }
 
         /// <summary>
         /// #197 P22: regions inside which a placed model ignores EVERY enemy-distance restriction — both
@@ -95,7 +106,7 @@ namespace FDG.StageResolution.Requests
             float maxDistanceFromStartInches = 0f,
             IReadOnlyList<PlacementDisc>? enemyKeepOutDiscs = null,
             IReadOnlyList<PlacementDisc>? enemyDistanceWaiverDiscs = null,
-            string cancelHint = "", string? displayName = null)
+            string cancelHint = "", string? displayName = null, string enemyKeepOutNote = "")
         {
             MaxDistanceFromStartInches = maxDistanceFromStartInches;
             TargetPlayerID = targetPlayerID;
@@ -110,6 +121,7 @@ namespace FDG.StageResolution.Requests
             EnemyKeepOutDiscs = enemyKeepOutDiscs ?? Array.Empty<PlacementDisc>();
             EnemyDistanceWaiverDiscs = enemyDistanceWaiverDiscs ?? Array.Empty<PlacementDisc>();
             CancelHint = cancelHint;
+            EnemyKeepOutNote = enemyKeepOutNote ?? "";
         }
 
         public PlaceObjectsRequest(PlayerID targetPlayerID, string taskName,
@@ -118,10 +130,10 @@ namespace FDG.StageResolution.Requests
             float maxDistanceFromStartInches = 0f,
             IReadOnlyList<PlacementDisc>? enemyKeepOutDiscs = null,
             IReadOnlyList<PlacementDisc>? enemyDistanceWaiverDiscs = null,
-            string cancelHint = "", string? displayName = null)
+            string cancelHint = "", string? displayName = null, string enemyKeepOutNote = "")
             : this(targetPlayerID, new TaskID(Guid.NewGuid()), taskName, deploymentZone, modelsToPlace,
                 minDistanceFromEnemiesInches, mustTouchTableEdge, allowCancel, maxDistanceFromStartInches,
-                enemyKeepOutDiscs, enemyDistanceWaiverDiscs, cancelHint, displayName)
+                enemyKeepOutDiscs, enemyDistanceWaiverDiscs, cancelHint, displayName, enemyKeepOutNote)
         {
         }
 

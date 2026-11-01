@@ -51,11 +51,11 @@ namespace FDG.Tests
         {
             var weapon = new Weapon("Test", rangeInches: 24f, attacks: 1, armorPenetration: 0);
 
-            Assert.That(SightRuleQueries.IgnoresCover(_attacker.GetValue(), weapon, _ctx.RuleEvaluator), Is.False,
+            Assert.That(SightRuleQueries.IgnoresCover(_attacker.GetValue(), weapon, _ctx.RuleEvaluator, attackerMoved: false), Is.False,
                 "no rule → does not ignore cover.");
 
             AttachBlast(_attacker);
-            Assert.That(SightRuleQueries.IgnoresCover(_attacker.GetValue(), weapon, _ctx.RuleEvaluator), Is.True,
+            Assert.That(SightRuleQueries.IgnoresCover(_attacker.GetValue(), weapon, _ctx.RuleEvaluator, attackerMoved: false), Is.True,
                 "Blast → ignores cover (this is what flags the targeting/movement resolver requests).");
         }
 

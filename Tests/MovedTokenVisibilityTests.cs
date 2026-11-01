@@ -72,7 +72,7 @@ namespace FDG.Tests
         [Test]
         public void Readership_FindsATokenTestNestedInsideAndNot()
         {
-            // Mobile Artillery's actual shape: And(AttackedFromOverInches, Not(TokenPresent(Moved))).
+            // 3.5 Mobile Artillery's shape (deleted by #436; 3.6 Artillery reads the same token): And(AttackedFromOverInches, Not(TokenPresent(Moved))).
             // A top-level type check would miss it, which is why the walk recurses.
             DataBinding<UnitData> unit = MakeUnit();
             unit.GetValue().AttachRuleDefinition(HoldsPositionRule());
@@ -126,7 +126,7 @@ namespace FDG.Tests
             Assert.That(TokenReadership.IsReadByAnyRule(null, TokenType.MovedThisRound), Is.False);
         }
 
-        // Mobile Artillery's defensive arm, authored locally so the test doesn't depend on shipped book
+        // 3.5 Mobile Artillery's defensive arm (a token reader of the same shape as 3.6 Artillery's), authored locally so the test doesn't depend on shipped book
         // data: "as long as this unit hasn't moved this round, enemies shooting it from over 9in get -2".
         private static ResolvedRule HoldsPositionRule() =>
             new("HoldsPosition",

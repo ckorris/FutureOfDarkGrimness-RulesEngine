@@ -140,6 +140,19 @@ public sealed class RuleEvaluator
     }
 
     /// <summary>
+    /// #459: <see cref="EvaluateAllNamed(IHookContext, RuleParticipant[])"/> under a hypothetical - every invocation
+    /// the walk builds carries <paramref name="assumed"/> (see <see cref="AssumedTokens"/>), so the token-reading
+    /// conditions answer "as if" for the units it names and from the live containers otherwise. Null changes nothing.
+    /// Deliberately the ONLY entry point that accepts an overlay: it is the read-only query (no log, no one-shot grant
+    /// spent), so an assumption can never reach a live resolution. The estimators (CombatMath) are its callers.
+    /// </summary>
+    public IReadOnlyList<(RuleOperation Op, string RuleName)> EvaluateAllNamed(IHookContext context,
+        AssumedTokens? assumed, params RuleParticipant[] participants)
+    {
+        return NamedOpsOf(CollectSurviving(context, log: false, participants, narrate: null, assumed));
+    }
+
+    /// <summary>
     /// The live twin of <see cref="EvaluateAllNamed"/>: identical to <see cref="EvaluateAll"/> (it LOGS
     /// and spends one-shot NextTrigger grants - a real evaluation, not a read-only query), but also pairs
     /// each surviving operation with the alias-aware display name of the rule that produced it. Used by
@@ -151,6 +164,20 @@ public sealed class RuleEvaluator
         params RuleParticipant[] participants)
     {
         return NamedOpsOf(CollectSurviving(context, log: true, participants));
+    }
+
+    /// <summary>
+    /// <see cref="EvaluateAllNamedLive(IHookContext, RuleParticipant[])"/> that narrates only the surviving
+    /// operations <paramref name="narrate"/> accepts; everything else about the live evaluation - the one-shot
+    /// grants it spends, the trace, the returned queue - is unchanged. For a stage whose participants reach
+    /// rules it does not resolve: #447's impact stage walks the charger's models so a joined hero's Impact
+    /// fires, which also reaches that hero's Ravage - a rule ResolveRavageWoundsStage resolves (and narrates)
+    /// on its own, so the impact stage must not print it as though it had been rolled.
+    /// </summary>
+    public IReadOnlyList<(RuleOperation Op, string RuleName)> EvaluateAllNamedLive(IHookContext context,
+        Func<RuleOperation, bool> narrate, params RuleParticipant[] participants)
+    {
+        return NamedOpsOf(CollectSurviving(context, log: true, participants, narrate));
     }
 
     /// <summary>
@@ -180,7 +207,7 @@ public sealed class RuleEvaluator
     }
 
     private List<TaggedOperation> CollectSurviving(IHookContext context, bool log,
-        params RuleParticipant[] participants)
+        RuleParticipant[] participants, Func<RuleOperation, bool>? narrate = null, AssumedTokens? assumed = null)
     {
             var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
             try
@@ -226,7 +253,7 @@ public sealed class RuleEvaluator
             foreach (RuleParticipant p in participants)
             {
                 CollectTagged(p.Unit, p.Seat, p.Weapon, p.Models, p.ModelScope, context, tagged, seen,
-                    grantsToConsume, trace);
+                    grantsToConsume, trace, assumed);
             }
         }
         finally
@@ -248,15 +275,18 @@ public sealed class RuleEvaluator
         {
             // Nothing to filter: every collected op survives, logged in order, grants spent last -
             // exactly the general path below, minus the suppression set and the copy.
+            // #427: unless an Unstoppable marker is present, in which case the ignorable negative modifiers
+            // leave first (and narrate themselves) - a no-op scan otherwise.
+            List<TaggedOperation> kept = ApplyNegativeModifierImmunity(tagged, log, trace);
             if (log)
             {
-                foreach (TaggedOperation t in tagged) Log(t);
+                foreach (TaggedOperation t in kept) LogIf(narrate, t);
             }
             if (grantsToConsume != null)
             {
                 SpendGrants(grantsToConsume);
             }
-            return tagged;
+            return kept;
         }
 
         var suppressedRuleNames = tagged
@@ -272,7 +302,7 @@ public sealed class RuleEvaluator
             {
                 // The suppressor is internal machinery a stage never applies. Log the action
                 // ("X ignored Y"), then drop it from the queue handed back.
-                if (log) Log(t);
+                if (log) LogIf(narrate, t);
                 continue;
             }
 
@@ -292,8 +322,15 @@ public sealed class RuleEvaluator
                 continue;
             }
 
-            if (log) Log(t);
             result.Add(t);
+        }
+
+        // #427: Unstoppable's negative-modifier immunity runs after the rule-vs-rule suppression above (an
+        // op already cancelled by name needs no second reason) and before the ops are narrated.
+        result = ApplyNegativeModifierImmunity(result, log, trace);
+        if (log)
+        {
+            foreach (TaggedOperation t in result) LogIf(narrate, t);
         }
 
         // #101 consume-on-occurrence: spend each one-shot grant whose hook+seat fired this event, removing
@@ -309,6 +346,87 @@ public sealed class RuleEvaluator
     }
             finally { global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.RuleDispatch, __probe); }
         }
+
+    /// <summary>
+    /// #427 Unstoppable (Core Rules v3.6.0: "ignores all negative modifiers to this weapon which are not from
+    /// this model's special rules"). When the surviving queue carries a
+    /// <see cref="RuleOperation.IgnoreNegativeWeaponModifiers"/> marker, every negative weapon modifier in it -
+    /// a to-hit penalty or an AP reduction - is dropped UNLESS it came from the marker bearer's own rules:
+    /// same unit (its unit rules, its weapon's rules, its models' rules) and not a grant another unit placed.
+    /// So the defender's Stealth / Evasive / Fortified and an enemy "-1 to hit" spell are ignored, while the
+    /// attacker's own Imprecise, Unwieldy or Indirect penalty still bites. The marker itself stays in the
+    /// queue (a caller folding a granted hit token the evaluator never sees reads it). Returns the input list
+    /// untouched - no allocation - when there is no marker, which is every dispatch but an Unstoppable weapon's.
+    /// Live evaluations narrate each ignored modifier; read-only queries stay silent.
+    /// </summary>
+    private List<TaggedOperation> ApplyNegativeModifierImmunity(List<TaggedOperation> tagged, bool log, bool trace)
+    {
+        List<TaggedOperation>? markers = null;
+        for (int i = 0; i < tagged.Count; i++)
+        {
+            if (tagged[i].Op is RuleOperation.IgnoreNegativeWeaponModifiers)
+            {
+                (markers ??= new List<TaggedOperation>()).Add(tagged[i]);
+            }
+        }
+
+        if (markers == null) return tagged;
+
+        var kept = new List<TaggedOperation>(tagged.Count);
+        foreach (TaggedOperation t in tagged)
+        {
+            if (!IsNegativeWeaponModifier(t.Op))
+            {
+                kept.Add(t);
+                continue;
+            }
+
+            TaggedOperation? ignoredBy = null;
+            foreach (TaggedOperation marker in markers)
+            {
+                bool isOwn = t.Bearer.ID == marker.Bearer.ID && !t.PlacedByOtherUnit;
+                if (!isOwn)
+                {
+                    ignoredBy = marker;
+                    break;
+                }
+            }
+
+            if (ignoredBy == null)
+            {
+                kept.Add(t);
+                continue;
+            }
+
+            TaggedOperation by = ignoredBy.Value;
+            if (log)
+            {
+                string who = by.Weapon == null
+                    ? $"{by.Bearer.Name}'s {by.Origin.RequestedName}"
+                    : $"{by.Bearer.Name}'s {by.Weapon.Name}'s {by.Origin.RequestedName}";
+                _log?.Log($"{who} ignored {t.Bearer.Name}'s {t.Origin.RequestedName} ({t.Op.Describe()}).");
+            }
+            else if (trace)
+            {
+                TraceLine($"{by.Bearer.Name}'s {by.Origin.RequestedName} would ignore " +
+                    $"{t.Bearer.Name}'s {t.Origin.RequestedName} ({t.Op.GetType().Name})");
+            }
+        }
+
+        return kept;
+    }
+
+    /// <summary>
+    /// The operations Unstoppable's immunity can drop: a to-hit penalty or an AP reduction. Hit rolls and AP are
+    /// the two numbers the engine models a weapon's attack resolving with that a rule can lower; shooting range
+    /// is a reach limit and Defense modifiers are the target's, neither a modifier "to this weapon" (#427 D2).
+    /// </summary>
+    private static bool IsNegativeWeaponModifier(RuleOperation op) => op switch
+    {
+        RuleOperation.ApplyRollModifier { Roll: ERollKind.Hit, Delta: < 0 } => true,
+        RuleOperation.ReduceArmorPenetration { Amount: > 0 } => true,
+        _ => false,
+    };
 
     /// <summary>
     /// Explicitly spends the one-shot (FirstTrigger) granted rules that key on <paramref name="context"/>'s
@@ -420,20 +538,25 @@ public sealed class RuleEvaluator
 
     private void CollectTagged(IUnit unit, ERuleSeat seat, IWeapon? weapon, IReadOnlyList<IModel>? models,
         EModelRuleScope modelScope, IHookContext context, List<TaggedOperation> sink, DedupState seen,
-        List<(IUnit Unit, Token Grant)>? grantsToConsume, bool trace)
+        List<(IUnit Unit, Token Grant)>? grantsToConsume, bool trace, AssumedTokens? assumed = null)
     {
-        CollectFromRules(unit.RuleDefinitions, unit, carryingWeapon: null, seat, context, sink, seen, trace);
+        // #447 D1: every invocation this participant produces carries the models it brought
+        // (RuleInvocation.ParticipantModels), so a carrier-counting effect counts among them.
+        // #459: and the query's assumed-token overlay (null on every live path), the same way.
+        CollectFromRules(unit.RuleDefinitions, unit, carryingWeapon: null, seat, context, sink, seen, trace,
+            participantModels: models, assumed: assumed);
 
         // Token-granted rules (auras, "gains rule X" buffs): the unit behaves as if it has each rule
         // named by a RuleGrant token. Walked through the same per-rule path as static attachments, so
         // they honour the firing seat/condition and share the dedup (an argument-less rule granted on
         // top of a static copy fires once) and suppression first-pass. Bearer stays the unit, never a
         // weapon — grants live on unit token containers.
-        CollectGrantedRules(unit, seat, context, sink, seen, grantsToConsume, trace);
+        CollectGrantedRules(unit, seat, context, sink, seen, grantsToConsume, trace, models, assumed);
 
         if (weapon != null)
         {
-            CollectFromRules(weapon.RuleDefinitions, unit, weapon, seat, context, sink, seen, trace);
+            CollectFromRules(weapon.RuleDefinitions, unit, weapon, seat, context, sink, seen, trace,
+                participantModels: models, assumed: assumed);
         }
 
         // #006 slice F / #093: per-model rules for the model(s) this hook involves, composed per the
@@ -447,14 +570,14 @@ public sealed class RuleEvaluator
             if (modelScope == EModelRuleScope.AllOwners)
             {
                 CollectFromRules(RulesSharedByAll(models), unit, carryingWeapon: null, seat, context, sink,
-                    seen, trace);
+                    seen, trace, participantModels: models, assumed: assumed);
             }
             else
             {
                 foreach (IModel model in models)
                 {
                     CollectFromRules(model.RuleDefinitions, unit, carryingWeapon: null, seat, context, sink,
-                        seen, trace);
+                        seen, trace, participantModels: models, assumed: assumed);
                 }
             }
         }
@@ -502,7 +625,9 @@ public sealed class RuleEvaluator
         a.Definition == b.Definition && a.Arguments.SequenceEqual(b.Arguments);
 
     private void CollectFromRules(IReadOnlyList<ResolvedRule> rules, IUnit unit, IWeapon? carryingWeapon,
-        ERuleSeat seat, IHookContext context, List<TaggedOperation> sink, DedupState seen, bool trace)
+        ERuleSeat seat, IHookContext context, List<TaggedOperation> sink, DedupState seen, bool trace,
+        bool placedByOtherUnit = false, IReadOnlyList<IModel>? participantModels = null,
+        AssumedTokens? assumed = null)
     {
         // One scratch list per walk, cleared per firing entry: a fresh List per entry was measurable
         // (see the DedupState pool below for the profile that found it).
@@ -541,7 +666,8 @@ public sealed class RuleEvaluator
                 }
 
                 invocation ??= new RuleInvocation(context, unit, rule.Arguments, DiceRoller: _diceRoller,
-                    Weapon: carryingWeapon, Definition: rule.Definition);
+                    Weapon: carryingWeapon, Definition: rule.Definition, Attachment: rule,
+                    ParticipantModels: participantModels, AssumedTokens: assumed);
 
                 if (!entry.Condition.Evaluate(invocation))
                 {
@@ -567,7 +693,7 @@ public sealed class RuleEvaluator
 
                 foreach (RuleOperation op in produced)
                 {
-                    sink.Add(new TaggedOperation(op, rule, unit, carryingWeapon));
+                    sink.Add(new TaggedOperation(op, rule, unit, carryingWeapon, placedByOtherUnit));
                 }
             }
         }
@@ -583,7 +709,8 @@ public sealed class RuleEvaluator
     /// </summary>
     private void CollectGrantedRules(IUnit unit, ERuleSeat seat, IHookContext context,
         List<TaggedOperation> sink, DedupState seen,
-        List<(IUnit Unit, Token Grant)>? grantsToConsume, bool trace)
+        List<(IUnit Unit, Token Grant)>? grantsToConsume, bool trace, IReadOnlyList<IModel>? participantModels = null,
+        AssumedTokens? assumed = null)
     {
         if (_ruleResolver == null)
         {
@@ -591,6 +718,10 @@ public sealed class RuleEvaluator
         }
 
         List<ResolvedRule>? granted = null;
+        // #427: grants another unit placed (an enemy spell's debuff) are walked apart from the bearer's own, so
+        // their ops can be told from "this model's special rules". Own grants walk first, so a rule that is
+        // both own and placed (rare) keeps the own attribution through the dedup.
+        List<ResolvedRule>? grantedByOthers = null;
         foreach (Token token in unit.Tokens.GetAllTokens(TokenType.RuleGrant))
         {
             if (token.Payload is not TokenPayload.RuleGrant grant)
@@ -617,7 +748,15 @@ public sealed class RuleEvaluator
                 continue;
             }
 
-            (granted ??= new List<ResolvedRule>()).Add(resolved);
+            // Token.OwnerUnitID: null = placed by the bearer's own rules; set = placed by another unit.
+            if (token.OwnerUnitID != null)
+            {
+                (grantedByOthers ??= new List<ResolvedRule>()).Add(resolved);
+            }
+            else
+            {
+                (granted ??= new List<ResolvedRule>()).Add(resolved);
+            }
 
             // #101 — record this one-shot ("next time") grant for consumption iff THIS hook+seat is one its
             // rule actually listens on (the occurrence). It's then spent in CollectSurviving regardless of
@@ -632,7 +771,14 @@ public sealed class RuleEvaluator
 
         if (granted != null)
         {
-            CollectFromRules(granted, unit, carryingWeapon: null, seat, context, sink, seen, trace);
+            CollectFromRules(granted, unit, carryingWeapon: null, seat, context, sink, seen, trace,
+                participantModels: participantModels, assumed: assumed);
+        }
+
+        if (grantedByOthers != null)
+        {
+            CollectFromRules(grantedByOthers, unit, carryingWeapon: null, seat, context, sink, seen, trace,
+                placedByOtherUnit: true, participantModels: participantModels, assumed: assumed);
         }
     }
 
@@ -652,6 +798,12 @@ public sealed class RuleEvaluator
             }
         }
         return false;
+    }
+
+    // #447: the narration filter of EvaluateAllNamedLive(context, narrate, ...); null narrates everything.
+    private void LogIf(Func<RuleOperation, bool>? narrate, TaggedOperation t)
+    {
+        if (narrate == null || narrate(t.Op)) Log(t);
     }
 
     private void Log(TaggedOperation t)
@@ -675,6 +827,14 @@ public sealed class RuleEvaluator
         // (ChooseUnitToDeployStage: "Infiltrators held in Ambush."). Dropped by TYPE for the same reason
         // capabilities are: a future probe cannot reintroduce the stream.
         if (t.Op is RuleOperation.DeferDeployment)
+        {
+            return;
+        }
+
+        // #427 - the Unstoppable marker is read by the evaluator itself, not applied. What it did is narrated
+        // where it happens (ApplyNegativeModifierImmunity, one line per modifier actually ignored); logging the
+        // bare marker would print "Unstoppable ignored negative modifiers" on every attack that had none.
+        if (t.Op is RuleOperation.IgnoreNegativeWeaponModifiers)
         {
             return;
         }
@@ -706,9 +866,12 @@ public sealed class RuleEvaluator
     /// sidecar metadata — not a field on <see cref="RuleOperation"/> — so the suppression
     /// first-pass can match ops by their origin rule's canonical name and the game-log can name
     /// the bearer and rule. The public API still returns bare operations.
+    /// <para>#427: <see cref="PlacedByOtherUnit"/> marks an op whose rule reached the bearer as a granted
+    /// token another unit placed (an enemy spell's debuff), as opposed to a rule the bearer carries itself -
+    /// the "is this from the model's own special rules" test Unstoppable's immunity needs.</para>
     /// </summary>
     private readonly record struct TaggedOperation(RuleOperation Op, ResolvedRule Origin, IUnit Bearer,
-        IWeapon? Weapon = null);
+        IWeapon? Weapon = null, bool PlacedByOtherUnit = false);
 
     /// <summary>
     /// Per-event dedup deciding whether a rule attachment fires (#027). Two layers:
@@ -900,11 +1063,11 @@ public sealed class RuleEvaluator
     {
         foreach (ResolvedRule rule in rules)
         {
-            // Definition is what makes a self-referential condition work (Condition.AllModelsHaveThisRule
-            // asks "does every model have the rule that is firing?"). Without it that condition takes its
+            // Definition is what makes a self-referential condition work (Condition.MostModelsHaveThisRule
+            // asks "do most models have the rule that is firing?"). Without it that condition takes its
             // "no rule identity to check" arm and returns true, so an ability gated on it was silently
-            // ungated. Versatile Defense is the first rule whose text puts the all-models gate on the
-            // CHOICE ("when a unit where all models have this rule is deployed or activated, pick one
+            // ungated. Versatile Defense is the first rule whose text puts the ownership gate on the
+            // CHOICE ("when a unit where most models have this rule is deployed or activated, pick one
             // effect") rather than on the effect, which is why nothing surfaced it before.
             // #191 search perf pass 10: a rule with no ability triggering at this hook offers nothing -
             // skip it before building its invocation (which every rule used to pay for).
@@ -977,7 +1140,8 @@ public sealed class RuleEvaluator
             // ValueSource.Arg resolves against the real value rather than throwing on an empty list, and
             // the offering weapon (#197 Strafing), so "attack it with THIS weapon" has one.
             var invocation = new RuleInvocation(
-                Hook: null, offer.Bearer, offer.ResolvedArguments, target, _diceRoller, offer.Weapon);
+                Hook: null, offer.Bearer, offer.ResolvedArguments, target, _diceRoller, offer.Weapon,
+                TargetCount: targets.Count);
             offer.Ability.Effect.Apply(invocation, operations);
         }
 

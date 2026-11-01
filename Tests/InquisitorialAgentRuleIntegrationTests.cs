@@ -41,7 +41,7 @@ namespace FDG.Tests
                 new ActivatedAbility(EHookID.Activation_OnNextActivatorRequested, new Cost.OncePerGame(),
                     new TargetSelector(0f, 1, 1, ETargetAffinity.Self, false),
                     new Effect.Reactivate(ClearsFatigue: true, ArmyRoundQuotaDivisor: 3),
-                    new Condition.AllModelsHaveThisRule()),
+                    new Condition.EveryModelHasThisRule()),
             });
 
         [SetUp]

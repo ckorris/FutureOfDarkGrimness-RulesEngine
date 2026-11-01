@@ -3,9 +3,11 @@ using System.Collections.Generic;
 using System.Linq;
 using FDG.Data;
 using FDG.GameModel;
+using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
+using FDG.Rules.Tokens;
 using FDG.SaveLoad;
 using FDG.Stages;
 using FDG.Utilities;
@@ -119,6 +121,16 @@ namespace FDG.Calculator
                 FatigueUtilities.ApplyFatigued(attackingUnit);
             }
 
+            // #459 D4: a defender that moved this round carries the real token MovementStage would have stamped,
+            // so Artillery's Subject arm (and any other reader of the target's moved state) answers through the
+            // real stages. Whether anything on this defender reads it is reported so the front end offers the
+            // input only when it changes something.
+            bool defenderMovedMatters = TokenReadership.IsReadByAnyRule(defendingUnit, TokenType.MovedThisRound);
+            if (situation.DefenderMoved && !defendingUnit.Tokens.HasToken(TokenType.MovedThisRound))
+            {
+                defendingUnit.Tokens.AddToken(TokenDefinitionCatalog.Create(TokenType.MovedThisRound));
+            }
+
             float woundsBefore = defendingUnit.RemainingWounds;
 
             // Batches are taken once, before a shot is fired: a volley is declared with the unit as it
@@ -132,9 +144,20 @@ namespace FDG.Calculator
                 if (impact is not null) volleys.Add(impact);
             }
 
+            // #442 (#434): then the striker's own pre-strike dice - Ravage, Regenerative Strength's tokens - through
+            // the real ResolveRavageWoundsStage, "when it's this model's turn to strike in melee" (charge or not).
+            if (melee)
+            {
+                VolleyReport? ravage = await ResolveRavage(context, attacker, defender, situation.AttackerCharging);
+                if (ravage is not null) volleys.Add(ravage);
+            }
+
+            // #423 B1: one Parry pool for the whole attack - the defender's X x carriers, sized when the first volley's
+            // hits land and spent across every weapon profile, exactly as CombatActionContext hands it to each swing.
+            var parryBudget = new ParryBudget();
             foreach ((Weapon weapon, int copies) in Batches(attackingUnit, melee))
             {
-                volleys.Add(await ResolveVolley(context, attacker, defender, weapon, copies, situation, melee));
+                volleys.Add(await ResolveVolley(context, attacker, defender, weapon, copies, situation, melee, parryBudget));
             }
 
             float woundsAfter = defendingUnit.RemainingWounds;
@@ -154,13 +177,14 @@ namespace FDG.Calculator
 
             return new CombatReport(situation.Mode, attackingUnit.Name, defendingUnit.Name,
                 woundsBefore, woundsAfter, volleys,
-                volleys.Sum(volley => volley.ExpectedHits), woundsBefore - woundsAfter, notes, warnings);
+                volleys.Sum(volley => volley.ExpectedHits), woundsBefore - woundsAfter, notes, warnings,
+                defenderMovedMatters);
         }
 
         /// <summary>Runs one weapon profile's batch through the real stage chain.</summary>
         private static async Task<VolleyReport> ResolveVolley(SandboxGameContext context,
             DataBinding<UnitData> attacker, DataBinding<UnitData> defender, Weapon weapon, int copies,
-            CombatSituation situation, bool melee)
+            CombatSituation situation, bool melee, ParryBudget parryBudget)
         {
             UnitData attackingUnit = attacker.GetValue();
             UnitData defendingUnit = defender.GetValue();
@@ -192,14 +216,18 @@ namespace FDG.Calculator
             // Cover is geometry, which this world does not have, so it is seeded exactly as
             // CoverCheckStage would have produced it - including the engine's own ignore-cover query.
             int coverBonus = !melee && situation.DefenderInCover
-                && !SightRuleQueries.IgnoresCover(attackingUnit, weapon, context.RuleEvaluator)
+                && !SightRuleQueries.IgnoresCover(attackingUnit, weapon, context.RuleEvaluator, situation.AttackerMoved)
                 ? 1
                 : 0;
 
+            // #442 (#432): a charging swing carries the charge's launch distance, as CombatActionContext snapshots it.
+            bool charging = melee && situation.AttackerCharging;
             var metadata = new CombatMetadata(context, attacker, defender, weapon, firing,
                 attackerMoved: situation.AttackerMoved,
                 isMelee: melee,
-                isCharging: melee && situation.AttackerCharging);
+                isCharging: charging,
+                chargeOriginDistanceInches: charging ? MathF.Max(0f, situation.ChargeFromInches) : 0f,
+                parryBudget: melee ? parryBudget : null);
             metadata.AddResult(new CoverCheckResults(coverBonus));
 
             float woundsBefore = defendingUnit.RemainingWounds;
@@ -208,6 +236,8 @@ namespace FDG.Calculator
             await RunStage(new BuildTargetListStage<ICombatMetadata>(context, layer), metadata);
             await RunStage(new DetermineHitRollStage<ICombatMetadata>(context, layer), metadata);
             await RunStage(new RollToHitStage<ICombatMetadata>(context, layer), metadata);
+            // #423: the defender's Parry step, as in SwingMeleeWeaponStage (a no-op for shooting).
+            await RunStage(new ParryHitsStage<ICombatMetadata>(context, layer), metadata);
             await RunStage(new DetermineSaveRollsNeededStage<ICombatMetadata>(context, layer), metadata);
             await RunStage(new RollToSaveStage<ICombatMetadata>(context, layer), metadata);
             await RunStage(new AssignWoundsStage<ICombatMetadata>(context, layer), metadata);
@@ -217,7 +247,14 @@ namespace FDG.Calculator
             metadata.QueryForResult(out RollToHitResults toHit);
             metadata.QueryForResult(out DetermineSaveRollNeededResults saveNeeded);
 
-            float expectedHits = toHit.SuccessfulHitList?.Sum(hit => hit.HitCount) ?? 0f;
+            // #423: the hits that LANDED - the Parry step has already taken its ignored hits out of the groups, so the
+            // save buckets below carry fewer; the ParrySummary says how many and why (#441 F4: a chip, not a note).
+            float hitsAfterParry = toHit.SuccessfulHitList?.Sum(hit => hit.HitCount) ?? 0f;
+            metadata.QueryForResult(out ParryResults parry);
+            float expectedHits = hitsAfterParry + (parry?.HitsIgnored ?? 0f);
+            ParrySummary? parrySummary = parry != null && parry.DiceRolled > 0f
+                ? new ParrySummary(parry.DiceRolled, parry.HitsIgnored, expectedHits)
+                : null;
 
             List<SaveBucket> buckets = (saveNeeded.PendingSaveRollsList ?? new List<PendingSaveRolls>())
                 .Select(pending => new SaveBucket(pending.SaveNeeded, pending.HitCount,
@@ -233,7 +270,7 @@ namespace FDG.Calculator
                 hitRoll.ThresholdTags ?? (IReadOnlyList<string>)Array.Empty<string>(),
                 expectedHits, buckets,
                 saveNeeded.ThresholdTags ?? (IReadOnlyList<string>)Array.Empty<string>(),
-                dealt, volleyNotes);
+                dealt, volleyNotes, parrySummary);
         }
 
         /// <summary>
@@ -248,15 +285,14 @@ namespace FDG.Calculator
             UnitData defendingUnit = defender.GetValue();
 
             // Ask what the charge brings using the READ-ONLY evaluation (no logging, no one-shot grants
-            // spent) - the stage below does the real, live one. Same question, asked twice on purpose.
-            var participants = new List<RuleParticipant> { RuleParticipant.Actor(attackingUnit) };
-            participants.AddRange(DetermineStrikeOrderStage.SubjectWithMeleeWeapons(defendingUnit));
+            // spent) - the stage below does the real, live one. Same question, asked twice on purpose, with
+            // the stage's own participants (#447: the charger's living models, so Impact sums per model).
+            var named = context.RuleEvaluator.EvaluateAllNamed(
+                new ChargeContactContext(attackingUnit, defendingUnit),
+                ResolveImpactHitsStage.ChargeContactParticipants(attackingUnit, defendingUnit));
 
             var sink = new ImpactSink();
-            sink.ApplyFrom(context.RuleEvaluator
-                .EvaluateAllNamed(new ChargeContactContext(attackingUnit, defendingUnit), participants.ToArray())
-                .Select(named => named.Op)
-                .ToList());
+            sink.ApplyFrom(named.Select(n => n.Op).ToList());
 
             if (sink.TotalDice <= 0)
             {
@@ -279,10 +315,56 @@ namespace FDG.Calculator
             var weapon = new Weapon("Impact", rangeInches: 0f, attacks: 0, armorPenetration: sink.ArmorPenetration);
 
             return new VolleyReport(weapon, Copies: 1, InRange: true, EffectiveRangeInches: 0f,
-                AttackDice: sink.TotalDice, HitRollNeeded: 2, HitTags: new[] { "Impact, hits on 2+" },
+                AttackDice: sink.TotalDice, HitRollNeeded: 2,
+                HitTags: new[] { "Impact, hits on 2+", ResolveImpactHitsStage.DescribeDicePool(named) },
                 ExpectedHits: expectedHits, Saves: Array.Empty<SaveBucket>(),
                 SaveTags: Array.Empty<string>(), ExpectedWounds: dealt,
                 Notes: new[] { "Auto-hits on the charge, before any weapon swings." });
+        }
+
+        /// <summary>
+        /// #442 (#434): the striker's pre-strike auto-wound pools (Ravage at 6+, Regenerative Strength's tokens at 4+),
+        /// run through the engine's own <see cref="ResolveRavageWoundsStage"/> - unsaveable wounds that land before
+        /// the swings. Null when the striker has none (or is Fatigued, which each rule's own condition reads).
+        /// </summary>
+        private static async Task<VolleyReport?> ResolveRavage(SandboxGameContext context,
+            DataBinding<UnitData> attacker, DataBinding<UnitData> defender, bool charging)
+        {
+            UnitData attackingUnit = attacker.GetValue();
+            UnitData defendingUnit = defender.GetValue();
+
+            // The stage's participant shape, read-only, to know whether there is a row at all and what it rolls.
+            var participants = new List<RuleParticipant> { ResolveImpactHitsStage.ChargerParticipant(attackingUnit) };
+            participants.AddRange(DetermineStrikeOrderStage.SubjectWithMeleeWeapons(defendingUnit));
+            var pools = context.RuleEvaluator.EvaluateAllNamed(new ChargeContactContext(attackingUnit, defendingUnit),
+                    participants.ToArray())
+                .Select(n => n.Op).OfType<RuleOperation.InvokeDealAutoWounds>()
+                .Where(op => op.DiceCount > 0).ToList();
+            if (pools.Count == 0)
+            {
+                return null;
+            }
+
+            float woundsBefore = defendingUnit.RemainingWounds;
+            var actionContext = new CombatActionContext(context, attacker, isMelee: true, isCharging: charging);
+            actionContext.SetDefender(defender);
+            var stage = new ResolveRavageWoundsStage(context, new PassThroughLayer<ICombatActionContext>());
+            stage.OnRavageResolved.Bind("done");
+            await stage.Enter(actionContext);
+            float dealt = woundsBefore - defendingUnit.RemainingWounds;
+
+            int dice = pools.Sum(pool => pool.DiceCount);
+            float expected = pools.Sum(pool => pool.DiceCount * (7 - pool.SuccessThreshold) / 6f);
+            List<string> tags = pools.GroupBy(pool => pool.SuccessThreshold)
+                .Select(g => $"{g.Sum(p => p.DiceCount)} dice, wounds on {g.Key}+")
+                .Prepend("Pre-strike dice, no save")
+                .ToList();
+            var weapon = new Weapon("Ravage", rangeInches: 0f, attacks: 0, armorPenetration: 0);
+            return new VolleyReport(weapon, Copies: 1, InRange: true, EffectiveRangeInches: 0f,
+                AttackDice: dice, HitRollNeeded: pools.Min(pool => pool.SuccessThreshold), HitTags: tags,
+                ExpectedHits: expected, Saves: Array.Empty<SaveBucket>(), SaveTags: Array.Empty<string>(),
+                ExpectedWounds: dealt,
+                Notes: new[] { "Rolled before the swings, once per round; the wounds take no armor save." });
         }
 
         /// <summary>Binds the stage's exit to a sink and runs exactly that stage.</summary>

@@ -1,3 +1,4 @@
+using FDG.Data;
 using FDG.StageResolution;
 using FDG.StageResolution.Requests;
 
@@ -54,10 +55,114 @@ namespace FDG.Ai.Resolvers
             // conservative stance as the pre-attack ability menu's "skip". A real policy belongs to #191.
             if (request.MaxDistanceFromStartInches > 0f)
             {
-                return new Selected<List<PlacedObjectEntry<T>>>(StayPut(request));
+                // #426: the DEPLOY-time reposition (Vanguard / Fanatic / Drakesworn) is taken - it replaced
+                // Vanguard's old 9in triggered move, which the bot used to march at the nearest enemy, so
+                // declining it would be a quiet regression.
+                return new Selected<List<PlacedObjectEntry<T>>>(
+                    request.TaskName == Stages.RepositionPlacement.DeployRepositionTaskName
+                        ? AdvanceAfterDeploying(request)
+                        : StayPut(request));
             }
 
             return new Selected<List<PlacedObjectEntry<T>>>(await ChoosePlacements(request));
+        }
+
+        // Steps the deploy-reposition search backs off by, from the full reach toward standing still.
+        private const float RepositionBackoffStepInches = 0.5f;
+        // Kept under each model's radius so a reach of exactly the limit never trips the radius check.
+        private const float RepositionReachMarginInches = 0.01f;
+
+        /// <summary>
+        /// #426: the bot's answer to a deploy-time reposition placement - the same policy its old Vanguard
+        /// triggered move had (straight at the nearest enemy model; toward the far table edge when no enemy
+        /// is on the table), now as a RIGID shift of the whole unit so every model moves the same distance
+        /// (inside its own radius) and the formation, hence cohesion, is untouched. The longest legal shift
+        /// wins, backing off in <see cref="RepositionBackoffStepInches"/> steps: each moved base must stay
+        /// on the table, clear of every other model and of impassible terrain, outside the request's enemy
+        /// keep-outs (Vanguard's "over 9in away from non-Vanguard enemy units", through
+        /// <see cref="PlacementDistanceRules"/>), and over the 1in standoff from any enemy. Nothing legal
+        /// means standing still, which is always legal.
+        /// </summary>
+        private List<PlacedObjectEntry<T>> AdvanceAfterDeploying(PlaceObjectsRequest<T> request)
+        {
+            List<PlacedObjectEntry<T>> stay = StayPut(request);
+            if (stay.Count == 0) return stay;
+
+            _impassibleTerrain = _tableState.Terrain.Objects
+                .Where(t => t.TerrainType.HasFlag(ETerrainType.Impassible))
+                .ToList();
+
+            var self = new HashSet<object>(ReferenceEqualityComparer.Instance);
+            foreach (DataBinding<T> binding in request.ModelsToPlace)
+            {
+                if (binding.GetValue() is object value) self.Add(value);
+            }
+
+            var others = new List<(Position pos, float radius)>();
+            var enemies = new List<(Position pos, float radius)>();
+            foreach (IUnit unit in _tableState.Units.Objects)
+            {
+                if (!unit.GetIsOnBattlefield()) continue;
+                bool enemy = !ITeamExtensions.AreAllied(_tableState.Teams.Objects, request.TargetPlayerID,
+                    unit.PlayerID);
+                foreach (IModel model in unit.Models)
+                {
+                    if (!model.GetIsAlive() || self.Contains(model)) continue;
+                    Position pos = model.Position;
+                    if (pos.x == 0f && pos.z == 0f) continue;
+                    float radius = model.BaseShape.CircumscribedRadiusInches;
+                    others.Add((pos, radius));
+                    if (enemy) enemies.Add((pos, radius));
+                }
+            }
+
+            float cx = stay.Average(e => e.Position.x), cz = stay.Average(e => e.Position.z);
+            float dx, dz;
+            if (enemies.Count > 0)
+            {
+                (Position nearest, _) = enemies.OrderBy(e => Dist(e.pos, new Position(cx, cz))).First();
+                dx = nearest.x - cx;
+                dz = nearest.z - cz;
+            }
+            else
+            {
+                // No enemy on the table yet: head for the far edge, i.e. toward the table centre line.
+                dx = 0f;
+                dz = cz < GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES / 2f ? 1f : -1f;
+            }
+            float length = MathF.Sqrt(dx * dx + dz * dz);
+            if (length < 1e-3f) return stay;
+            dx /= length;
+            dz /= length;
+
+            var noFlatEnemies = new List<Position>();
+            for (float d = request.MaxDistanceFromStartInches - RepositionReachMarginInches; d > 0f;
+                 d -= RepositionBackoffStepInches)
+            {
+                var moved = new List<PlacedObjectEntry<T>>(stay.Count);
+                bool legal = true;
+                foreach (PlacedObjectEntry<T> entry in stay)
+                {
+                    var p = new Position(entry.Position.x + dx * d, entry.Position.z + dz * d);
+                    float r = GetBaseRadius(entry.Binding.GetValue());
+                    if (!PlacementUtilities.IsWithinStartRadius(p, entry.Position, request.MaxDistanceFromStartInches)
+                        || !PlacementUtilities.IsBaseWithinZone(p, r, request.DeploymentZone)
+                        || OverlapsExisting(p, r, others)
+                        || PlacementUtilities.OverlapsImpassibleTerrain(p, r, _impassibleTerrain)
+                        || PlacementDistanceRules.ViolatesEnemyDistance(request, p, noFlatEnemies)
+                        || enemies.Any(e => Dist(p, e.pos) - r - e.radius
+                            <= GameWideConstants.ENEMY_STANDOFF_DISTANCE_INCHES))
+                    {
+                        legal = false;
+                        break;
+                    }
+                    moved.Add(new PlacedObjectEntry<T>(entry.Binding, p));
+                }
+
+                if (legal) return moved;
+            }
+
+            return stay;
         }
 
         /// <summary>Every model exactly where it already stands — a no-op placement, trivially inside any

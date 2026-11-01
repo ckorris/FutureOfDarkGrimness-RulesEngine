@@ -9,9 +9,10 @@ namespace FDG.Tests
 {
     // #206 — forced-charge ("must engage, no Pass") is a PROXIMITY obligation, evaluated fresh at Choose
     // Action, not a distance-moved one. A unit within ENEMY_STANDOFF_DISTANCE_INCHES (1", base-to-base) of an
-    // enemy can't idle in its face - Pass is gated. The wider melee/charge band (2") is not forced: a unit at
-    // 1"-2" may Charge but may also Pass. Distance moved no longer gates Pass at all (the move validator lets a
-    // unit end right up against an enemy; this is where the consequence lives). Allied units never force a charge.
+    // enemy can't idle in its face - Pass is gated. The wider melee/charge band (3" since #417) is not
+    // forced: a unit at 1"-3" may Charge but may also Pass. Distance moved no longer gates Pass at all (the
+    // move validator lets a unit end right up against an enemy; this is where the consequence lives).
+    // Allied units never force a charge.
     //
     // Models are radius 0.5", so base-to-base gap = centre distance - 1.0". Enemy at centre 1.5" -> 0.5" gap
     // (inside standoff); at 2.5" -> 1.5" gap (chargeable, not forced); at 10" -> far.
@@ -64,7 +65,7 @@ namespace FDG.Tests
             Assert.That(reason, Is.Not.Null.And.Contains("charge"));
         }
 
-        // The forced band (1") is narrower than the charge band (2"): a unit at 1.5" gap may Charge, but is not
+        // The forced band (1") is narrower than the charge band (3"): a unit at 1.5" gap may Charge, but is not
         // forced to - it may still Pass. This is the state a Teleport lands you in when it takes you just clear
         // of the standoff but not out of charge range.
         [Test]
@@ -75,7 +76,7 @@ namespace FDG.Tests
             bool canPass = ChooseActionStage.GetCanPass(ctx, unitCtx, out string reason);
 
             Assert.That(canPass, Is.True,
-                $"an enemy in the 1\"-2\" band is chargeable but not forced. Reason given: {reason}");
+                $"an enemy in the 1\"-3\" band is chargeable but not forced. Reason given: {reason}");
         }
 
         // Once the unit has attacked it has followed through on the engage obligation; the flow loops back here
@@ -163,7 +164,7 @@ namespace FDG.Tests
                 "inside the standoff band with a charge available, Shoot must be withheld - it would forfeit the charge.");
         }
 
-        // The 1"-2" band is chargeable but NOT forced (same boundary as the Pass gate): the unit may shoot.
+        // The 1"-3" band is chargeable but NOT forced (same boundary as the Pass gate): the unit may shoot.
         [Test]
         public void ShootForfeit_EnemyChargeableButBeyondStandoff_False()
         {
@@ -172,7 +173,7 @@ namespace FDG.Tests
             bool forfeits = ChooseActionStage.ShootWouldForfeitObligatedCharge(ctx, unitCtx, canCharge: true);
 
             Assert.That(forfeits, Is.False,
-                "an enemy in the 1\"-2\" band is chargeable but not forced - the shot stays available.");
+                "an enemy in the 1\"-3\" band is chargeable but not forced - the shot stays available.");
         }
 
         // A unit that cannot charge at all (Immobile, only Aircraft in range, nothing to swing) owes nothing:

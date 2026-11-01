@@ -16,7 +16,8 @@ namespace FDG.Tests
         private readonly RuleValidator _validator = new();
 
         // Stealth: DistanceGreaterThan on the hit-modifier hook, whose context provides IHasDistance,
-        // And-composed with the #183 AllModelsHaveThisRule gate the Subject seat now requires. Well-formed
+        // And-composed with the #183 rule-ownership gate the Subject seat requires (MostModelsHaveThisRule
+        // since #428 - OPR 3.6's "units where most models have this rule"). Well-formed
         // → no violations.
         [Test]
         public void Validate_StealthOnHitModifierHook_IsClean()
@@ -26,7 +27,7 @@ namespace FDG.Tests
                 {
                     new HookEntry(EHookID.Shooting_OnHitRollModifier,
                         new Condition.And(new Condition.DistanceGreaterThan(9f),
-                            new Condition.AllModelsHaveThisRule()),
+                            new Condition.MostModelsHaveThisRule()),
                         new Effect.RollModifier(ERollKind.Hit, Delta: -1),
                         ELifetime.ThisAttack, ERuleSeat.Subject),
                 },
@@ -36,7 +37,7 @@ namespace FDG.Tests
         }
 
         // #183 — a unit-scoped rule with a Subject-seat entry at a defensive attack-interaction hook must
-        // gate on AllModelsHaveThisRule; an ungated one is reported so the design can't be silently
+        // gate on rule ownership (MostModelsHaveThisRule, #428); an ungated one is reported so the design can't be silently
         // reintroduced by a future author (catalog and embedded/imported supplement both flow through here).
         [Test]
         public void Validate_UngatedSubjectDefensiveRule_ReportsGateViolation()
@@ -56,10 +57,49 @@ namespace FDG.Tests
             Assert.That(violations, Has.Count.EqualTo(1));
             Assert.That(violations[0].Member, Is.EqualTo("Condition"));
             Assert.That(violations[0].MissingCapability, Is.Null);
-            Assert.That(violations[0].Describe(), Does.Contain("AllModelsHaveThisRule"));
+            Assert.That(violations[0].Describe(), Does.Contain("MostModelsHaveThisRule"));
         }
 
-        // Weapon-scoped rules ride the hero's weapon and survive the merge, so the all-models gate is
+        // #428 — the strict gate and the legacy kind both satisfy the Subject-seat requirement at load: the
+        // first is stronger than "most", and the second IS the most-models condition under its pre-3.6 JSON
+        // kind, which old army files embed and must keep opening with.
+        [TestCase("strict")]
+        [TestCase("legacy")]
+        public void Validate_SubjectDefensiveRule_AcceptsEveryOwnershipGate(string gate)
+        {
+            Condition condition = gate == "strict"
+                ? new Condition.EveryModelHasThisRule()
+                : new Condition.LegacyAllModelsHaveThisRule();
+            var rule = new SpecialRuleDefinition("Gated Evasive",
+                new[]
+                {
+                    new HookEntry(EHookID.Shooting_OnHitRollModifier, condition,
+                        new Effect.RollModifier(ERollKind.Hit, Delta: -1),
+                        ELifetime.ThisAttack, ERuleSeat.Subject),
+                },
+                NoAbilities);
+
+            Assert.That(_validator.Validate(rule), Is.Empty);
+        }
+
+        // #428 — under an Or the gate doesn't actually gate, whichever ownership condition it is.
+        [Test]
+        public void Validate_MostModelsGateUnderAnOr_DoesNotCount()
+        {
+            var rule = new SpecialRuleDefinition("Leaky Evasive",
+                new[]
+                {
+                    new HookEntry(EHookID.Shooting_OnHitRollModifier,
+                        new Condition.Or(new Condition.MostModelsHaveThisRule(), new Condition.Always()),
+                        new Effect.RollModifier(ERollKind.Hit, Delta: -1),
+                        ELifetime.ThisAttack, ERuleSeat.Subject),
+                },
+                NoAbilities);
+
+            Assert.That(_validator.Validate(rule), Has.Count.EqualTo(1));
+        }
+
+        // Weapon-scoped rules ride the hero's weapon and survive the merge, so the ownership gate is
         // meaningless for them (no unit-wide projection to guard) — Counter is exempt despite its
         // Subject-seat StrikeFirst entry.
         [Test]

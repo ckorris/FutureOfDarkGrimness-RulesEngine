@@ -14,8 +14,22 @@ namespace FDG.Rules.Definitions;
 /// invocation. <see cref="Weapon"/> is the carrying weapon when the rule is
 /// weapon-attached (#027) — null for unit-attached rules. <see cref="Definition"/> is
 /// the rule definition being fired, for the rare effect that must reason about its own
-/// rule's identity (Counter counting "models with Counter").
+/// rule's identity (Ravage and Brace counting "models with this rule"). <see cref="Attachment"/> is
+/// the exact attachment firing - the evaluator's dedup unit - for an effect that must count the models
+/// carrying THIS copy of an (X) rule rather than every copy (#422 Brace: one shared attachment on a
+/// fresh army's weapons, one per weapon after a resume rehydrates them). Null off the passive
+/// dispatch path (activated abilities, hand-built invocations).
 /// </summary>
+// #434: TargetCount - how many units the activated ability was resolved against (1 on the passive path), so a value can
+// depend on the spread: 3.6 Piercing / Precision Tag "place X tokens on one enemy unit, or one token on X enemy units"
+// (ValueSource.ArgIfSoleTarget).
+// #447 D1 (reversed 2026-11-01): ParticipantModels - the models the firing participant brought to the evaluation
+// (RuleParticipant.Models), null when it brought none or off the passive dispatch path. An effect that counts the
+// models carrying its rule counts among THESE when set (Impact: only the charger's models in melee reach roll), and
+// among every living model of the bearer otherwise.
+// #459: AssumedTokens - the read-only overlay a hypothetical QUERY carries (see AssumedTokens): the token-reading
+// conditions ask TokenCount / HasToken below, which answer from the overlay for a (unit, token) it names and from
+// the unit's live container otherwise. Null on every live path.
 public sealed record RuleInvocation(
     IHookContext? Hook,
     IUnit Bearer,
@@ -23,8 +37,24 @@ public sealed record RuleInvocation(
     IUnit? Target = null,
     IDiceRoller? DiceRoller = null,
     IWeapon? Weapon = null,
-    SpecialRuleDefinition? Definition = null)
+    SpecialRuleDefinition? Definition = null,
+    Dispatch.ResolvedRule? Attachment = null,
+    int TargetCount = 1,
+    IReadOnlyList<IModel>? ParticipantModels = null,
+    AssumedTokens? AssumedTokens = null)
 {
+    /// <summary>
+    /// #459: how many <paramref name="type"/> tokens <paramref name="unit"/> carries FOR THIS EVALUATION - the
+    /// overlay's count when <see cref="AssumedTokens"/> names the pair, the live container's otherwise. Every
+    /// condition that reads a token count reads it through here, so one hypothetical answers them all.
+    /// </summary>
+    public int TokenCount(IUnit unit, TokenType type) =>
+        AssumedTokens != null && AssumedTokens.TryGetCount(unit, type, out int assumed)
+            ? assumed
+            : unit.Tokens.GetTokenCount(type);
+
+    /// <summary>#459: <see cref="TokenCount"/> &gt; 0.</summary>
+    public bool HasToken(IUnit unit, TokenType type) => TokenCount(unit, type) > 0;
     /// <summary>
     /// The unit an effect lands on: the explicit <see cref="Target"/> for activated
     /// abilities, or the <see cref="Bearer"/> itself for passive rules.

@@ -11,13 +11,17 @@ namespace FDG
 
         /// <summary>
         /// How close models must be to engage in melee, after the charge has already happened.
-        /// This is for horizontal distances.
+        /// This is for horizontal (base-to-base) distances. Core Rules v3.6.0: "Models within 3" of
+        /// enemies must strike with all melee weapons" (#417; 2" in v3.5.1). The one strike-range
+        /// figure: charge availability, defender eligibility, the strike check, the charge-reach
+        /// validator, the movement overlay's charge hints and the AI's melee threat reach all read it.
         /// </summary>
-        public const float MELEE_RANGE_INCHES_HORIZONTAL = 2;
+        public const float MELEE_RANGE_INCHES_HORIZONTAL = 3;
 
         /// <summary>
         /// How close models must be to engage in melee, after the charge has already happened.
-        /// This is for vertical distance.
+        /// This is for vertical distance. OPR gives no vertical figure; 4" is this engine's convention
+        /// (#022), kept unchanged when the horizontal range went to 3" (#417, owner's answer to plan Q4).
         /// </summary>
         public const float MELEE_RANGE_INCHES_VERTICAL = 4;
 
@@ -34,9 +38,12 @@ namespace FDG
         public const float DIFFICULT_TERRAIN_MOVE_CAP_INCHES = 6f;
 
         /// <summary>
-        /// Models that aren't charging must keep at least this far (base-to-base) from enemy models.
-        /// A move may end either at or beyond this standoff, or in base contact (a charge) — but not in
-        /// the band between, and never overlapping or passing through an enemy base.
+        /// The standoff (base-to-base) from enemy models. Core Rules v3.6.0: "Units may only be within 1"
+        /// of other units when charging". A non-charge move may still END inside it (#206 - the movement
+        /// validator does not reject it, and never lets a base overlap or pass through an enemy); the
+        /// consequence is the forced charge: such a unit cannot Pass, nor Shoot while a charge is on
+        /// offer - it must Charge (<c>ForcedChargeUtilities</c>, #334/#390). The band from here out to
+        /// <see cref="MELEE_RANGE_INCHES_HORIZONTAL"/> (1"-3" since #417) may Charge but is not forced.
         /// </summary>
         public const float ENEMY_STANDOFF_DISTANCE_INCHES = 1f;
 

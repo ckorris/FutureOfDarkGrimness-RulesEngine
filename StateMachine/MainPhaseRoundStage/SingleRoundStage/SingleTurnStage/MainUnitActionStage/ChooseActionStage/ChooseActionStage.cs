@@ -27,7 +27,6 @@ namespace FDG.Stages
         public StageBinding ToDisembark;
         public StageBinding ToEmbark;
         public StageBinding ToTeleport;
-        public StageBinding ToStorm;
         public StageBinding ToBeforeAttackAction;
         public StageBinding ToReconcileEndOfActivation;
 
@@ -52,7 +51,6 @@ namespace FDG.Stages
             ToDisembark = new StageBinding(this);
             ToEmbark = new StageBinding(this);
             ToTeleport = new StageBinding(this);
-            ToStorm = new StageBinding(this);
             ToBeforeAttackAction = new StageBinding(this);
             ToReconcileEndOfActivation = new StageBinding(this);
             ToBackOut = new StageBinding(this);
@@ -105,33 +103,48 @@ namespace FDG.Stages
 
             // #033 — a unit with Caster(X) gets a "Cast" action whenever its army has an affordable spell.
             // Like custom actions, casting is layered (it doesn't end the turn), so moving does not consume
-            // it — but #234 gates it on HasAttacked, per Caster(X)'s "at any point before attacking"
-            // (GF v3.5.1). Only shown for casters (no point graying it out for every non-caster).
+            // it — but #234 gates it on HasAttacked, per Caster(X)'s "Once per activation, before attacking"
+            // (GF Core Rules v3.6.0; v3.5.1 said "at any point before attacking"). Only shown for casters (no point graying it out for every non-caster).
             var __gGateCast = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
             bool isCaster = SpellTargeting.IsCaster(GameContext, context.ActivatingUnit.GetValue());
             string cantCastReason = null;
             bool canCast = isCaster && GetCanCast(context, out cantCastReason);
             global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.GateCast, __gGateCast);
 
-            // #100 — RestrictActions (Immobile, Artillery's Hold-only facet): a passive rule at this hook may
-            // limit which action types the unit can declare. The Move menu option covers Advance/Rush, Charge
-            // covers Charge; shooting is a sub-step of Hold and isn't gated here. A unit restricted to [Hold]
-            // (Immobile) thus loses Move and Charge but may still Hold-and-shoot.
+            // #100 — RestrictActions (Immobile, Cumbersome): a passive rule at this hook may limit which action
+            // types the unit can declare. The Move menu option covers Advance/Rush, Charge covers Charge;
+            // shooting is a sub-step of Hold and isn't gated here. A unit restricted to [Hold] (Immobile) thus
+            // loses Move and Charge but may still Hold-and-shoot. #425: a unit restricted to [Hold, Advance]
+            // (Cumbersome) keeps Move, but MovementActionContext caps it at the Advance, and the menu says so.
             var __gGateAllowed = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
-            IReadOnlySet<EActionType>? allowedActions = CollectAllowedActions(context);
+            IReadOnlySet<EActionType>? allowedActions = Rules.Dispatch.ActionRestrictionQueries.AllowedActions(
+                context.ActivatingUnit.GetValue(), GameContext.RuleEvaluator, out string? restrictingRule);
             global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.GateAllowed, __gGateAllowed);
+            string? moveRestrictionNote = null;
             if (allowedActions != null)
             {
+                string restrictedReason = RestrictedActionReason(restrictingRule, allowedActions);
                 if (canMove && !allowedActions.Contains(EActionType.Advance) && !allowedActions.Contains(EActionType.Rush))
                 {
                     canMove = false;
-                    cantMoveReason = "Immobile.";
+                    cantMoveReason = restrictedReason;
                 }
 
                 if (canCharge && !allowedActions.Contains(EActionType.Charge))
                 {
                     canCharge = false;
-                    cantChargeReason = "Immobile.";
+                    cantChargeReason = restrictedReason;
+                }
+
+                // #425: the menu has no separate Rush entry - Move is Advance or Rush by distance - so an
+                // Advance-only unit's Move carries the restriction as its subtext, and the movement request
+                // (DefinePathStage) carries the capped budget.
+                if (canMove && allowedActions.Contains(EActionType.Advance) && !allowedActions.Contains(EActionType.Rush))
+                {
+                    string? noShootRule = Rules.Dispatch.ActionRestrictionQueries.ShootingAfterMovingForbiddenBy(
+                        context.ActivatingUnit.GetValue(), GameContext.RuleEvaluator);
+                    moveRestrictionNote = $"Advance only ({restrictingRule ?? "restricted"}) - no Rush"
+                        + (noShootRule != null ? ", and can't shoot after moving." : ".");
                 }
             }
 
@@ -225,7 +238,12 @@ namespace FDG.Stages
 
             void Describe(AbilityOffer describedOffer)
             {
-                string? text = describedOffer.Definition?.Description;
+                // #441 F7: the hover text, not the bare description - an Enhanced rule whose text never names its
+                // base gets the "Base rule: X." line here too, as on every other rule-hover surface.
+                string? text = describedOffer.Definition == null
+                    || string.IsNullOrWhiteSpace(describedOffer.Definition.Description)
+                    ? null
+                    : EnhancedRuleGate.HoverDescription(describedOffer.Definition, GameContext.RuleEvaluator.RuleResolver);
                 if (string.IsNullOrWhiteSpace(text))
                 {
                     return;
@@ -244,6 +262,10 @@ namespace FDG.Stages
             {
                 validOptions.Add(MOVEMENT_CHOICE_NAME);
                 outcomes.Add(MOVEMENT_CHOICE_NAME, () => ToMovement.Activate(context));
+                if (moveRestrictionNote != null)
+                {
+                    optionDescriptions[MOVEMENT_CHOICE_NAME] = moveRestrictionNote;
+                }
             }
             else
             {
@@ -378,26 +400,6 @@ namespace FDG.Stages
                         {
                             context.SetPendingCustomAction(teleportOffer);
                             return ToTeleport.Activate(context);
-                        });
-                    }
-                    continue;
-                }
-
-                // #197 P10 Storm of X - a rolled multi-target hit burst. Routed to StormStage (like Teleport)
-                // so its decisive pool roll, per-success target picks, and looping hit batches run as real
-                // child pipelines. Detected by effect type (four rule-name variants share it). Available
-                // "before attacking"; its once-per-game gate is the ability's own cost. Fully layered.
-                if (offer.Ability.Effect is Effect.StormOfHits)
-                {
-                    if (!context.HasAttacked && !outcomes.ContainsKey(offer.RuleName))
-                    {
-                        AbilityOffer stormOffer = offer;
-                        validOptions.Add(offer.RuleName);
-                        Describe(offer);
-                        outcomes.Add(offer.RuleName, () =>
-                        {
-                            context.SetPendingCustomAction(stormOffer);
-                            return ToStorm.Activate(context);
                         });
                     }
                     continue;
@@ -565,7 +567,7 @@ namespace FDG.Stages
 
                 string? text = string.IsNullOrWhiteSpace(resolved.Definition.Description)
                     ? null
-                    : resolved.Definition.Description;
+                    : EnhancedRuleGate.HoverDescription(resolved.Definition, resolver);
                 rules.Add(new StringSelectionRequest.OptionRule(name, text));
             }
 
@@ -645,7 +647,7 @@ namespace FDG.Stages
                 ? playerTeam.Players
                 : new List<PlayerID> { attackingPlayer };
 
-            // #022: melee range is the 2"-horizontal AND 4"-vertical cylinder (MeleeRangeUtilities),
+            // #022: melee range is the 3"-horizontal (#417) AND 4"-vertical cylinder (MeleeRangeUtilities),
             // not the horizontal half alone — so Charge grays out exactly when no enemy unit could be
             // selected as a defender, keeping this gate consistent with ChooseMeleeDefenderStage.
             // #029: an Aircraft can't be charged, so it isn't a valid charge target — exclude it here so Charge
@@ -659,7 +661,7 @@ namespace FDG.Stages
 
             if (!anyInRange)
             {
-                reasonIfCant = "No enemies within melee range.";
+                reasonIfCant = $"No enemies within the {GameWideConstants.MELEE_RANGE_INCHES_HORIZONTAL}\" melee range.";
                 return false;
             }
 
@@ -696,9 +698,9 @@ namespace FDG.Stages
             //rather than at move time (the movement validator no longer rejects ending in the standoff band).
             //A unit standing within ENEMY_STANDOFF_DISTANCE_INCHES (base-to-base) of an enemy can't idle in its
             //face: Pass is gated so it must Charge (or reposition, e.g. Teleport, then re-evaluate). The "can
-            //charge" band is wider (melee range, 2"), so a unit at 1"-2" may Charge but is NOT forced — it may
-            //still Pass. Teleporting out past the standoff restores Pass; teleporting but staying inside it does
-            //not. Measured over living models only, against non-allied units.
+            //charge" band is wider (melee range, 3" since #417), so a unit at 1"-3" may Charge but is NOT
+            //forced — it may still Pass. Teleporting out past the standoff restores Pass; teleporting but
+            //staying inside it does not. Measured over living models only, against non-allied units.
             IUnit unit = context.ActivatingUnit.GetValue();
 
             //#029 — an Aircraft MUST make its forced Advance every activation, so it can't Pass without moving.
@@ -731,7 +733,7 @@ namespace FDG.Stages
         {
             IUnit unit = context.ActivatingUnit.GetValue();
 
-            // #234 — Caster(X) is "at any point before attacking" (GF v3.5.1), so shooting or melee closes
+            // #234 — Caster(X) casts "Once per activation, before attacking" (GF Core Rules v3.6.0), so shooting or melee closes
             // the casting window for the rest of the activation. HasAttacked covers both (ShootStage and
             // MeleeStage are its only setters). Moving does not close it — casting brackets the move.
             if (context.HasAttacked)
@@ -834,6 +836,18 @@ namespace FDG.Stages
                 return false;
             }
 
+            // #425 Cumbersome: "can't shoot when moving". Any move this activation closes Shoot - including a
+            // 0" Advance (D1, owner review): HasMoved records the spent move ACTION, and a player who wants to
+            // shoot Holds instead. Checked before the distance cap, which this outranks (Quick Shot's
+            // shoot-after-Rush permission does not reopen it either: the unit may not shoot after ANY move).
+            if (context.HasMoved
+                && Rules.Dispatch.ActionRestrictionQueries.ShootingAfterMovingForbiddenBy(
+                    context.ActivatingUnit.GetValue(), gameContext.RuleEvaluator) is string noShootRule)
+            {
+                reasonIfCant = $"{noShootRule} - can't shoot when moving.";
+                return false;
+            }
+
             // The advance-and-shoot cap must include the unit's movement rules (Fast/Quick/Rapid Advance/...)
             // so a unit that legally advanced past the base 6" isn't wrongly blocked from shooting.
             //
@@ -867,12 +881,13 @@ namespace FDG.Stages
             }
 
             if (!ChooseRangedAttackStage.HasAnyFireableTarget(context.ActivatingUnit, context.GameContext,
-                    markedTargetsOnly))
+                    markedTargetsOnly, attackerMoved: context.HasMoved))
             {
                 if (markedTargetsOnly)
                 {
-                    reasonIfCant = $"Moved {context.MoveDistance} inches, when max to move and shoot for " +
-                        $"{context.ActivatingUnit.GetValue().Name}  is {context.MoveShootAllowance}.";
+                    // #436 (from #442): rounded, one space - the raw float read "Moved 11.998999 inches".
+                    reasonIfCant = $"Moved {context.MoveDistance:0.##} inches, when max to move and shoot for " +
+                        $"{context.ActivatingUnit.GetValue().Name} is {context.MoveShootAllowance:0.##}.";
                     return false;
                 }
                 reasonIfCant = "No enemies in range or line of sight.";
@@ -883,28 +898,18 @@ namespace FDG.Stages
             return true;
         }
 
-        // The action types the unit may declare, per its RestrictActions rules firing at
-        // Activation_OnActionChoice — intersected across rules (two restrictions both bind). Null when no
-        // rule restricts (the common case), so the menu is unchanged.
-        private IReadOnlySet<EActionType>? CollectAllowedActions(IUnitActionContext context)
+        // #425: the greyed option's reason names the restricting rule and what it still allows -
+        // "Immobile - may only use Hold actions.", "Cumbersome - may only use Hold or Advance actions." The
+        // allowed set is the RestrictActions intersection (ActionRestrictionQueries.AllowedActions), listed in
+        // the action order the rules text uses.
+        internal static string RestrictedActionReason(string? restrictingRule, IReadOnlySet<EActionType> allowed)
         {
-            IUnit unit = context.ActivatingUnit.GetValue();
-            IReadOnlyList<RuleOperation> ops = GameContext.RuleEvaluator.EvaluateAll(
-                new ActionChoiceContext(unit), RuleParticipant.Actor(unit));
-
-            HashSet<EActionType>? allowed = null;
-            foreach (RuleOperation op in ops)
-            {
-                if (op is RuleOperation.RestrictActions restrict)
-                {
-                    HashSet<EActionType> these = new HashSet<EActionType>(restrict.Allowed);
-                    allowed = allowed == null
-                        ? these
-                        : new HashSet<EActionType>(allowed.Where(these.Contains));
-                }
-            }
-
-            return allowed;
+            List<string> names = new[] { EActionType.Hold, EActionType.Advance, EActionType.Rush, EActionType.Charge }
+                .Where(allowed.Contains).Select(action => action.ToString()).ToList();
+            string what = names.Count == 0
+                ? "can't take any action"
+                : $"may only use {string.Join(" or ", names)} actions";
+            return $"{restrictingRule ?? "Restricted"} - {what}.";
         }
     }
 }

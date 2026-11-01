@@ -48,11 +48,21 @@ public class DefaultBaseEstimatorTests
     [Test]
     public void Hero_GetsACircle_NotAVehicleRectangle()
     {
-        // All six Tough(3) units in the affected corpus are Hero+Unique named characters.
-        BaseFileEntry b = DefaultBaseEstimator.Estimate(Rules(Core("Hero"), Core("Unique"), Tough(3)), out _);
+        // All six Tough(3) units in the affected (3.5) corpus were Hero+Unique named characters; 3.6 prints Unique Hero.
+        BaseFileEntry b = DefaultBaseEstimator.Estimate(Rules(Core("Unique Hero"), Tough(3)), out _);
 
         Assert.That(b.Shape, Is.EqualTo(EBaseShapeKind.Circle));
         Assert.That(b.DiameterInches, Is.EqualTo(40f / MmPerInch).Within(0.001f));
+    }
+
+    [Test]
+    public void UniqueHero_CountsAsAHero_ForTheEstimatedBase()
+    {
+        // #430: 3.6 named characters carry "Unique Hero" instead of Hero + Unique; it counts as Hero.
+        BaseFileEntry b = DefaultBaseEstimator.Estimate(Rules(Core("Unique Hero"), Tough(12)), out _);
+
+        Assert.That(b.Shape, Is.EqualTo(EBaseShapeKind.Circle));
+        Assert.That(b.DiameterInches, Is.EqualTo(60f / MmPerInch).Within(0.001f));
     }
 
     [Test]

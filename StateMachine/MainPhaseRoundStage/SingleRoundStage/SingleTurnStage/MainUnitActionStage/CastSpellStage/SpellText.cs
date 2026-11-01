@@ -41,6 +41,9 @@ namespace FDG.Stages
                     return "becomes fatigued";
                 case Effect.MarkTarget mark:
                     return $"marks it - the next friendly to attack it gets {mark.RuleName}";
+                case Effect.ConsumeToken drain:
+                    // #439 (Shifting Form, Burn the Heretic, Aether-Cloud Rune).
+                    return $"loses {drain.Count} {TokenName(drain.TType, drain.Count)}";
                 default:
                     return "applies an effect";
             }
@@ -102,6 +105,8 @@ namespace FDG.Stages
                     return $"left {targets} fatigued";
                 case Effect.MarkTarget mark:
                     return $"marked {targets} - the next friendly to attack gets {mark.RuleName}";
+                case Effect.ConsumeToken drain:
+                    return $"took up to {drain.Count} {TokenName(drain.TType, drain.Count)} from {targets}";
                 case Effect.MoraleTestThen conditional:
                     // Only reached if a caller bypasses DescribeConditionalApplied; report the branch
                     // rather than the wrapper so the line still says something true.
@@ -168,6 +173,10 @@ namespace FDG.Stages
         };
 
         private static string Plural(int count) => count == 1 ? "" : "s";
+
+        // #439 - "spell tokens" for the drain spells; any other token type by its id.
+        private static string TokenName(TokenType type, int count) =>
+            type == TokenType.SpellTokens ? $"spell token{Plural(count)}" : $"{type.Id} token{Plural(count)}";
 
         private static string Inches(float value) => value % 1f == 0f ? ((int)value).ToString() : value.ToString("0.#");
     }

@@ -25,14 +25,18 @@ namespace FDG.Stages
 
             switch (meleeWinnerResult.Winner)
             {
-                // #006: the losing unit tests morale at a living joined hero's Quality, if present.
+                // #421: the losing unit tests morale at the best Quality on offer - its own, its living un-Shaken
+                // joined hero's (#006), or a friendly Tough(9)+ Hero's within 6" - resolved here, immediately
+                // before RollForMoraleStage rolls it, so the aura is measured at test time.
                 case DetermineMeleeWinnerResults.EMeleeWinnerResult.AttackerWon:
                     context.AddResult(new DetermineMoraleSaveNeededResult(
-                        HeroStatRules.GetMoraleQuality(context.DefendingUnit.GetValue()), context.DefendingUnit));
+                        MoraleUtilities.ResolveMoraleQuality(GameContext, context.DefendingUnit.GetValue()),
+                        context.DefendingUnit));
                     break;
                 case DetermineMeleeWinnerResults.EMeleeWinnerResult.DefenderWon:
                     context.AddResult(new DetermineMoraleSaveNeededResult(
-                        HeroStatRules.GetMoraleQuality(context.AttackingUnit.GetValue()), context.AttackingUnit));
+                        MoraleUtilities.ResolveMoraleQuality(GameContext, context.AttackingUnit.GetValue()),
+                        context.AttackingUnit));
                     break;
                 case DetermineMeleeWinnerResults.EMeleeWinnerResult.Tie:
                     throw new InvalidOperationException($"Somehow reached the {nameof(DetermineMoraleSaveNeededStage)} stage " +
@@ -50,6 +54,12 @@ namespace FDG.Stages
         public readonly int RollNeeded;
 
         /// <summary>
+        /// #421: <see cref="RollNeeded"/> with where it came from (the unit's own Quality, its joined hero's, or
+        /// a Tough(9)+ Hero's aura), which <see cref="RollForMoraleStage"/> hands to the morale test.
+        /// </summary>
+        public readonly MoraleUtilities.MoraleQuality Quality;
+
+        /// <summary>
         /// The unit that lost the melee and must take the morale test — the one a failed
         /// roll makes Shaken or Routs. Carried here so the outcome stage doesn't have to
         /// re-derive the loser from the winner result.
@@ -57,8 +67,14 @@ namespace FDG.Stages
         public readonly DataBinding<UnitData> LosingUnit;
 
         public DetermineMoraleSaveNeededResult(int rollNeeded, DataBinding<UnitData> losingUnit)
+            : this(MoraleUtilities.MoraleQuality.Own(rollNeeded), losingUnit)
         {
-            RollNeeded = rollNeeded;
+        }
+
+        public DetermineMoraleSaveNeededResult(MoraleUtilities.MoraleQuality quality, DataBinding<UnitData> losingUnit)
+        {
+            RollNeeded = quality.Quality;
+            Quality = quality;
             LosingUnit = losingUnit;
         }
     }

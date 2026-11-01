@@ -4,6 +4,7 @@ using FDG.Data;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Foundation;
+using FDG.Rules.Tokens;
 using FDG.StageResolution;
 using FDG.StageResolution.Requests;
 using FDG.Utilities;
@@ -253,6 +254,63 @@ namespace FDG.Tests
         }
 
         // --- fixtures ---------------------------------------------------------------------------
+
+        // #442 (#421): the half-strength break bonus is worth only the chance the target FAILS its morale test - of two
+        // otherwise identical mobs the volley would break, the Fearless one (a 4+ second chance) is the worse pick.
+        // The Fearless mob is listed first, so a tie (the old flat bonus) would pick it.
+        [Test]
+        public async Task Shooting_BreakBonus_PrefersTheMobLessLikelyToPassItsTest()
+        {
+            var attacker = MakeUnit(_us, 10, Rifle(), atX: 20f, atZ: 20f);
+            var stubborn = MakeUnit(_them, 6, Rifle(), atX: 32f, atZ: 14f);
+            KillAllBut(stubborn, survivors: 4);
+            stubborn.GetValue().AttachRuleDefinition(new ResolvedRule("Fearless", CoreRuleCatalog.Fearless));
+            var shaky = MakeUnit(_them, 6, Rifle(), atX: 32f, atZ: 26f);
+            KillAllBut(shaky, survivors: 4);
+
+            var resolver = new TacticianRangedAttackResolver(_evaluator,
+                new FDG.Ai.Resolvers.AiChooseRangedAttackResolver(), _tableState);
+            var reply = await resolver.Resolve(BuildRequest(attacker, stubborn, shaky));
+            var choice = ((Selected<RangedAttackChoice>)reply).Value;
+
+            Assert.That(choice.TargetUnit.Reference, Is.EqualTo(shaky.Reference),
+                "breaking a mob that passes its test 3 times in 4 is worth less than one that passes half the time");
+        }
+
+        // #442 (#434): Slayer / Ranged Slayer give AP(+2) only on a Hold. The resolver now prices the shot the way the
+        // engine will roll it - moved (the unit carries MovedThisRound) or held - so a held Slayer gun prefers the
+        // armoured target its AP cracks, and the same gun after a move goes for the soft one.
+        [TestCase(false, true)]
+        [TestCase(true, false)]
+        public async Task Shooting_HoldOnlyAp_IsPricedOnlyOnAHold(bool moved, bool expectArmoured)
+        {
+            var gun = new Weapon("Slayer Gun", 24f, 3, 0);
+            gun.AttachRuleDefinition(new ResolvedRule("Ranged Slayer", new SpecialRuleDefinition("Ranged Slayer",
+                new[]
+                {
+                    new HookEntry(EHookID.Shooting_OnHitRollComplete, new Condition.Not(new Condition.AfterMoving()),
+                        new Effect.RollModifier(ERollKind.Save, -2), ELifetime.ThisAttack),
+                },
+                Array.Empty<ActivatedAbility>(), ERuleScope.Weapon)));
+            var attacker = MakeUnit(_us, 5, gun, atX: 20f, atZ: 20f);
+            if (moved)
+                attacker.GetValue().Tokens.AddToken(TokenDefinitionCatalog.Create(TokenType.MovedThisRound));
+            var armoured = MakeUnit(_them, 2, Rifle(), atX: 32f, atZ: 14f, defense: 2, woundsPerModel: 3);
+            var soft = MakeUnit(_them, 3, Rifle(), atX: 32f, atZ: 26f, defense: 6);
+
+            var resolver = new TacticianRangedAttackResolver(_evaluator,
+                new FDG.Ai.Resolvers.AiChooseRangedAttackResolver(), _tableState);
+            var request = new ChooseRangedAttackRequest(_us, "Choose Ranged Weapon", attacker,
+                new List<WeaponOption> { new(gun, new List<WeaponTargetStats>
+                {
+                    new(armoured, attacker.GetValue().ModelBindings.ToHashSet(), new HashSet<DataBinding<ModelData>>()),
+                    new(soft, attacker.GetValue().ModelBindings.ToHashSet(), new HashSet<DataBinding<ModelData>>()),
+                }, false, false, null, null) });
+            var choice = ((Selected<RangedAttackChoice>)await resolver.Resolve(request)).Value;
+
+            Assert.That(choice.TargetUnit.Reference,
+                Is.EqualTo(expectArmoured ? armoured.Reference : soft.Reference));
+        }
 
         private ChooseRangedAttackRequest BuildRequest(DataBinding<UnitData> attacker,
             params DataBinding<UnitData>[] targets)

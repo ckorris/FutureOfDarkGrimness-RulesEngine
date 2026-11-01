@@ -32,7 +32,7 @@ namespace FDG.Stages
     /// every enemy over 6in away, or with none in sight, loses the burst rather than banking it. The cost is
     /// therefore paid BEFORE the target search, which is also what makes this stage safe to re-enter.</para>
     ///
-    /// <para>The pool is rolled FRACTIONALLY, unlike <c>StormStage</c>'s: there each success picks a target,
+    /// <para>The pool is rolled FRACTIONALLY, unlike <c>StormStage (deleted, #438)</c>'s: there each success picks a target,
     /// so the count had to be decisive, but here the successes ARE the hit count - a quantity that stays
     /// fractional under the probabilistic roller (the #100 dice invariant). The success sub-histogram is
     /// handed straight to <see cref="SyntheticHitResolution.ResolveRolled"/> so the hits fold exactly like a
@@ -70,7 +70,7 @@ namespace FDG.Stages
             IUnit unit = context.ActivatingUnit.GetValue();
 
             // One offer per activation is all the corpus needs (both carriers are single-model units with a
-            // single Surprise Attack). A second pooled-hit rule on one unit would need the StormStage queue
+            // single Surprise Attack). A second pooled-hit rule on one unit would need the StormStage (deleted, #438) queue
             // loop, since the save/wound children can only run once per entry.
             AbilityOffer? offer = GameContext.RuleEvaluator.GatherOffers(new ActivationStartContext(unit))
                 .FirstOrDefault(o => o.Ability.Effect is Effect.DealPooledHits);
@@ -87,7 +87,7 @@ namespace FDG.Stages
             DataBinding<UnitData>? target = await PickTarget(context, offer);
 
             // ResolveAbility emits the cost token ops AND the InvokeDealPooledHits op; only the token ops are
-            // applied here (the pool is rolled below off the op's config), mirroring StormStage. With no
+            // applied here (the pool is rolled below off the op's config), mirroring StormStage (deleted, #438). With no
             // eligible enemy the ability still resolves - against the bearer, whose op we drop - because the
             // FIRST activation is the only one that gets the burst, in range or not.
             IReadOnlyList<RuleOperation> ops = GameContext.RuleEvaluator.ResolveAbility(offer,
@@ -106,7 +106,7 @@ namespace FDG.Stages
             }
 
             // Fractional by construction: the successes are the HIT COUNT, so the sub-histogram's TotalRolls
-            // is kept as-is rather than int-locked (the #100 dice invariant; contrast StormStage's decisive
+            // is kept as-is rather than int-locked (the #100 dice invariant; contrast StormStage (deleted, #438)'s decisive
             // pool, whose successes are a number of target PICKS).
             IDiceResults pool = GameContext.DiceRoller.Roll(pooled.DiceCount);
             IDiceResults hits = pool.SubsetAtOrAbove(pooled.SuccessThreshold);

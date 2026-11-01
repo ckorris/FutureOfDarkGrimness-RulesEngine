@@ -12,7 +12,7 @@ namespace FDG.Tests
 {
     // #197 misc - Speed Feat ("once per game, when this unit moves ... you may move +2in on Advance and
     // +4in on Rush/Charge"). Modelled as a single OPTIONAL activated ability at activation start (Cost
-    // OncePerGame, gated AllModelsHaveThisRule) that grants a ThisActivation helper rule carrying the
+    // OncePerGame, gated MostModelsHaveThisRule) that grants a ThisActivation helper rule carrying the
     // movement bonuses. The stage change - a single-ability activation-start rule now prompts Yes/No
     // instead of being force-applied - is exercised by the whole activation suite staying green plus the
     // headless smoke; here the mechanism is proven with the engine shape: offer -> grant -> the moves that
@@ -31,7 +31,7 @@ namespace FDG.Tests
                     new TargetSelector(RangeInches: 0f, MinCount: 1, MaxCount: 1, ETargetAffinity.Self,
                         RequireLineOfSight: false),
                     new Effect.AddRule(Boost, ELifetime.ThisActivation),
-                    new Condition.AllModelsHaveThisRule(),
+                    new Condition.MostModelsHaveThisRule(),
                     Label: "Speed Feat"),
             });
 

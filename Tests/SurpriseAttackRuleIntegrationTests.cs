@@ -23,7 +23,7 @@ namespace FDG.Tests
     //
     // Proves: the pool fires by itself at the START of the activation (no menu action, no Yes/No), the
     // successes are HITS that run the real save/wound pipeline with the effect's AP folded in, the count
-    // stays FRACTIONAL under the probabilistic roller (the #100 invariant - contrast StormStage, whose pool
+    // stays FRACTIONAL under the probabilistic roller (the #100 invariant - contrast StormStage (deleted, #438), whose pool
     // must be decisive because its successes pick targets), and the once-per-game marker is spent on the
     // first activation whether or not anything was in range (owner ruling 2026-07-30: the burst is lost,
     // not banked). AllOnFaceDiceRoller(f) puts every die on face f, so a pool die is a success at f >= 2 and
@@ -208,7 +208,7 @@ namespace FDG.Tests
             await RunBurst(ctx, attacker);
 
             // 5 dice x 5/6 (a 2+) = 4.1667 hits; against Defense 4+ with AP(1) the save needs a 5+, so 4/6
-            // of them fail = 2.7778 wounds. A pool rolled DECISIVELY (StormStage's call, correct there
+            // of them fail = 2.7778 wounds. A pool rolled DECISIVELY (StormStage (deleted, #438)'s call, correct there
             // because its successes are target picks) would int-lock this to a whole number of hits.
             Assert.That(requester.WoundsByUnit.GetValueOrDefault("Warriors"), Is.EqualTo(2.7778f).Within(0.01f),
                 "the successes are a HIT COUNT, so they stay fractional under the probabilistic roller");

@@ -36,12 +36,22 @@ namespace FDG
         /// global default.
         /// </summary>
         public string? EffectKey { get; }
+
+        /// <summary>
+        /// #424 (B1): the effect-set key for this weapon's MELEE use - the army's melee default, resolved at load
+        /// exactly like <see cref="EffectKey"/> and carried by every weapon (a rifle never reads it; it never
+        /// swings). A weapon that is both ranged and melee (Assault) emits <see cref="EffectKey"/> for its shot and
+        /// this for its swing, so a pistol swing does not play the gunshot. For a weapon with no printed range the
+        /// two keys coincide, so an entry's explicit <c>EffectSet</c> on a sword keeps applying to its swing. No
+        /// per-weapon authoring: nothing in any army, book or weapon file names this key.
+        /// </summary>
+        public string? MeleeEffectKey { get; }
     }
 
     public class WeaponComparer : IEqualityComparer<IWeapon>
     {
-        // #239: EffectKey is deliberately excluded — it is presentation data, and batch grouping
-        // must not split on it (same-name weapons share a key in practice anyway).
+        // #239: EffectKey (and #424's MeleeEffectKey) is deliberately excluded — it is presentation data, and
+        // batch grouping must not split on it (same-name weapons share a key in practice anyway).
         public bool Equals(IWeapon x, IWeapon y)
         {
             return x.Name == y.Name && x.RangeInches == y.RangeInches
@@ -193,24 +203,41 @@ namespace FDG
 
     public static class IWeaponExtensions
     {
+        /// <summary>
+        /// The engine's single ranged/melee classification seam (#424). A weapon is RANGED when it has a printed
+        /// range or its rules grant it ranged use, and MELEE when it has no printed range or its rules grant it
+        /// melee use (Core Rules v3.6.0 Assault: "Counts as both a ranged weapon and a melee weapon."), so one
+        /// <see cref="Weapon"/> object can be both and appears in BOTH of a unit's attack pools
+        /// (<c>IUnitExtensions.GetRangedWeapons</c> / <c>GetMeleeWeapons</c>). Roles are grants only, so the two
+        /// answers can only widen; nothing ever tests "range &gt; 0" directly for classification any more - every
+        /// consumer (engine, AI, app) asks here. The grants are resolved once per weapon and cached on it
+        /// (<see cref="Weapon.GrantedRoles"/>), so this is as cheap as the range test it replaces.
+        /// </summary>
         public static bool IsRanged(this IWeapon weapon)
         {
-            return weapon.RangeInches > 0f;
+            return weapon.RangeInches > 0f || (GrantedRoles(weapon) & EWeaponRoles.Ranged) != 0;
         }
 
+        /// <inheritdoc cref="IsRanged"/>
         public static bool IsMelee(this IWeapon weapon)
         {
-            return !IsRanged(weapon);
+            return weapon.RangeInches <= 0f || (GrantedRoles(weapon) & EWeaponRoles.Melee) != 0;
         }
+
+        private static EWeaponRoles GrantedRoles(IWeapon weapon) =>
+            // The concrete Weapon caches its answer; any other IWeapon implementation resolves on each ask.
+            weapon is Weapon concrete ? concrete.GrantedRoles : WeaponRoleQueries.Resolve(weapon);
 
         /// <summary>
         /// Returns human-readable text about a weapon that would read like it would on a data sheet.
+        /// #424: <paramref name="includeRange"/> false prints the weapon's MELEE line - a weapon that is both
+        /// (Assault) shows its range where it is fired and only its attacks/AP where it is swung.
         /// </summary>
-        public static string GetWeaponNameAndStats(this IWeapon weapon)
+        public static string GetWeaponNameAndStats(this IWeapon weapon, bool includeRange = true)
         {
             StringBuilder sb = new StringBuilder();
             sb.Append($"{weapon.Name} - ");
-            if (weapon.IsRanged())
+            if (includeRange && weapon.IsRanged())
             {
                 sb.Append(weapon.RangeInches + "\", ");
             }
@@ -228,9 +255,9 @@ namespace FDG
         /// Returns human-readable text about a weapon that would read like it would on a data sheet, including
         /// how many weapons there are, which you supply as a parameter.
         /// </summary>
-        public static string GetWeaponNameAndStats(this IWeapon weapon, int weaponCount)
+        public static string GetWeaponNameAndStats(this IWeapon weapon, int weaponCount, bool includeRange = true)
         {
-            return $"{weaponCount}x {weapon.GetWeaponNameAndStats()}";
+            return $"{weaponCount}x {weapon.GetWeaponNameAndStats(includeRange)}";
         }
     }
 
@@ -246,6 +273,9 @@ namespace FDG
 
         /// <inheritdoc cref="IWeapon.EffectKey"/>
         public string? EffectKey { get; }
+
+        /// <inheritdoc cref="IWeapon.MeleeEffectKey"/>
+        public string? MeleeEffectKey { get; }
 
         private readonly List<ResolvedRule> _ruleDefinitions = new();
 
@@ -264,14 +294,29 @@ namespace FDG
         private string? _profileKey;
         internal string ProfileKey => _profileKey ??= WeaponProfileKey.Build(this);
 
+        // #424: the roles this weapon's rules grant it (Assault), resolved once from its own rules and cached for
+        // its lifetime - the seam IsMelee()/IsRanged() runs in the AI's search and per frame in the overlays, and
+        // no 3.6.0 rule grants a role mid-game, so the build-time answer is exact. Reset when the rule list
+        // changes, like the profile key; never serialized (the rules it derives from are, via the #095 blob).
+        private EWeaponRoles? _grantedRoles;
+
+        /// <summary>The cached <see cref="WeaponRoleQueries.Resolve"/> answer for this weapon.</summary>
+        public EWeaponRoles GrantedRoles => _grantedRoles ??= WeaponRoleQueries.Resolve(this);
+
+        /// <summary>Whether the roles have been resolved since the rule list last changed (tests pin the caching).</summary>
+        internal bool RolesResolved => _grantedRoles.HasValue;
+
         public Weapon(string name, float rangeInches, int attacks, int armorPenetration,
-            string? effectKey = null)
+            string? effectKey = null, string? meleeEffectKey = null)
         {
             Name = name;
             RangeInches = rangeInches;
             Attacks = attacks;
             ArmorPenetration = armorPenetration;
             EffectKey = effectKey;
+            // #424 B1: a weapon with no printed range has no shot, so its one key IS its swing key (an explicit set
+            // on a sword keeps applying to its swing); only a weapon that also shoots needs the second, melee-default key.
+            MeleeEffectKey = rangeInches > 0f ? meleeEffectKey : (effectKey ?? meleeEffectKey);
         }
 
         /// <summary>
@@ -285,8 +330,10 @@ namespace FDG
             Attacks = source.Attacks;
             ArmorPenetration = source.ArmorPenetration;
             EffectKey = source.EffectKey;
+            MeleeEffectKey = source.MeleeEffectKey;
             _ruleDefinitions.AddRange(source._ruleDefinitions);
             _ruleDefinitionsJson = source._ruleDefinitionsJson;
+            _grantedRoles = source._grantedRoles;
         }
 
         /// <summary>
@@ -297,6 +344,7 @@ namespace FDG
         {
             _ruleDefinitions.Add(rule);
             _profileKey = null;
+            _grantedRoles = null;
             _ruleDefinitionsJson = RuleAttachmentPersistence.Serialize(_ruleDefinitions);
         }
 
@@ -310,6 +358,7 @@ namespace FDG
             {
                 _ruleDefinitions.AddRange(RuleAttachmentPersistence.Deserialize(_ruleDefinitionsJson));
                 _profileKey = null;
+                _grantedRoles = null;
             }
         }
 

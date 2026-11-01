@@ -72,8 +72,9 @@ public class OprListImporterTests
 
     private static readonly Dictionary<string, string> Books = new()
     {
-        ["bookA"] = """{"uid":"bookA","name":"Legion Alpha","versionString":"3.5.3","units":[]}""",
-        ["bookB"] = """{"uid":"bookB","name":"Legion Beta","versionString":"3.5.2","units":[]}""",
+        // #437: OPR 3.6 books; the live corpus mixes patch levels within one major.minor, so the two differ.
+        ["bookA"] = """{"uid":"bookA","name":"Legion Alpha","versionString":"3.6.0","units":[]}""",
+        ["bookB"] = """{"uid":"bookB","name":"Legion Beta","versionString":"3.6.1","units":[]}""",
     };
 
     private static OprListImportResult Import() => OprListImporter.Import(ListJson, Books);
@@ -306,11 +307,29 @@ public class OprListImporterTests
     {
         var newerBooks = new Dictionary<string, string>(Books)
         {
-            ["bookA"] = """{"uid":"bookA","name":"Legion Alpha","versionString":"3.6.1","units":[]}""",
+            ["bookA"] = """{"uid":"bookA","name":"Legion Alpha","versionString":"3.7.0","units":[]}""",
         };
         var ex = Assert.Throws<OprVersionMismatchException>(() => OprListImporter.Import(ListJson, newerBooks));
         Assert.That(ex!.BookName, Is.EqualTo("Legion Alpha"));
-        Assert.That(ex.FoundVersion, Is.EqualTo("3.6.1"));
+        Assert.That(ex.FoundVersion, Is.EqualTo("3.7.0"));
+        Assert.That(ex.Message, Does.Contain("is at OPR version 3.7.0; this game supports 3.6.x"));
+        Assert.That(ex.Message, Does.Contain("game's data needs an update"), "a newer book: our data trails OPR");
+    }
+
+    // #437: 3.6 replaces 3.5, so a book still at 3.5 is refused too, with a message naming both versions (ASCII -
+    // it is shown in-game) and the remedy for that direction.
+    [Test]
+    public void Import_A35Book_IsRefused_NamingBothVersions()
+    {
+        var olderBooks = new Dictionary<string, string>(Books)
+        {
+            ["bookB"] = """{"uid":"bookB","name":"Legion Beta","versionString":"3.5.3","units":[]}""",
+        };
+        var ex = Assert.Throws<OprVersionMismatchException>(() => OprListImporter.Import(ListJson, olderBooks));
+        Assert.That(ex!.BookName, Is.EqualTo("Legion Beta"));
+        Assert.That(ex.Message, Does.StartWith("Army book 'Legion Beta' is at OPR version 3.5.3; this game supports 3.6.x."));
+        Assert.That(ex.Message, Does.Contain("has not been updated"));
+        Assert.That(ex.Message.All(c => c <= 127), Is.True, "game text is ASCII-only");
     }
 
     [Test]
@@ -326,12 +345,13 @@ public class OprListImporterTests
     {
         Assert.Multiple(() =>
         {
-            Assert.That(OprListImporter.VersionMatches("3.5.3"), Is.True);
-            Assert.That(OprListImporter.VersionMatches("3.5.2"), Is.True);
-            Assert.That(OprListImporter.VersionMatches("3.5"), Is.True);
-            Assert.That(OprListImporter.VersionMatches("3.6.0"), Is.False);
-            Assert.That(OprListImporter.VersionMatches("3.50.1"), Is.False, "component compare, not StartsWith");
-            Assert.That(OprListImporter.VersionMatches("4.5.1"), Is.False);
+            Assert.That(OprListImporter.VersionMatches("3.6.0"), Is.True);
+            Assert.That(OprListImporter.VersionMatches("3.6.2"), Is.True);
+            Assert.That(OprListImporter.VersionMatches("3.6"), Is.True);
+            Assert.That(OprListImporter.VersionMatches("3.5.3"), Is.False, "3.6 replaces 3.5 (#437)");
+            Assert.That(OprListImporter.VersionMatches("3.7.0"), Is.False);
+            Assert.That(OprListImporter.VersionMatches("3.60.1"), Is.False, "component compare, not StartsWith");
+            Assert.That(OprListImporter.VersionMatches("4.6.1"), Is.False);
             Assert.That(OprListImporter.VersionMatches(""), Is.False);
         });
     }
@@ -416,5 +436,96 @@ public class OprListImporterTests
 
         Assert.That(altar.SpecialRules, Has.One.EqualTo(new SpecialRuleEntry_CoreNumeric("Transport", 12)));
         Assert.That(altar.SpecialRules.Count(r => r is SpecialRuleEntry_Core { Name: "Fearless" }), Is.EqualTo(1));
+    }
+
+    // #437 - a 3.6.0 share-list unit, trimmed from a live /api/tts response (High Elf Fleets list UGDhJMMH0QBP,
+    // fetched 2026-10-30, served resolved against the live 3.6.0 book): an Anti-Gravity Tank whose loadout carries
+    // an Assault cannon, the 3.6 Overrun melee weapon (attacks already multiplied: A4 = attacks 4, attacksMultiplier 4)
+    // and two selected upgrades whose flat `cost` disagrees with the tank's own costs[] entry (55 vs 80, 65 vs 30).
+    private const string ListJson36 = """
+    {
+      "id": "UGDhJMMH0QBP", "name": "High Elf Fleets", "gameSystem": "gf", "pointsLimit": 3000,
+      "campaignMode": false, "narrativeMode": false, "versionChanged": false, "listPoints": 645,
+      "units": [
+        { "id": "NNVOyAx", "cost": 535, "name": "Anti-Gravity Tank", "size": 1, "quality": 3, "defense": 2,
+          "rules": [ {"id":"KdgwlPb8LuD2","name":"Fast","label":"Fast"}, {"id":"a0YtInGiUDd6","name":"Tough","rating":12,"label":"Tough(12)"} ],
+          "loadout": [
+            { "id": "i6kCRfk3", "name": "Hull Shard Cannon", "type": "ArmyBookWeapon", "count": 1, "range": 12, "attacks": 3,
+              "weaponId": "Oglu9AuE", "attacksMultiplier": 1, "originalCount": 1,
+              "label": "Hull Shard Cannon (12\", A3, Anti-Cover, Assault, Fracture)",
+              "specialRules": [ {"type":"ArmyBookRule","id":"efmjJPTe0Yzd","name":"Anti-Cover","label":"Anti-Cover"},
+                                {"type":"ArmyBookRule","id":"FF5ddXgx75lI","name":"Assault","label":"Assault"},
+                                {"type":"ArmyBookRule","id":"JSnFcm3SCiMD","name":"Fracture","label":"Fracture"} ] },
+            { "id": "mmIw7lbH", "name": "Overrun", "type": "ArmyBookWeapon", "count": 1, "range": 0, "attacks": 4,
+              "weaponId": "9yR1y88z", "attacksMultiplier": 4, "originalCount": 1, "label": "Overrun (A4, Thrust)",
+              "specialRules": [ {"type":"ArmyBookRule","id":"umbiz4tnEyF8","name":"Thrust","label":"Thrust"} ] },
+            { "id": null, "name": "Heavy Focal Cannon", "type": "ArmyBookWeapon", "count": 1, "range": 36, "attacks": 2,
+              "weaponId": "dfhsdKVE", "attacksMultiplier": 2, "label": "Heavy Focal Cannon (36\", A2, AP(4), Deadly(6))",
+              "specialRules": [ {"id":"17crjK7P6_w6","name":"AP","type":"ArmyBookRule","rating":4},
+                                {"id":"_mrPya5SXSqW","name":"Deadly","type":"ArmyBookRule","rating":6} ], "dependencies": [] },
+            { "id": "xOq9WGUh", "name": "Hologram Field", "type": "ArmyBookItem", "bases": null, "count": 1,
+              "label": "Hologram Field (Stealth)",
+              "content": [ {"id":"9jyvRoBODD-O","name":"Stealth","type":"ArmyBookRule","dependencies":[],"count":1} ] }
+          ],
+          "selectedUpgrades": [
+            { "instanceId": "KI7jHYz_P",
+              "upgrade": { "id": "CinFtiX", "uid": "-1b_g", "label": "Replace 2x Shard Cannon", "variant": "replace" },
+              "option": { "uid": "s7mp3", "id": "s7mp3", "cost": 55,
+                "costs": [ {"cost":80,"unitId":"NNVOyAx","exactCost":78.78,"questCost":235} ],
+                "label": "Heavy Focal Cannon (36\", A2, AP(4), Deadly(6))",
+                "gains": [ {"id":null,"name":"Heavy Focal Cannon","type":"ArmyBookWeapon","count":1,"range":36,"attacks":2,"attacksMultiplier":2} ] } },
+            { "instanceId": "_UaVRgcB9",
+              "upgrade": { "id": "TQrtsBr", "uid": "Gz6Ba", "label": "Upgrade with", "variant": "upgrade" },
+              "option": { "uid": "U6Ar8", "id": "U6Ar8", "cost": 65,
+                "costs": [ {"cost":30,"unitId":"NNVOyAx","exactCost":30.06,"questCost":90},
+                           {"cost":10,"unitId":"iAyekvp","exactCost":7.52,"questCost":25} ],
+                "label": "Hologram Field (Stealth)",
+                "gains": [ {"id":"xOq9WGUh","name":"Hologram Field","type":"ArmyBookItem","bases":null,"count":1,
+                            "content":[{"id":"9jyvRoBODD-O","name":"Stealth","type":"ArmyBookRule"}]} ] } }
+          ],
+          "armyId": "7i7blhft75q9zfdc", "combined": false, "joinToUnit": null, "selectionId": "Hz5L1",
+          "bases": { "round": "120x92", "square": "150x100" } }
+      ],
+      "forceOrgErrors": []
+    }
+    """;
+
+    private static readonly Dictionary<string, string> Books36 = new()
+    {
+        ["7i7blhft75q9zfdc"] = """{"uid":"7i7blhft75q9zfdc","name":"High Elf Fleets","versionString":"3.6.0","units":[]}""",
+    };
+
+    [Test]
+    public void Import_Live36List_PassesTheGate_AndMapsTheWeaponsVerbatim()
+    {
+        OprListImportResult result = OprListImporter.Import(ListJson36, Books36);
+        UnitFileEntry tank = result.Army.Units.Single();
+
+        WeaponFileEntry cannon = tank.Weapons.Single(w => w.Name == "Hull Shard Cannon");
+        Assert.That(cannon.RangeInches, Is.EqualTo(12));
+        Assert.That(cannon.SpecialRules, Is.EqualTo(new SpecialRuleEntry[]
+        {
+            new SpecialRuleEntry_Core("Anti-Cover"), new SpecialRuleEntry_Core("Assault"), new SpecialRuleEntry_Core("Fracture"),
+        }), "an Assault weapon is ONE entry carrying the rule (#424) - never split into a ranged and a melee copy");
+
+        WeaponFileEntry overrun = tank.Weapons.Single(w => w.Name == "Overrun");
+        Assert.That(overrun.RangeInches, Is.Zero, "Overrun is a melee weapon");
+        Assert.That(overrun.Attacks, Is.EqualTo(4), "attacks is already multiplied - attacksMultiplier is not applied again");
+        Assert.That(overrun.SpecialRules, Is.EqualTo(new SpecialRuleEntry[] { new SpecialRuleEntry_Core("Thrust") }));
+
+        Assert.That(tank.Weapons.Single(w => w.Name == "Heavy Focal Cannon").Attacks, Is.EqualTo(2));
+        Assert.That(result.Warnings, Has.None.Contains("attacksMultiplier"), "no longer a fidelity warning");
+    }
+
+    [Test]
+    public void Import_Live36List_PricesUpgradesFromTheUnitsCostsEntry_NotTheFlatScalar()
+    {
+        OprListImportResult result = OprListImporter.Import(ListJson36, Books36);
+
+        // 535 base + 80 (Heavy Focal Cannon, costs[] for this tank; flat 55) + 30 (Hologram Field; flat 65) = 645,
+        // exactly Army Forge's listPoints - nothing parked, no drift warning.
+        Assert.That(result.Army.Units.Single().PointCost, Is.EqualTo(645));
+        Assert.That(result.Army.UnattributedPoints, Is.Zero);
+        Assert.That(result.Warnings, Has.None.Contains("pts"));
     }
 }

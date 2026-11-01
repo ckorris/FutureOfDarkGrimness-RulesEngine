@@ -171,9 +171,11 @@ namespace FDG.Tests
         }
 
         [Test]
-        public void OverCapResponse_Throws()
+        public async Task OverCapResponse_IsAskedAgainThenHolds()
         {
-            var (ctx, combat, requester, _, _) = BuildBattlefield(
+            // A rejected reply used to throw RequestResponseInvalidException, which ends the game. Now the
+            // player is asked again; a resolver that keeps answering illegally ends up holding in place.
+            var (ctx, combat, requester, attacker, _) = BuildBattlefield(
                 attackerPositions: new[] { new Position(0, 0) },
                 defenderPositions: new[] { new Position(2, 0) });
             // Disengage cap is 1"; request 5".
@@ -181,7 +183,29 @@ namespace FDG.Tests
                 .Select(mb => new ModelMoveEntry(mb,
                     new List<Position> { new Position(5, 0) })).ToList();
 
-            Assert.ThrowsAsync<RequestResponseInvalidException>(async () => await RunConsolidate(ctx, combat));
+            bool fired = await RunConsolidate(ctx, combat);
+
+            Assert.That(fired, Is.True, "the stage still completes");
+            Assert.That(requester.Calls, Is.EqualTo(ValidatedRequesting.MaxAttempts));
+            var pos = attacker.GetValue().ModelBindings[0].GetValue().Position;
+            Assert.That(pos.x, Is.EqualTo(0f));
+            Assert.That(pos.z, Is.EqualTo(0f));
+        }
+
+        [Test]
+        public async Task RejectedResponse_SecondAnswerIsApplied()
+        {
+            var (ctx, combat, requester, attacker, _) = BuildBattlefield(
+                attackerPositions: new[] { new Position(20, 20) },
+                defenderPositions: new[] { new Position(22, 20) });
+            requester.Reply = req => req.UnitDataBinding.GetValue().ModelBindings
+                .Select(mb => new ModelMoveEntry(mb, new List<Position>
+                    { requester.Calls == 1 ? new Position(25, 20) : new Position(19.5f, 20) })).ToList();
+
+            await RunConsolidate(ctx, combat);
+
+            Assert.That(requester.Calls, Is.EqualTo(2));
+            Assert.That(attacker.GetValue().ModelBindings[0].GetValue().Position.x, Is.EqualTo(19.5f));
         }
 
         [Test]
@@ -201,7 +225,7 @@ namespace FDG.Tests
         }
 
         [Test]
-        public void HoledUnit_ScatteringReply_Throws()
+        public async Task HoledUnit_ScatteringReply_IsRejectedAndHolds()
         {
             // The leniency is one-directional: a consolidation that makes coherency WORSE (drags a survivor
             // even farther from the other) is still rejected, so the tolerance can't be abused to scatter.
@@ -219,7 +243,11 @@ namespace FDG.Tests
                     return new ModelMoveEntry(mb, new List<Position> { new Position(m.Position.x, newZ) });
                 }).ToList();
 
-            Assert.ThrowsAsync<RequestResponseInvalidException>(async () => await RunConsolidate(ctx, combat));
+            await RunConsolidate(ctx, combat);
+
+            Assert.That(requester.Calls, Is.EqualTo(ValidatedRequesting.MaxAttempts));
+            Assert.That(attacker.GetValue().ModelBindings[2].GetValue().Position.z, Is.EqualTo(2.2f).Within(1e-4f),
+                "the scattering reply was never applied");
         }
 
         // ──────────────────────────────────────────────────────────────────────
@@ -330,6 +358,7 @@ namespace FDG.Tests
         internal class CapturingRequester : IPlayerRequestByID
         {
             public ConsolidationMoveRequest? Captured { get; private set; }
+            public int Calls { get; private set; }
             public Func<ConsolidationMoveRequest, List<ModelMoveEntry>> Reply { get; set; }
                 = _ => new List<ModelMoveEntry>();
 
@@ -339,6 +368,7 @@ namespace FDG.Tests
                 if (request is ConsolidationMoveRequest cr)
                 {
                     Captured = cr;
+                    Calls++;
                     object reply = Reply(cr)!;
                     return Task.FromResult((TReply)reply);
                 }

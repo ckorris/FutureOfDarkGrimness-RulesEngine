@@ -313,6 +313,31 @@ namespace FDG.Stages
             out DangerousTerrainResult dangerResult)
         {
             dangerResult = DangerousTerrainResult.None;
+            if (!ValidateMove(gameContext, unit, paths, maxInches, out errors))
+            {
+                return false;
+            }
+
+            List<ITerrain> relevantTerrain = new List<ITerrain>(gameContext.TableState.Terrain.Objects);
+            bool ignoresAllTerrain = Rules.Dispatch.MovementRuleQueries.IgnoresAllTerrain(
+                unit.GetValue(), gameContext.RuleEvaluator);
+            // Flying ignores Dangerous terrain too (same AllTerrain scope as the impassible waiver above).
+            dangerResult = Commit(gameContext, paths, relevantTerrain, unit.GetValue(), ignoresDangerousTerrain: ignoresAllTerrain);
+            return true;
+        }
+
+        /// <summary>
+        /// The check <see cref="TryMove"/> commits behind, without committing - so a caller can re-ask for a
+        /// rejected path before anything moves.
+        ///
+        /// Coherency is LENIENT (#159), as in DefinePathStage and ConsolidateStage: a unit that starts the move
+        /// already out of coherency may hold or pull together but not scatter further. A unit that starts
+        /// coherent is held to the strict 1"/9" limits. The move resolvers already assumed this (the CLI
+        /// validates every DefineMovementPathRequest leniently), so a strict check here disagreed with them.
+        /// </summary>
+        public static bool ValidateMove(IGameContext gameContext, DataBinding<UnitData> unit,
+            List<ModelMoveEntry> paths, float maxInches, out List<ReasonForInvalidMove> errors)
+        {
             List<ITerrain> relevantTerrain = new List<ITerrain>(gameContext.TableState.Terrain.Objects);
 
             // #090: an out-of-band move (e.g. Harassing) is enemy-aware like a normal move — it may not pass
@@ -327,15 +352,10 @@ namespace FDG.Stages
             bool ignoresAllTerrain = Rules.Dispatch.MovementRuleQueries.IgnoresAllTerrain(
                 unit.GetValue(), gameContext.RuleEvaluator);
 
-            if (!MovementUtilities.ValidatePaths(paths, maxInches, enemyFootprints, canMoveThroughEnemies,
-                    ignoresDifficultTerrain, ignoresAllTerrain, relevantTerrain, out errors, friendlyFootprints))
-            {
-                return false;
-            }
-
-            // Flying ignores Dangerous terrain too (same AllTerrain scope as the impassible waiver above).
-            dangerResult = Commit(gameContext, paths, relevantTerrain, unit.GetValue(), ignoresDangerousTerrain: ignoresAllTerrain);
-            return true;
+            // A single budget: Rush = max, so the charge-reach rule (which only bites beyond Rush) never applies.
+            return MovementUtilities.ValidatePaths(paths, _ => new ModelMoveBudget(maxInches, maxInches),
+                enemyFootprints, canMoveThroughEnemies, ignoresDifficultTerrain, ignoresAllTerrain, relevantTerrain,
+                out errors, friendlyFootprints, lenientCoherency: true);
         }
     }
 }

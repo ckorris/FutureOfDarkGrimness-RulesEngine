@@ -1513,6 +1513,17 @@ namespace FDG.Stages
             }
         }
 
+        /// <summary>
+        /// A 0" move for every model of the unit - the same reply as the GUI's "Skip all". What a stage falls
+        /// back to when no legal path was submitted (see <see cref="StageResolution.ValidatedRequesting"/>).
+        /// </summary>
+        public static List<ModelMoveEntry> HoldInPlace(DataBinding<UnitData> unit)
+            => unit.GetValue().ModelBindings.Select(mb => new ModelMoveEntry(mb, new List<Position>())).ToList();
+
+        /// <summary>The distinct reasons a move was rejected, one phrase each, for the player log.</summary>
+        public static string DescribeErrors(IEnumerable<ReasonForInvalidMove> errors)
+            => string.Join(", ", errors.Select(e => e.ToString()).Distinct());
+
         public static string ErrorReasonToString(EErrorReasonType reason)
         {
             switch(reason)

@@ -48,49 +48,72 @@ namespace FDG.Stages
             // of the post-combat family) can be declined, so the resolver may reply Cancelled and a human
             // gets a Back button. A FORCED move (e.g. a spell pushing an enemy) is not cancellable - the
             // rule has already fired and there is nowhere to return to.
-            var pathRequest = new DefineMovementPathRequest(mover, $"Moving {unitBinding.GetValue().Name}",
+            DefineMovementPathRequest BuildRequest() => new DefineMovementPathRequest(mover,
+                $"Moving {unitBinding.GetValue().Name}",
                 unitBinding, maxInches, maxInches, maxInches,
                 WeaponSightProfileBuilder.For(unitBinding.GetValue(), _gameContext.RuleEvaluator),
                 canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain,
                 allowCancel: isOptional);
 
-            CancellableResult<List<ModelMoveEntry>> pathResult = await _gameContext.PlayerRequester
-                .RequestDecision<DefineMovementPathRequest, CancellableResult<List<ModelMoveEntry>>>(pathRequest);
-
-            if (pathResult is not Selected<List<ModelMoveEntry>> selectedPath)
+            List<ModelMoveEntry> movements;
+            if (isOptional)
             {
+                CancellableResult<List<ModelMoveEntry>> pathResult = await _gameContext.PlayerRequester
+                    .RequestDecision<DefineMovementPathRequest, CancellableResult<List<ModelMoveEntry>>>(BuildRequest());
+
                 // Declined. For an optional move that is a legal "no thanks" - typically a unit still
                 // intermingled with the enemy after melee whose living models cannot re-pack into
                 // cohesion without crossing an enemy base, so no legal destination exists. The unit
                 // simply does not move (the caller sees no position change and keeps its budget).
-                if (isOptional)
+                if (pathResult is not Selected<List<ModelMoveEntry>> selectedPath)
                 {
                     _gameContext.Log($"{unit.Name} declines its triggered move - no legal destination.");
                     return;
                 }
-                throw new RequestResponseInvalidException(
-                    $"Triggered move for {unit.Name} cannot be cancelled - the rule that forced it has already fired.");
-            }
-            List<ModelMoveEntry> movements = selectedPath.Value;
+                movements = selectedPath.Value;
 
-            if (!MovementExecutor.TryMove(_gameContext, unitBinding, movements, maxInches,
-                    out List<ReasonForInvalidMove> errors,
-                    out MovementExecutor.DangerousTerrainResult dangerResult))
-            {
                 // The resolver returned a path the authoritative validator rejects. For an optional move
                 // this is the same "no legal destination" case as a cancel - a resolver with no decline
                 // channel (the headless CLI auto-play) submits its best invalid guess instead of cancelling.
-                // Treat it as a decline: the unit does not move. A forced move still faults, surfacing the bug.
-                if (isOptional)
+                // Treat it as a decline: the unit does not move.
+                if (!MovementExecutor.ValidateMove(_gameContext, unitBinding, movements, maxInches,
+                        out List<ReasonForInvalidMove> errors))
                 {
                     _gameContext.Log($"{unit.Name} declines its triggered move - no legal destination.");
                     _gameContext.LogDebug($"Triggered move for {unit.Name} declined - resolver path invalid: "
                         + string.Join(", ", errors.Select(e => e.ToString())) + ".");
                     return;
                 }
-                throw new RequestResponseInvalidException(
-                    $"Triggered move for {unit.Name} was invalid: "
-                    + string.Join(", ", errors.Select(e => e.ToString())));
+            }
+            else
+            {
+                // A FORCED move (a spell pushing an enemy) offers no Back, so a Cancelled reply or a path the
+                // validator rejects is a resolver bug. It used to throw, which ends the game; instead ask
+                // again, and once the attempts run out the unit is not moved - the forced move fizzles,
+                // which costs the caster the push but leaves the board legal.
+                CancellableResult<List<ModelMoveEntry>> pathResult = await ValidatedRequesting
+                    .RequestUntilValid<DefineMovementPathRequest, CancellableResult<List<ModelMoveEntry>>>(
+                        _gameContext, BuildRequest,
+                        reply => reply is not Selected<List<ModelMoveEntry>> selected
+                            ? "a forced move cannot be declined"
+                            : MovementExecutor.ValidateMove(_gameContext, unitBinding, selected.Value, maxInches,
+                                out List<ReasonForInvalidMove> errors)
+                                ? null : MovementUtilities.DescribeErrors(errors),
+                        () => new Cancelled<List<ModelMoveEntry>>(),
+                        unit.Name, "is not moved");
+                if (pathResult is not Selected<List<ModelMoveEntry>> selectedPath) return;
+                movements = selectedPath.Value;
+            }
+
+            // Validated above against the same state, so this commits; the guard only keeps a surprise from
+            // ending the game.
+            if (!MovementExecutor.TryMove(_gameContext, unitBinding, movements, maxInches,
+                    out List<ReasonForInvalidMove> commitErrors,
+                    out MovementExecutor.DangerousTerrainResult dangerResult))
+            {
+                _gameContext.LogDebug($"Triggered move for {unit.Name} not committed: "
+                    + MovementUtilities.DescribeErrors(commitErrors) + ".");
+                return;
             }
 
             // Land the dangerous-terrain test now the models are in place, same as the normal-move stage —

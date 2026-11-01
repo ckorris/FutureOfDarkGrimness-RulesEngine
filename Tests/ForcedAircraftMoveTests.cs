@@ -37,14 +37,15 @@ namespace FDG.Tests
         }
 
         [Test]
-        public void GetHeading_DivergentModelFacings_Throws()
+        public void GetHeading_DivergentModelFacings_FliesOnTheLeadModelsHeading()
         {
+            // Single-model deployment can face an Aircraft's models apart. This used to throw on every Advance,
+            // which ends the game; the unit now flies rigidly on its first living model's heading.
             DataBinding<UnitData> unit = MakeUnit(new Position(10, 10), new Position(12, 10));
             unit.GetValue().Models[0].SetFacing(new Float2(0f, 1f));
             unit.GetValue().Models[1].SetFacing(new Float2(1f, 0f));
 
-            Assert.Throws<InvalidOperationException>(() => ForcedAircraftMove.GetHeading(unit.GetValue()),
-                "an Aircraft's models must share one heading — divergence is a bug, not a choice.");
+            Assert.That(ForcedAircraftMove.GetHeading(unit.GetValue()), Is.EqualTo(new Float2(0f, 1f)));
         }
 
         [Test]

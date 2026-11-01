@@ -215,11 +215,15 @@ namespace FDG.Tests
         private readonly float _distanceInches;
         public ResolvingMoveRequester(float distanceInches) => _distanceInches = distanceInches;
 
+        /// <summary>How many path prompts were answered (#458: a rejected path is asked again).</summary>
+        public int Calls { get; private set; }
+
         public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
             where TRequest : IStageTaskRequest<TReply>
         {
             if (request is DefineMovementPathRequest move)
             {
+                Calls++;
                 List<ModelMoveEntry> entries = move.UnitDataBinding.GetValue().ModelBindings
                     .Where(m => m.GetValue().GetIsAlive())
                     .Select(m => new ModelMoveEntry(m, new List<Position>

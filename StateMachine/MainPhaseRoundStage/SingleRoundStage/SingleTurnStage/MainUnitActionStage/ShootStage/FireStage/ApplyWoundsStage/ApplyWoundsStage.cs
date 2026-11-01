@@ -46,9 +46,15 @@ namespace FDG.Stages
 
                 float modelRemainingWounds = model.TotalWounds - model.WoundsDealt;
 
+                // The assigner clamps each packet to the model's remaining wounds with a float tolerance
+                // (AssignWoundsResults.WoundEpsilon), so a stack of fractional/Deadly packets can sum a hair
+                // over - and the tally can come from a client whose copy of the model lags the host's. This
+                // used to throw, ending the game; a model can't lose more than it has left, so clamp.
                 if (woundsToDeal > modelRemainingWounds)
                 {
-                    throw new Exception($"Tried to deal {woundsToDeal} to a model with only {modelRemainingWounds} left.");
+                    GameContext.LogDebug($"Wound overshoot clamped: {woundsToDeal} assigned to a model with "
+                        + $"{modelRemainingWounds} left.");
+                    woundsToDeal = Math.Max(0f, modelRemainingWounds);
                 }
 
                 model.DealWounds(woundsToDeal);

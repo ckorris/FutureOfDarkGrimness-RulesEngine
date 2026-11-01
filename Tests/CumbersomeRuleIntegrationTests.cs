@@ -131,14 +131,22 @@ namespace FDG.Tests
             Assert.That(req.NoShootAfterMoveRule, Is.EqualTo("Cumbersome"));
         }
 
+        // A 9" move is a Rush - DefinePathStage re-validates against the capped budget. Since #458 a rejected
+        // path is asked for again instead of thrown (a throw ended the game); a resolver that keeps sending the
+        // same path runs out of attempts and the unit holds - a 0" move that still spends the Move action.
         [Test]
-        public void MoveLongerThanTheAdvance_IsRejectedByTheAuthoritativeCheck()
+        public async Task MoveLongerThanTheAdvance_IsRejectedByTheAuthoritativeCheck_ThenTheUnitHolds()
         {
-            World world = BuildWorld(cumbersome: true, enemyAt: new Position(40f, -10f),
-                requester: new ResolvingMoveRequester(9f));
+            var requester = new ResolvingMoveRequester(9f);
+            World world = BuildWorld(cumbersome: true, enemyAt: new Position(40f, -10f), requester: requester);
+            Position before = world.Unit.GetValue().Models[0].Position;
 
-            Assert.ThrowsAsync<RequestResponseInvalidException>(async () => await RunMovement(world),
-                "a 9\" move is a Rush - DefinePathStage re-validates against the capped budget.");
+            await RunMovement(world);
+
+            Assert.That(requester.Calls, Is.EqualTo(ValidatedRequesting.MaxAttempts), "asked again, then given up on.");
+            Position after = world.Unit.GetValue().Models[0].Position;
+            Assert.That((after.x, after.z), Is.EqualTo((before.x, before.z)), "the rejected Rush never landed.");
+            Assert.That(world.UnitContext.HasMoved, Is.True, "the hold still spends the move action.");
         }
 
         [Test]

@@ -651,10 +651,24 @@ public abstract record Condition
     /// <see cref="CountsAsFatiguedInMelee"/> reads on the BEARER, but written out rather than delegated: that
     /// predicate means "counts as Fatigued in melee" and may grow, while this text names exactly two states.
     /// </summary>
-    public sealed record TargetShakenOrFatigued : CapabilityCondition<IHasTarget>
+    public sealed record TargetShakenOrFatigued : Condition
     {
-        protected override bool EvaluateCore(IHasTarget context) =>
-            context.Target.Tokens.HasToken(TokenType.Shaken) || context.Target.Tokens.HasToken(TokenType.Fatigued);
+        public override IReadOnlyCollection<Type> RequiredCapabilities => [typeof(IHasTarget)];
+
+        // #459: a plain Condition (not CapabilityCondition, whose sealed Evaluate hides the invocation) so the
+        // target's tokens are read through the invocation - the assumed-token overlay answers first.
+        public override bool Evaluate(RuleInvocation invocation)
+        {
+            if (invocation.Hook is not IHasTarget target)
+            {
+                throw new InvalidOperationException(
+                    $"{nameof(TargetShakenOrFatigued)} requires {nameof(IHasTarget)}, but the firing context " +
+                    $"({invocation.Hook?.GetType().Name ?? "null"}) does not provide it.");
+            }
+
+            return invocation.HasToken(target.Target, TokenType.Shaken)
+                || invocation.HasToken(target.Target, TokenType.Fatigued);
+        }
     }
 
     /// <summary>
@@ -692,9 +706,10 @@ public abstract record Condition
     /// </summary>
     public sealed record TokenPresent(TokenType TType, int MinCount = 1) : Condition
     {
+        // #459: read through the invocation, so a hypothetical query's assumed-token overlay answers first.
         public override bool Evaluate(RuleInvocation invocation)
         {
-            return invocation.Bearer.Tokens.GetTokenCount(TType) >= MinCount;
+            return invocation.TokenCount(invocation.Bearer, TType) >= MinCount;
         }
     }
 
@@ -713,7 +728,11 @@ public abstract record Condition
     /// </summary>
     public sealed record CountsAsFatiguedInMelee : Condition
     {
-        public override bool Evaluate(RuleInvocation invocation) => Holds(invocation.Bearer);
+        // #459: the same predicate read through the invocation (the assumed-token overlay answers first). Holds(IUnit)
+        // below stays the live predicate for the stage layer; the two must name the same tokens.
+        public override bool Evaluate(RuleInvocation invocation) =>
+            invocation.HasToken(invocation.Bearer, TokenType.Fatigued)
+            || invocation.HasToken(invocation.Bearer, TokenType.Shaken);
 
         /// <summary> Whether <paramref name="unit"/> counts as Fatigued in melee (Fatigued, or Shaken). </summary>
         public static bool Holds(IUnit unit) =>

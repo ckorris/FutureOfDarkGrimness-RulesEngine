@@ -33,6 +33,13 @@ namespace FDG.Ai.Tactician
     /// "charges / is charged from over 6"" rules (Ferocious's extra hit, a Changebound defender's -1, ...).
     /// 0 = unknown / not a charge: no charge arm fires, the pre-#442 behaviour.
     /// </param>
+    /// <param name="DefenderMoved">
+    /// #459: the DEFENDER's hypothetical "has moved this round" state - the Tactician pricing the fire its own unit
+    /// would take at a candidate's endpoint, where the move it is weighing will have stamped MovedThisRound. True
+    /// prices the volley as if the defender carried the token (Artillery's unmoved -1 is gone), false as if it did not,
+    /// null (the default, every other caller) reads the live token. Rides the evaluator's read-only query as an
+    /// <see cref="AssumedTokens"/> overlay; the defender's real tokens are never written.
+    /// </param>
     public sealed record AttackContext(
         float DistanceInches,
         bool AttackerMoved = false,
@@ -40,7 +47,8 @@ namespace FDG.Ai.Tactician
         bool IsMelee = false,
         bool IsCharging = false,
         float SightFactor = 1f,
-        float ChargeOriginInches = 0f);
+        float ChargeOriginInches = 0f,
+        bool? DefenderMoved = null);
 
     /// <summary>Expected outcome of one unit's whole attack (all weapon batches) against a defender.</summary>
     /// <param name="ExpectedCountedWounds">#442 (#431 Scourge): wounds the defender only COUNTS as having taken - for
@@ -451,13 +459,16 @@ namespace FDG.Ai.Tactician
             var __modsProbe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
             RuleParticipant attackerBatch = ActorWithBatch(atk, weapon);
             RuleParticipant defenderSeat = RuleParticipant.Subject(def, models: defenderModels);
+            // #459: the defender's hypothetical moved state rides every dispatch of this volley the defender sits in
+            // as a read-only overlay (null when the context makes no assumption - the common case costs nothing).
+            AssumedTokens? assumed = DefenderAssumptions(def, context);
             // #442: only a charging melee swing carries a launch distance (CombatActionContext reports 0 otherwise).
             float chargeOrigin = context.IsMelee && context.IsCharging ? context.ChargeOriginInches : 0f;
             var hitModContext = new HitRollModifierContext(atk, def, context.DistanceInches, context.AttackerMoved,
                 context.IsMelee, context.IsCharging, ChargeOriginDistanceInches: chargeOrigin);
             IReadOnlyList<RuleOperation> hitModOps = Ops(carrier == null
-                ? evaluator.EvaluateAllNamed(hitModContext, attackerBatch, defenderSeat)
-                : evaluator.EvaluateAllNamed(hitModContext, attackerBatch, defenderSeat,
+                ? evaluator.EvaluateAllNamed(hitModContext, assumed, attackerBatch, defenderSeat)
+                : evaluator.EvaluateAllNamed(hitModContext, assumed, attackerBatch, defenderSeat,
                     RuleParticipant.Actor(atk, carrier)));
 
             global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.VolleyMods, __modsProbe);
@@ -513,8 +524,8 @@ namespace FDG.Ai.Tactician
 
             var __completeProbe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
             IReadOnlyList<RuleOperation> completeOps = Ops(carrier == null
-                ? evaluator.EvaluateAllNamed(hitContext, attackerBatch, defenderSeat)
-                : evaluator.EvaluateAllNamed(hitContext, attackerBatch, defenderSeat,
+                ? evaluator.EvaluateAllNamed(hitContext, assumed, attackerBatch, defenderSeat)
+                : evaluator.EvaluateAllNamed(hitContext, assumed, attackerBatch, defenderSeat,
                     RuleParticipant.Actor(atk, carrier)));
 
             // With no operations the splitter returns exactly this one-group list.
@@ -585,7 +596,8 @@ namespace FDG.Ai.Tactician
             var __saveProbe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
             float wounds = ResolveSaves(evaluator, atk, def, weapon, groups, apReduction,
                 saveNet, coverBonus, context.IsMelee, notes, bonusAttacks, defenderModels, carrier,
-                context.DistanceInches, chargeOrigin, tally: tally, ignoresPositiveDefense: ignoresPositiveDefense);
+                context.DistanceInches, chargeOrigin, tally: tally, ignoresPositiveDefense: ignoresPositiveDefense,
+                assumed: assumed);
             global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.VolleySave, __saveProbe);
 
             // --- ResolveBonusMeleeAttacksStage mirror (#376 Bloodthirsty): the follow-up batch earned
@@ -608,7 +620,7 @@ namespace FDG.Ai.Tactician
                         bonusGroups, apReduction,
                         saveNet, coverBonus, context.IsMelee, notes, defenderModels: defenderModels,
                         carrier: carrier, distanceInches: context.DistanceInches, chargeOriginInches: chargeOrigin,
-                        tally: tally, ignoresPositiveDefense: ignoresPositiveDefense);
+                        tally: tally, ignoresPositiveDefense: ignoresPositiveDefense, assumed: assumed);
                 }
             }
             return wounds;
@@ -622,7 +634,7 @@ namespace FDG.Ai.Tactician
             int coverBonus, bool isMelee, List<string> notes, BonusAttackSink? bonusAttackSink = null,
             IReadOnlyList<IModel>? defenderModels = null, Weapon? carrier = null,
             float distanceInches = 0f, float chargeOriginInches = 0f, bool isSpell = false, Tally? tally = null,
-            bool ignoresPositiveDefense = false, float preFailedWounds = 0f)
+            bool ignoresPositiveDefense = false, float preFailedWounds = 0f, AssumedTokens? assumed = null)
         {
             int baseDefense = HeroStatRules.GetSaveDefense(def);
             int ap = Math.Max(0, weapon.ArmorPenetration - apReduction);
@@ -670,8 +682,9 @@ namespace FDG.Ai.Tactician
             RuleParticipant saveSubject = RuleParticipant.Subject(def,
                 models: defenderModels ?? HeroStatRules.LivingModels(def));
             IReadOnlyList<RuleOperation> saveCompleteOps = Ops(carrier == null
-                ? evaluator.EvaluateAllNamed(saveContext, saveActor, saveSubject)
-                : evaluator.EvaluateAllNamed(saveContext, saveActor, saveSubject, RuleParticipant.Actor(atk, carrier)));
+                ? evaluator.EvaluateAllNamed(saveContext, assumed, saveActor, saveSubject)
+                : evaluator.EvaluateAllNamed(saveContext, assumed, saveActor, saveSubject,
+                    RuleParticipant.Actor(atk, carrier)));
 
             // #376 Bloodthirsty: collect the earned follow-up attacks for the caller's second pass.
             // Null on the second pass itself (and on the impact-hit path) - no chaining, and impact
@@ -929,6 +942,20 @@ namespace FDG.Ai.Tactician
             carrier.AttachRuleDefinition(rule);
             return carrier;
         }
+
+        /// <summary>
+        /// #459: the read-only token overlay a volley estimate carries for the DEFENDER's hypothetical state -
+        /// <see cref="AttackContext.DefenderMoved"/> as a MovedThisRound assumption (present / absent), null when the
+        /// context makes none. The seam generalises (an "as if Shaken" estimate adds its entry here) and never writes
+        /// the defender's tokens: the evaluator's read-only query is the only thing that sees it.
+        /// </summary>
+        private static AssumedTokens? DefenderAssumptions(UnitData defender, AttackContext context) =>
+            context.DefenderMoved switch
+            {
+                true => AssumedTokens.Present(defender, TokenType.MovedThisRound),
+                false => AssumedTokens.Absent(defender, TokenType.MovedThisRound),
+                null => null,
+            };
 
         private static float SumFear(RuleEvaluator evaluator, MeleeResolutionContext resolution, UnitData actor)
         {

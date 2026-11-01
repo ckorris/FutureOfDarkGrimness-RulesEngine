@@ -140,6 +140,19 @@ public sealed class RuleEvaluator
     }
 
     /// <summary>
+    /// #459: <see cref="EvaluateAllNamed(IHookContext, RuleParticipant[])"/> under a hypothetical - every invocation
+    /// the walk builds carries <paramref name="assumed"/> (see <see cref="AssumedTokens"/>), so the token-reading
+    /// conditions answer "as if" for the units it names and from the live containers otherwise. Null changes nothing.
+    /// Deliberately the ONLY entry point that accepts an overlay: it is the read-only query (no log, no one-shot grant
+    /// spent), so an assumption can never reach a live resolution. The estimators (CombatMath) are its callers.
+    /// </summary>
+    public IReadOnlyList<(RuleOperation Op, string RuleName)> EvaluateAllNamed(IHookContext context,
+        AssumedTokens? assumed, params RuleParticipant[] participants)
+    {
+        return NamedOpsOf(CollectSurviving(context, log: false, participants, narrate: null, assumed));
+    }
+
+    /// <summary>
     /// The live twin of <see cref="EvaluateAllNamed"/>: identical to <see cref="EvaluateAll"/> (it LOGS
     /// and spends one-shot NextTrigger grants - a real evaluation, not a read-only query), but also pairs
     /// each surviving operation with the alias-aware display name of the rule that produced it. Used by
@@ -194,7 +207,7 @@ public sealed class RuleEvaluator
     }
 
     private List<TaggedOperation> CollectSurviving(IHookContext context, bool log,
-        RuleParticipant[] participants, Func<RuleOperation, bool>? narrate = null)
+        RuleParticipant[] participants, Func<RuleOperation, bool>? narrate = null, AssumedTokens? assumed = null)
     {
             var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
             try
@@ -240,7 +253,7 @@ public sealed class RuleEvaluator
             foreach (RuleParticipant p in participants)
             {
                 CollectTagged(p.Unit, p.Seat, p.Weapon, p.Models, p.ModelScope, context, tagged, seen,
-                    grantsToConsume, trace);
+                    grantsToConsume, trace, assumed);
             }
         }
         finally
@@ -525,24 +538,25 @@ public sealed class RuleEvaluator
 
     private void CollectTagged(IUnit unit, ERuleSeat seat, IWeapon? weapon, IReadOnlyList<IModel>? models,
         EModelRuleScope modelScope, IHookContext context, List<TaggedOperation> sink, DedupState seen,
-        List<(IUnit Unit, Token Grant)>? grantsToConsume, bool trace)
+        List<(IUnit Unit, Token Grant)>? grantsToConsume, bool trace, AssumedTokens? assumed = null)
     {
         // #447 D1: every invocation this participant produces carries the models it brought
         // (RuleInvocation.ParticipantModels), so a carrier-counting effect counts among them.
+        // #459: and the query's assumed-token overlay (null on every live path), the same way.
         CollectFromRules(unit.RuleDefinitions, unit, carryingWeapon: null, seat, context, sink, seen, trace,
-            participantModels: models);
+            participantModels: models, assumed: assumed);
 
         // Token-granted rules (auras, "gains rule X" buffs): the unit behaves as if it has each rule
         // named by a RuleGrant token. Walked through the same per-rule path as static attachments, so
         // they honour the firing seat/condition and share the dedup (an argument-less rule granted on
         // top of a static copy fires once) and suppression first-pass. Bearer stays the unit, never a
         // weapon — grants live on unit token containers.
-        CollectGrantedRules(unit, seat, context, sink, seen, grantsToConsume, trace, models);
+        CollectGrantedRules(unit, seat, context, sink, seen, grantsToConsume, trace, models, assumed);
 
         if (weapon != null)
         {
             CollectFromRules(weapon.RuleDefinitions, unit, weapon, seat, context, sink, seen, trace,
-                participantModels: models);
+                participantModels: models, assumed: assumed);
         }
 
         // #006 slice F / #093: per-model rules for the model(s) this hook involves, composed per the
@@ -556,14 +570,14 @@ public sealed class RuleEvaluator
             if (modelScope == EModelRuleScope.AllOwners)
             {
                 CollectFromRules(RulesSharedByAll(models), unit, carryingWeapon: null, seat, context, sink,
-                    seen, trace, participantModels: models);
+                    seen, trace, participantModels: models, assumed: assumed);
             }
             else
             {
                 foreach (IModel model in models)
                 {
                     CollectFromRules(model.RuleDefinitions, unit, carryingWeapon: null, seat, context, sink,
-                        seen, trace, participantModels: models);
+                        seen, trace, participantModels: models, assumed: assumed);
                 }
             }
         }
@@ -612,7 +626,8 @@ public sealed class RuleEvaluator
 
     private void CollectFromRules(IReadOnlyList<ResolvedRule> rules, IUnit unit, IWeapon? carryingWeapon,
         ERuleSeat seat, IHookContext context, List<TaggedOperation> sink, DedupState seen, bool trace,
-        bool placedByOtherUnit = false, IReadOnlyList<IModel>? participantModels = null)
+        bool placedByOtherUnit = false, IReadOnlyList<IModel>? participantModels = null,
+        AssumedTokens? assumed = null)
     {
         // One scratch list per walk, cleared per firing entry: a fresh List per entry was measurable
         // (see the DedupState pool below for the profile that found it).
@@ -652,7 +667,7 @@ public sealed class RuleEvaluator
 
                 invocation ??= new RuleInvocation(context, unit, rule.Arguments, DiceRoller: _diceRoller,
                     Weapon: carryingWeapon, Definition: rule.Definition, Attachment: rule,
-                    ParticipantModels: participantModels);
+                    ParticipantModels: participantModels, AssumedTokens: assumed);
 
                 if (!entry.Condition.Evaluate(invocation))
                 {
@@ -694,7 +709,8 @@ public sealed class RuleEvaluator
     /// </summary>
     private void CollectGrantedRules(IUnit unit, ERuleSeat seat, IHookContext context,
         List<TaggedOperation> sink, DedupState seen,
-        List<(IUnit Unit, Token Grant)>? grantsToConsume, bool trace, IReadOnlyList<IModel>? participantModels = null)
+        List<(IUnit Unit, Token Grant)>? grantsToConsume, bool trace, IReadOnlyList<IModel>? participantModels = null,
+        AssumedTokens? assumed = null)
     {
         if (_ruleResolver == null)
         {
@@ -756,13 +772,13 @@ public sealed class RuleEvaluator
         if (granted != null)
         {
             CollectFromRules(granted, unit, carryingWeapon: null, seat, context, sink, seen, trace,
-                participantModels: participantModels);
+                participantModels: participantModels, assumed: assumed);
         }
 
         if (grantedByOthers != null)
         {
             CollectFromRules(grantedByOthers, unit, carryingWeapon: null, seat, context, sink, seen, trace,
-                placedByOtherUnit: true, participantModels: participantModels);
+                placedByOtherUnit: true, participantModels: participantModels, assumed: assumed);
         }
     }
 

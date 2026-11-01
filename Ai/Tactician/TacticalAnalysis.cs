@@ -343,12 +343,15 @@ namespace FDG.Ai.Tactician
             return budget;
         }
 
-        /// <summary>Expected shooting damage at a hypothetical distance/cover - CombatMath, positioned.</summary>
+        /// <summary>Expected shooting damage at a hypothetical distance/cover - CombatMath, positioned.
+        /// #459: <paramref name="defenderMoved"/> is the defender's hypothetical MovedThisRound state (null = as it
+        /// stands) - see <see cref="AttackContext.DefenderMoved"/>.</summary>
         public static AttackEstimate ExpectedShootingAt(RuleEvaluator evaluator,
             DataBinding<UnitData> attacker, DataBinding<UnitData> defender,
-            float distanceInches, bool defenderInCover = false, bool attackerMoved = false) =>
+            float distanceInches, bool defenderInCover = false, bool attackerMoved = false,
+            bool? defenderMoved = null) =>
             CombatMath.EstimateShooting(evaluator, attacker, defender,
-                new AttackContext(distanceInches, attackerMoved, defenderInCover));
+                new AttackContext(distanceInches, attackerMoved, defenderInCover, DefenderMoved: defenderMoved));
 
         // --- Objectives ---------------------------------------------------------------------------
 

@@ -989,6 +989,9 @@ namespace FDG.Ai.Tactician
             float shootingTotal = 0f;
             float shootingBlocked = 0f;
             float meleeReaching = 0f;
+            // #459: does this candidate move the unit at all? MovementStage stamps MovedThisRound only for a path
+            // longer than 0" (#333 / #425 D4), so a Hold and a zero-length plan both leave the unit "unmoved".
+            bool candidateMoves = candidate.Intent != EMacroIntent.Hold && Distance(now, end) > 0.0001f;
             foreach (DataBinding<UnitData> enemyBinding in EnemyBindings(self.PlayerID))
             {
                 UnitData enemy = enemyBinding.GetValue();
@@ -1087,8 +1090,12 @@ namespace FDG.Ai.Tactician
                 // between the endpoint and where it stands right now is not protection - crediting
                 // it here is what made wall shadows read as safe (#363 facet 3, replaced).
                 float theirReach = Math.Max(1f, endDistance - facts.Advance);
+                // #459: a candidate that moves the unit will have stamped MovedThisRound by the time this fire
+                // arrives, so the estimate prices us as moved (Artillery's unmoved -1 is forfeit); a Hold - or a
+                // plan whose endpoint is where we stand, which the stage does not stamp (#333) - reads the live
+                // token. Fixes the #442 D9 undervaluation of moving an artillery piece.
                 AttackEstimate incoming = ShotEstimate(enemyBinding, _activeUnit, enemyBinding, incoming: true,
-                    new AttackContext(theirReach, AttackerMoved: true));
+                    new AttackContext(theirReach, AttackerMoved: true, DefenderMoved: candidateMoves ? true : null));
                 float incomingValue = ValueFraction(incoming.ExpectedWounds, self);
 
                 // Melee threat: if they can charge the endpoint (charge + 3" melee cylinder),

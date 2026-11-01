@@ -27,6 +27,9 @@ namespace FDG.Rules.Definitions;
 // (RuleParticipant.Models), null when it brought none or off the passive dispatch path. An effect that counts the
 // models carrying its rule counts among THESE when set (Impact: only the charger's models in melee reach roll), and
 // among every living model of the bearer otherwise.
+// #459: AssumedTokens - the read-only overlay a hypothetical QUERY carries (see AssumedTokens): the token-reading
+// conditions ask TokenCount / HasToken below, which answer from the overlay for a (unit, token) it names and from
+// the unit's live container otherwise. Null on every live path.
 public sealed record RuleInvocation(
     IHookContext? Hook,
     IUnit Bearer,
@@ -37,8 +40,21 @@ public sealed record RuleInvocation(
     SpecialRuleDefinition? Definition = null,
     Dispatch.ResolvedRule? Attachment = null,
     int TargetCount = 1,
-    IReadOnlyList<IModel>? ParticipantModels = null)
+    IReadOnlyList<IModel>? ParticipantModels = null,
+    AssumedTokens? AssumedTokens = null)
 {
+    /// <summary>
+    /// #459: how many <paramref name="type"/> tokens <paramref name="unit"/> carries FOR THIS EVALUATION - the
+    /// overlay's count when <see cref="AssumedTokens"/> names the pair, the live container's otherwise. Every
+    /// condition that reads a token count reads it through here, so one hypothetical answers them all.
+    /// </summary>
+    public int TokenCount(IUnit unit, TokenType type) =>
+        AssumedTokens != null && AssumedTokens.TryGetCount(unit, type, out int assumed)
+            ? assumed
+            : unit.Tokens.GetTokenCount(type);
+
+    /// <summary>#459: <see cref="TokenCount"/> &gt; 0.</summary>
+    public bool HasToken(IUnit unit, TokenType type) => TokenCount(unit, type) > 0;
     /// <summary>
     /// The unit an effect lands on: the explicit <see cref="Target"/> for activated
     /// abilities, or the <see cref="Bearer"/> itself for passive rules.

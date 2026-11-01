@@ -66,6 +66,22 @@ namespace FDG.Tests
             Assert.That(deaths[0].Overlap, Is.False, "a lone casualty has nothing to overlap with");
         }
 
+        [Test]
+        public async Task OvershootingTally_IsClampedNotThrown()
+        {
+            // A tally a hair over a model's remaining wounds (float drift across fractional packets, or a
+            // client's lagging copy of the model) used to throw and end the game. It kills the model, once.
+            CombatMetadata metadata = NewMetadata(defenderModels: 2);
+
+            var assign = new AssignWoundsResults(metadata.DefendingUnit, totalWoundsToAssign: 2);
+            assign.PendingWounds[0].Wounds = 1.0005f;
+            metadata.AddResult(assign);
+
+            await RunApplyWoundsStage(metadata);
+
+            Assert.That(_presenter.Beats.OfType<ModelDiedBeat>().ToList(), Has.Count.EqualTo(1));
+        }
+
         private async Task RunApplyWoundsStage(CombatMetadata metadata)
         {
             var stage = new ApplyWoundsStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>());

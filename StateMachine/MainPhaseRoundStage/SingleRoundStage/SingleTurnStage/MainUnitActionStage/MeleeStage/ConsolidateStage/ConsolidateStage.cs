@@ -1,4 +1,3 @@
-using System.Text;
 using FDG.Data;
 using FDG.StageResolution;
 using FDG.StageResolution.Requests;
@@ -59,29 +58,27 @@ namespace FDG.Stages
             List<EnemyModelFootprint> friendlyFootprints =
                 MovementUtilities.GetFriendlyModelFootprints(consolidatingUnit, context.GameContext);
 
-            var request = new ConsolidationMoveRequest(playerID,
-                reason == EConsolidationReason.Wipeout
-                    ? "Consolidating After a Wipeout" : "Consolidating After Disengaging",
-                consolidatingUnit, maxDist, reason, canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain);
-
-            List<ModelMoveEntry> movements = await context.PlayerRequester()
-                .RequestDecision<ConsolidationMoveRequest, List<ModelMoveEntry>>(request);
+            string title = reason == EConsolidationReason.Wipeout
+                ? "Consolidating After a Wipeout" : "Consolidating After Disengaging";
 
             // Validate against the cap, terrain, and enemy footprints. Coherency is LENIENT here (#159): a unit
             // left out of coherency by a mid-unit casualty can't always re-form within the 1-3" consolidation
             // cap, so the move is only rejected for coherency if it makes coherency WORSE than it already was.
             // (The resolvers still re-form toward the group within the cap — this just keeps a badly-holed unit
             // from being trapped with no legal consolidation.)
+            // A rejected reply is asked again rather than thrown (a throw ends the game); once the attempts run
+            // out the unit holds, which is always available - the "Stay in place" reply.
             IEnumerable<ITerrain>? terrain = context.GameContext.TableState.Terrain.Objects;
-            if (!MovementUtilities.ValidateConsolidationPaths(movements, maxDist, enemyFootprints, canMoveThroughEnemies,
-                    ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain, out List<ReasonForInvalidMove> errors,
-                    friendlyFootprints))
-            {
-                StringBuilder sb = new StringBuilder(errors[0].ToString());
-                for (int i = 1; i < errors.Count; i++) sb.Append(", ").Append(errors[i].ToString());
-                throw new RequestResponseInvalidException(
-                    $"Response to {nameof(ConsolidateStage)} was invalid: {sb}");
-            }
+            List<ModelMoveEntry> movements = await ValidatedRequesting.RequestUntilValid<ConsolidationMoveRequest, List<ModelMoveEntry>>(
+                context.GameContext,
+                () => new ConsolidationMoveRequest(playerID, title, consolidatingUnit, maxDist, reason,
+                    canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain),
+                reply => MovementUtilities.ValidateConsolidationPaths(reply, maxDist, enemyFootprints, canMoveThroughEnemies,
+                        ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain, out List<ReasonForInvalidMove> errors,
+                        friendlyFootprints)
+                    ? null : MovementUtilities.DescribeErrors(errors),
+                () => new List<ModelMoveEntry>(),
+                consolidatingUnit.GetValue().Name, "stays where it is");
 
             ApplyMovements(movements);
             await OnConsolidated.Activate(context);

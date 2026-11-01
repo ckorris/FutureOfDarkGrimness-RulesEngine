@@ -18,6 +18,11 @@ namespace FDG.Calculator
     /// declared the charge - what the engine snapshots at activation start and the "charges / is charged from over
     /// 6"" rules read (Ferocious's extra hit, a Changebound defender's -1). Only a charging melee carries it; 0 (the
     /// default) means not given, and no charge arm fires.</param>
+    /// <param name="DefenderMoved">#459 D4: whether the defender has moved this round. The calculator stamps the real
+    /// MovedThisRound token on the scratch defender (the same token MovementStage stamps), so every rule that reads
+    /// the target's moved state - 3.6 Artillery's -1 to hit against it over 12" needs a defender that held - sees
+    /// it through the real stages. Meaningful only when <see cref="CombatReport.DefenderMovedMatters"/> is true;
+    /// the front end offers the input only then.</param>
     public sealed record CombatSituation(
         ECombatMode Mode = ECombatMode.Shooting,
         float DistanceInches = 12f,
@@ -25,7 +30,8 @@ namespace FDG.Calculator
         bool AttackerMoved = false,
         bool AttackerCharging = false,
         bool AttackerFatigued = false,
-        float ChargeFromInches = 0f);
+        float ChargeFromInches = 0f,
+        bool DefenderMoved = false);
 
     /// <summary>
     /// One save-threshold group within a volley - the shape the save stage produces when a per-hit rule
@@ -70,6 +76,11 @@ namespace FDG.Calculator
     /// defender ACTUALLY lost (wounds are applied as the volleys resolve, so a later weapon fires into
     /// the casualties the earlier ones caused and cannot over-kill a dead unit).
     /// </summary>
+    /// <summary>
+    /// The calculator's answer. <paramref name="DefenderMovedMatters"/> (#459 D4) is whether any rule the defender
+    /// carries reads its MovedThisRound token (<see cref="Rules.Dispatch.TokenReadership"/>), so the front end knows
+    /// when <see cref="CombatSituation.DefenderMoved"/> is worth asking about; false for a plain target.
+    /// </summary>
     public sealed record CombatReport(
         ECombatMode Mode,
         string AttackerName,
@@ -80,5 +91,6 @@ namespace FDG.Calculator
         float ExpectedHits,
         float ExpectedWounds,
         IReadOnlyList<string> Notes,
-        IReadOnlyList<string> Warnings);
+        IReadOnlyList<string> Warnings,
+        bool DefenderMovedMatters = false);
 }

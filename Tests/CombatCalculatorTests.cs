@@ -107,6 +107,33 @@ namespace FDG.Tests
         }
 
         [Test]
+        public void ADefenderMoved_DropsArtillerysMinusOne_AndTheReportSaysTheInputMatters()
+        {
+            // #459 D4: 3.6 Artillery's Subject arm is -1 to hit for shooters over 12" away, as long as the
+            // artillery unit has not moved this round. The calculator stamps the real MovedThisRound token on the
+            // scratch defender, so the real stage drops the -1; a plain target reports that the input is moot.
+            ArmyListFile shooters = Army(Unit("Shooters", 10, 4, 4, Rifle(10)));
+            ArmyListFile guns = Army(Unit("Guns", 10, 4, 4, rules: new[] { "Artillery" }));
+            ArmyListFile plain = Army(Unit("Targets", 10, 4, 4));
+
+            CombatReport held = CombatCalculator.Run(shooters, guns, new CombatSituation(DistanceInches: 18f));
+            CombatReport moved = CombatCalculator.Run(shooters, guns,
+                new CombatSituation(DistanceInches: 18f, DefenderMoved: true));
+            CombatReport plainMoved = CombatCalculator.Run(shooters, plain,
+                new CombatSituation(DistanceInches: 18f, DefenderMoved: true));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(held.Volleys[0].HitRollNeeded, Is.EqualTo(5), "Artillery that held: -1 to hit it");
+                Assert.That(moved.Volleys[0].HitRollNeeded, Is.EqualTo(4), "Artillery that moved: a plain target");
+                Assert.That(held.DefenderMovedMatters, Is.True, "a rule on the defender reads MovedThisRound");
+                Assert.That(moved.DefenderMovedMatters, Is.True);
+                Assert.That(plainMoved.DefenderMovedMatters, Is.False, "nothing on a plain target reads it");
+                Assert.That(plainMoved.Volleys[0].HitRollNeeded, Is.EqualTo(4), "and the token changes nothing");
+            });
+        }
+
+        [Test]
         public void ToughIsApplied_SoAModelCanSoakMoreThanOneWound()
         {
             // The regression this guards: GameBootstrap.CreateArmy does NOT run the unit-creation rules,

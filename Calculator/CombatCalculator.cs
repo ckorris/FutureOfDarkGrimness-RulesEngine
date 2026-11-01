@@ -7,6 +7,7 @@ using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
+using FDG.Rules.Tokens;
 using FDG.SaveLoad;
 using FDG.Stages;
 using FDG.Utilities;
@@ -120,6 +121,16 @@ namespace FDG.Calculator
                 FatigueUtilities.ApplyFatigued(attackingUnit);
             }
 
+            // #459 D4: a defender that moved this round carries the real token MovementStage would have stamped,
+            // so Artillery's Subject arm (and any other reader of the target's moved state) answers through the
+            // real stages. Whether anything on this defender reads it is reported so the front end offers the
+            // input only when it changes something.
+            bool defenderMovedMatters = TokenReadership.IsReadByAnyRule(defendingUnit, TokenType.MovedThisRound);
+            if (situation.DefenderMoved && !defendingUnit.Tokens.HasToken(TokenType.MovedThisRound))
+            {
+                defendingUnit.Tokens.AddToken(TokenDefinitionCatalog.Create(TokenType.MovedThisRound));
+            }
+
             float woundsBefore = defendingUnit.RemainingWounds;
 
             // Batches are taken once, before a shot is fired: a volley is declared with the unit as it
@@ -166,7 +177,8 @@ namespace FDG.Calculator
 
             return new CombatReport(situation.Mode, attackingUnit.Name, defendingUnit.Name,
                 woundsBefore, woundsAfter, volleys,
-                volleys.Sum(volley => volley.ExpectedHits), woundsBefore - woundsAfter, notes, warnings);
+                volleys.Sum(volley => volley.ExpectedHits), woundsBefore - woundsAfter, notes, warnings,
+                defenderMovedMatters);
         }
 
         /// <summary>Runs one weapon profile's batch through the real stage chain.</summary>

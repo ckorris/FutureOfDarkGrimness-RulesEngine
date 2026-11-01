@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using FDG.SaveLoad;
 
 namespace FDG.ArmyBuilding
@@ -27,5 +28,11 @@ namespace FDG.ArmyBuilding
         /// so the army re-opens and re-edits against the book it was built with — never silently re-pointed at
         /// a newer catalog. Null when <see cref="Selections"/> is null.</summary>
         public BookFile? Book { get; set; }
+
+        /// <summary>#438 D3: the Replace purchases <see cref="ListCompiler.Compile"/> could not land (no target
+        /// left to replace), one line each - a compile-time finding, never written to the file: it is recomputed
+        /// from <see cref="Selections"/> on every compile, and a hand-authored army has none.</summary>
+        [System.Text.Json.Serialization.JsonIgnore]
+        public List<UnappliedReplace> UnappliedReplaces { get; } = new();
     }
 }

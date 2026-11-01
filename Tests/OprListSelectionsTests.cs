@@ -261,4 +261,38 @@ public class OprListSelectionsTests
         Assert.That(compiled.Units, Has.Count.EqualTo(1));
         Assert.That(compiled.Units[0].ModelCount, Is.EqualTo(10));
     }
+
+    // #438 D3 (owner request): a pick our compiler cannot land reaches the reconciliation by name, so the player
+    // learns WHICH purchase the totals disagree on rather than that something is off.
+    [Test]
+    public void Reconstruct_NamesEveryReplaceOurCompilerCouldNotApply()
+    {
+        // A Replace the Grunts can never afford: they hold no Sword.
+        BookFile book = MakeBook();
+        book.Units.Single(u => u.Id == "grunts").Sections.Add(new UpgradeSection
+        {
+            Id = "S2", Label = "Replace one Sword", Variant = UpgradeVariant.Replace, Affects = UpgradeAffects.One,
+            Targets = { "Sword" },
+            Options = { new UpgradeOption { Id = "O2", Label = "Axe (A2)", Cost = 10,
+                WeaponsGained = { new WeaponFileEntry { Name = "Axe", Quantity = 1, Attacks = 2 } } } },
+        });
+        string json = ListJson(170,
+            UnitJson("grunts", "Grunts", 160, "SelGrunts",
+                selectedUpgrades: """[ { "upgrade": { "uid": "S2" }, "option": { "uid": "O2", "label": "Axe (A2)" } } ]"""));
+
+        OprForgeSessionResult result = OprListImporter.ReconstructSelections(json, book);
+
+        Assert.That(result.UnappliedReplaces.Select(u => u.Message), Is.EqualTo(new[]
+        {
+            "Grunts: 'Replace one Sword -> Axe' not applied (needs 1 more Sword)",
+        }));
+        Assert.That(result.OurTotalPoints, Is.EqualTo(160), "not charged");
+        Assert.That(result.TheirTotalPoints, Is.EqualTo(170), "Army Forge billed it - the line is why the totals differ");
+
+        OprForgeSessionResult clean = OprListImporter.ReconstructSelections(
+            ListJson(175, UnitJson("grunts", "Grunts", 160, "SelGrunts",
+                selectedUpgrades: """[ { "upgrade": { "uid": "S1" }, "option": { "uid": "O1", "label": "Banner" } } ]""")),
+            MakeBook());
+        Assert.That(clean.UnappliedReplaces, Is.Empty);
+    }
 }

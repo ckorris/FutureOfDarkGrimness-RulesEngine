@@ -45,7 +45,7 @@ namespace FDG.ArmyBuilding
             };
 
             foreach (BuilderUnit bu in list.Units)
-                army.Units.Add(CompileUnitDetailed(book, bu).Unit);
+                army.Units.Add(CompileUnitDetailed(book, bu, army.UnappliedReplaces).Unit);
 
             MergeCombinedUnits(list, army);
 
@@ -183,8 +183,12 @@ namespace FDG.ArmyBuilding
 
         /// <summary>Compiles one unit and also returns its final wargear items (post-replaces), which the
         /// builder UI needs for display and target-availability. The item's rules are already flattened into
-        /// the returned unit's SpecialRules — the item list is presentation/targeting metadata.</summary>
-        public static (UnitFileEntry Unit, List<ItemEntry> Items) CompileUnitDetailed(BookFile book, BuilderUnit bu)
+        /// the returned unit's SpecialRules — the item list is presentation/targeting metadata.
+        /// <para>#438 D3: <paramref name="unapplied"/>, when given, receives one <see cref="UnappliedReplace"/> per
+        /// Replace purchase the loadout could not afford even after the #323 retry - reporting only, the compile
+        /// itself is unchanged.</para></summary>
+        public static (UnitFileEntry Unit, List<ItemEntry> Items) CompileUnitDetailed(BookFile book, BuilderUnit bu,
+            ICollection<UnappliedReplace>? unapplied = null)
         {
             RosterUnit roster = book.Units.FirstOrDefault(u => u.Id == bu.RosterUnitId)
                 ?? throw new InvalidOperationException($"Roster unit '{bu.RosterUnitId}' not found in book '{book.Name}'.");
@@ -288,6 +292,7 @@ namespace FDG.ArmyBuilding
             }
 
             ApplyStarvedReplaces(unit, items, starved, perModelItems);
+            if (unapplied != null) ReportUnappliedReplaces(unit, items, starved, unapplied);
 
             // #197 Sergeant: champion marks attach AFTER every section has applied - a later "Replace all
             // Hand Weapons" must not eat the mark; the champion attacks with whatever the unit ends up
@@ -520,6 +525,49 @@ namespace FDG.ArmyBuilding
                     starved[i] = (section, option, isAll ? 0 : remaining - applications);
                     progressed = true;
                 }
+            }
+        }
+
+        /// <summary>
+        /// #438 D3 (owner request): once <see cref="ApplyStarvedReplaces"/> has reached its fixpoint, every parked
+        /// Replace still owing applications is a purchase the compile neither applied nor charged. One
+        /// <see cref="UnappliedReplace"/> each, naming the scarce target(s): for a counted swap those whose matched
+        /// copies fall short of what is still owed (the MIN-over-targets rule of <see cref="AvailableApplications"/>,
+        /// so a combo short of only its Hand Weapon names the Hand Weapon), for an All every target (its pool is the
+        /// MAX, which is zero only when nothing matches).
+        /// </summary>
+        private static void ReportUnappliedReplaces(UnitFileEntry unit, List<ItemEntry> items,
+            List<(UpgradeSection Section, UpgradeOption Option, int Remaining)> starved,
+            ICollection<UnappliedReplace> unapplied)
+        {
+            foreach ((UpgradeSection section, UpgradeOption option, int remaining) in starved)
+            {
+                if (remaining <= 0) continue;
+                bool isAll = section.Affects == UpgradeAffects.All;
+
+                var missing = new List<string>();
+                foreach (string target in section.Targets)
+                {
+                    (string name, int perApplication) = ParseTarget(target);
+                    int matched = MatchedCount(unit.Weapons, items, target);
+                    if (isAll) missing.Add(name);
+                    else if (matched < remaining) missing.Add($"{(remaining - matched) * perApplication} more {name}");
+                }
+
+                string gains = string.Join(", ",
+                    option.WeaponsGained.Select(w => w.Name).Concat(option.ItemsGained.Select(i => i.Name)));
+                if (gains.Length == 0) gains = option.Label;
+
+                unapplied.Add(new UnappliedReplace
+                {
+                    UnitName = unit.Name,
+                    SectionLabel = string.IsNullOrWhiteSpace(section.Label)
+                        ? "Replace " + string.Join(" and ", section.Targets)
+                        : section.Label,
+                    Gains = gains,
+                    Shortfall = isAll ? 0 : remaining,
+                    Missing = missing,
+                });
             }
         }
 

@@ -210,12 +210,15 @@ public class ArmyForgeCompilerTests
         Assert.That(army.AuxiliaryUnits.Single(u => u.Id == "Changelings [10]").ModelCount, Is.EqualTo(10));
     }
 
-    private static UnitFileEntry CompileOne(RosterUnit unit, params UpgradeChoice[] choices)
+    private static UnitFileEntry CompileOne(RosterUnit unit, params UpgradeChoice[] choices) =>
+        CompileArmy(unit, choices).Units.Single();
+
+    private static BuiltArmyFile CompileArmy(RosterUnit unit, params UpgradeChoice[] choices)
     {
         var book = new BookFile { Name = "T", Units = { unit } };
         var bu = new BuilderUnit { RosterUnitId = unit.Id };
         bu.Choices.AddRange(choices);
-        return ListCompiler.Compile(book, new BuilderList { PointsLimit = 100000, Units = { bu } }).Units.Single();
+        return ListCompiler.Compile(book, new BuilderList { PointsLimit = 100000, Units = { bu } });
     }
 
     [Test]
@@ -692,6 +695,121 @@ public class ArmyForgeCompilerTests
                 "a section never yields to one authored above it");
             Assert.That(ListCompiler.CountedSwapYieldsTo(roster, "missing", combo, hammer), Is.False);
         });
+    }
+
+    // ── #438 D3 (owner request 2026-11-01): a Replace that never lands says so ──────────────────────────
+
+    // The combo lacks its Hand Weapon, so it can never apply: the compile reports the pick, the unit and the ONE
+    // scarce target (the pistol is there; the MIN-over-targets rule starves it on the hand weapon alone), ASCII,
+    // and still charges nothing for it.
+    [Test]
+    public void AStarvedReplace_IsReported_NamingTheUnitThePickAndTheScarceTarget()
+    {
+        RosterUnit roster = AssaultBrothers();
+        roster.Weapons.RemoveAll(w => w.Name == "Hand Weapon");
+
+        BuiltArmyFile army = CompileArmy(roster, new UpgradeChoice { SectionId = "combo", OptionId = "hammer", Count = 1 });
+
+        Assert.That(army.UnappliedReplaces.Select(u => u.Message), Is.EqualTo(new[]
+        {
+            "Assault Brothers: 'Replace one Heavy Pistol and Hand Weapon -> Heavy Pistol, Energy Hammer' not applied " +
+            "(needs 1 more Hand Weapon)",
+        }));
+        UnappliedReplace line = army.UnappliedReplaces.Single();
+        Assert.That((line.UnitName, line.SectionLabel, line.Gains, line.Shortfall),
+            Is.EqualTo(("Assault Brothers", "Replace one Heavy Pistol and Hand Weapon", "Heavy Pistol, Energy Hammer", 1)));
+        Assert.That(line.Missing, Is.EqualTo(new[] { "1 more Hand Weapon" }));
+        Assert.That(line.Message.All(c => c < 0x80), Is.True, "ASCII");
+        Assert.That(army.Units.Single().PointCost, Is.EqualTo(150), "reporting only: still not charged");
+    }
+
+    // The D3 case itself: the any-swap yields to the pass-through combo, both land, nothing to report.
+    [Test]
+    public void TheD3PassThroughCombo_LandsWithNothingToReport()
+    {
+        BuiltArmyFile army = CompileArmy(AssaultBrothers(),
+            new UpgradeChoice { SectionId = "combo", OptionId = "hammer", Count = 1 },
+            new UpgradeChoice { SectionId = "any", OptionId = "plasma", Count = 5 });
+
+        Assert.That(army.UnappliedReplaces, Is.Empty);
+        Assert.That(army.Units.Single().PointCost, Is.EqualTo(185));
+    }
+
+    // The consuming rival of ReplaceAny_DoesNotYieldToAConsumingRival: six pistols asked of five, so the combo below
+    // starves - and now says which target it ran out of. A partial Any names its own shortfall the same way.
+    [Test]
+    public void AConsumingRivalThatStarves_ReportsItsShortfall()
+    {
+        BuiltArmyFile army = CompileArmy(AssaultBrothers(),
+            new UpgradeChoice { SectionId = "combo", OptionId = "chainsword", Count = 1 },
+            new UpgradeChoice { SectionId = "any", OptionId = "plasma", Count = 5 });
+        Assert.That(army.UnappliedReplaces.Select(u => u.Message), Is.EqualTo(new[]
+        {
+            "Assault Brothers: 'Replace one Heavy Pistol and Hand Weapon -> Great Chain-Sword' not applied " +
+            "(needs 1 more Heavy Pistol)",
+        }));
+
+        BuiltArmyFile partial = CompileArmy(AssaultBrothers(),
+            new UpgradeChoice { SectionId = "any", OptionId = "plasma", Count = 7 });
+        Assert.That(partial.UnappliedReplaces.Single().Message,
+            Is.EqualTo("Assault Brothers: 'Replace any Heavy Pistol -> Plasma Pistol' not applied (needs 2 more Heavy Pistol)"));
+        Assert.That(partial.Units.Single().PointCost, Is.EqualTo(175), "the five that landed are charged, the two are not");
+    }
+
+    // A "Replace all" parks only when it found NO target (EveryMatch); if none ever turns up there is no count to
+    // quote, so the line says the unit has none. The mutual pair of StarvedReplace_ThatIsNeverFed... reports both.
+    [Test]
+    public void AReplaceAllWithNothingToReplace_SaysTheUnitHasNone_AndAMutualPairReportsBoth()
+    {
+        var all = new RosterUnit
+        {
+            Id = "u", Name = "U", Quality = 4, Defense = 4, BaseModelCount = 1, MinModels = 1, MaxModels = 1,
+            BasePointCost = 50,
+            Sections =
+            {
+                new UpgradeSection { Id = "a", Variant = UpgradeVariant.Replace, Affects = UpgradeAffects.All,
+                    Targets = { "Sword" }, Options = { new UpgradeOption { Id = "o", Label = "Axe (A1)", Cost = 5, WeaponsGained = { Wpn("Axe") } } } },
+            },
+        };
+        BuiltArmyFile allArmy = CompileArmy(all, new UpgradeChoice { SectionId = "a", OptionId = "o", Count = 1 });
+        Assert.That(allArmy.UnappliedReplaces.Single().Message,
+            Is.EqualTo("U: 'Replace Sword -> Axe' not applied (the unit has no Sword)"),
+            "a bare section label falls back to its targets; the gains come from the weapon names, not the priced label");
+        Assert.That(allArmy.UnappliedReplaces.Single().Shortfall, Is.EqualTo(0));
+
+        var mutual = new RosterUnit
+        {
+            Id = "u", Name = "U", Quality = 4, Defense = 4, BaseModelCount = 1, MinModels = 1, MaxModels = 1,
+            BasePointCost = 50,
+            Sections =
+            {
+                new UpgradeSection { Id = "a", Label = "Replace Sword", Variant = UpgradeVariant.Replace, Affects = UpgradeAffects.One,
+                    Targets = { "Sword" }, Options = { new UpgradeOption { Id = "o", Cost = 5, WeaponsGained = { Wpn("Axe") } } } },
+                new UpgradeSection { Id = "b", Label = "Replace Axe", Variant = UpgradeVariant.Replace, Affects = UpgradeAffects.One,
+                    Targets = { "Axe" }, Options = { new UpgradeOption { Id = "o", Cost = 5, WeaponsGained = { Wpn("Sword") } } } },
+            },
+        };
+        BuiltArmyFile mutualArmy = CompileArmy(mutual,
+            new UpgradeChoice { SectionId = "a", OptionId = "o", Count = 1 },
+            new UpgradeChoice { SectionId = "b", OptionId = "o", Count = 1 });
+        Assert.That(mutualArmy.UnappliedReplaces.Select(u => u.Message), Is.EqualTo(new[]
+        {
+            "U: 'Replace Sword -> Axe' not applied (needs 1 more Sword)",
+            "U: 'Replace Axe -> Sword' not applied (needs 1 more Axe)",
+        }));
+    }
+
+    // The line is a compile-time finding, not file content: a saved Forge army carries no trace of it.
+    [Test]
+    public void UnappliedReplaces_AreNotSerialized()
+    {
+        RosterUnit roster = AssaultBrothers();
+        roster.Weapons.RemoveAll(w => w.Name == "Hand Weapon");
+        BuiltArmyFile army = CompileArmy(roster, new UpgradeChoice { SectionId = "combo", OptionId = "hammer", Count = 1 });
+
+        string json = JsonSerializer.Serialize(army, RuleJson.Options);
+        Assert.That(json, Does.Not.Contain("UnappliedReplaces").IgnoreCase);
+        Assert.That(JsonSerializer.Deserialize<BuiltArmyFile>(json, RuleJson.Options)!.UnappliedReplaces, Is.Empty);
     }
 
     // ── #324 plural matching ───────────────────────────────────────────────────────────────────────────

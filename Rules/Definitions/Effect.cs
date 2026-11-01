@@ -1068,8 +1068,16 @@ public abstract record Effect
     /// One attachment shared by several models (a fresh army's model grant) fires once and counts them all; a
     /// resumed game rehydrates one attachment per model and fires once per model, counting one each - the same
     /// total. Only living models count, so casualties taken before the charge (a Dangerous terrain test at the
-    /// start of the activation, #446) shrink the pool. Models out of melee range still count: the 3.6 text has no
-    /// reach condition (#447 D1, owner review). The op carries the carrier count so the stage can show the sum.
+    /// start of the activation, #446) shrink the pool.
+    /// </para>
+    /// <para>
+    /// #447 D1 (reversed by the owner 2026-11-01): only the carriers IN MELEE REACH roll. The charge-contact stage
+    /// brings the charger's models within melee range of the target (<c>ResolveImpactHitsStage.ModelsInMeleeReach</c>,
+    /// the melee stage's own 3" strike reach) as the participant's models, and the effect counts carriers among
+    /// <see cref="RuleInvocation.ParticipantModels"/>; a strung-out unit with 2 of 5 carriers in reach rolls 2 dice.
+    /// The op still carries the living carrier count wherever they stand (<c>Carriers</c>), so the stage can say
+    /// "2 of 5 models in melee range". No participant models (a hand-built invocation, the AI's CombatMath, which
+    /// models no positions) means every living carrier counts, as before.
     /// </para>
     /// </summary>
     public sealed record ChargeImpactHits(ValueSource DiceCount, int ArmorPenetration = 0) : Effect
@@ -1085,23 +1093,34 @@ public abstract record Effect
                 return;
             }
 
-            operations.Add(new RuleOperation.ChargeImpactHits(perModel * carriers, ArmorPenetration, carriers));
+            // #447 D1: the carriers among the models the participant brought - the charger's models in melee reach
+            // at charge contact. A zero-dice op still goes out when carriers stand out of reach, so the stage can
+            // explain the missing roll ("0 of 5 models in melee range").
+            int inReach = ruleInvocation.ParticipantModels == null
+                ? carriers
+                : CountCarriers(ruleInvocation, ruleInvocation.ParticipantModels);
+
+            operations.Add(new RuleOperation.ChargeImpactHits(perModel * inReach, ArmorPenetration, inReach,
+                Carriers: carriers, PerModel: perModel));
         }
 
         /// <summary>
         /// The living models carrying THIS attachment (#447's per-model accounting, see the type doc) - shared with
         /// <see cref="DealAutoWounds"/> (#434: Ravage(X) is per model the same way, so a joined hero's own Ravage
-        /// counts the hero and the host's counts the host's models).
+        /// counts the hero and the host's counts the host's models). <paramref name="among"/> restricts the count to
+        /// those models (#447 D1: the charger's models in melee reach); null counts the bearer's every model. Which
+        /// models CARRY the copy is always read off the whole unit, so the subset changes the count, never the kind.
         /// </summary>
-        internal static int CountCarriers(RuleInvocation invocation)
+        internal static int CountCarriers(RuleInvocation invocation, IReadOnlyList<IModel>? among = null)
         {
             IUnit unit = invocation.Bearer;
+            IReadOnlyList<IModel> counted = among ?? unit.Models;
             Dispatch.ResolvedRule? attachment = invocation.Attachment;
             SpecialRuleDefinition? definition = invocation.Definition;
             if (attachment == null || definition == null)
             {
                 // Off the passive dispatch path (a hand-built invocation): treat it as unit-wide.
-                return unit.Models.Count(m => m.GetIsAlive());
+                return counted.Count(m => m.GetIsAlive());
             }
 
             ModelID? heroId = unit.JoinedHeroModelId;
@@ -1113,7 +1132,7 @@ public abstract record Effect
             {
                 // No core Impact rides a weapon (the stage passes no charger weapons), but a charge-contact rule
                 // that did would count the models wielding a weapon carrying it.
-                return unit.Models.Count(m => m.GetIsAlive() && m.Weapons.Any(w => w.RuleDefinitions.Any(Matches)));
+                return counted.Count(m => m.GetIsAlive() && m.Weapons.Any(w => w.RuleDefinitions.Any(Matches)));
             }
 
             bool onUnit = unit.RuleDefinitions.Any(Matches);
@@ -1122,7 +1141,7 @@ public abstract record Effect
                 ? RuleGrantQueries.UnitHasGrantedRule(unit, definition)
                 : !onUnit && !onAnyModel; // an argumented copy found on no carrier came from somewhere unit-wide
 
-            return unit.Models.Count(m => m.GetIsAlive()
+            return counted.Count(m => m.GetIsAlive()
                 && (granted || m.RuleDefinitions.Any(Matches) || (onUnit && !IsJoinedHero(m))));
         }
     }

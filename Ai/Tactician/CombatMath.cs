@@ -271,8 +271,11 @@ namespace FDG.Ai.Tactician
             // die a hit on 2+, resolved as a synthetic AP-0 attack before any swing. Both rules' 3.6 Fatigue
             // clauses (#422) are entry conditions, so the shared evaluation below already drops a Fatigued
             // charger's dice and a Fatigued defender's Brace - nothing to mirror by hand. #447: the charger
-            // joins with its living models, as in the stage (ChargerParticipant), so Impact sums per model -
-            // a joined hero's own Impact included - through the same effect the stage runs.
+            // joins with its living models (ChargerParticipant), so Impact sums per model - a joined hero's own
+            // Impact included - through the same effect the stage runs. #447 D1 (owner ruling 2026-11-01): the
+            // live stage counts only the carriers in melee reach when the charge lands; this estimate models no
+            // positions (the charge has not happened), so it keeps EVERY living carrier - the upper bound, the
+            // expected case for a unit that charges in a line - rather than inventing a spread (#442).
             float impactWounds = 0f;
             var attackerTally = new Tally();
             var defenderTally = new Tally();

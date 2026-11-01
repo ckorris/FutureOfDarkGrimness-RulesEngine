@@ -23,6 +23,10 @@ namespace FDG.Rules.Definitions;
 // #434: TargetCount - how many units the activated ability was resolved against (1 on the passive path), so a value can
 // depend on the spread: 3.6 Piercing / Precision Tag "place X tokens on one enemy unit, or one token on X enemy units"
 // (ValueSource.ArgIfSoleTarget).
+// #447 D1 (reversed 2026-11-01): ParticipantModels - the models the firing participant brought to the evaluation
+// (RuleParticipant.Models), null when it brought none or off the passive dispatch path. An effect that counts the
+// models carrying its rule counts among THESE when set (Impact: only the charger's models in melee reach roll), and
+// among every living model of the bearer otherwise.
 public sealed record RuleInvocation(
     IHookContext? Hook,
     IUnit Bearer,
@@ -32,7 +36,8 @@ public sealed record RuleInvocation(
     IWeapon? Weapon = null,
     SpecialRuleDefinition? Definition = null,
     Dispatch.ResolvedRule? Attachment = null,
-    int TargetCount = 1)
+    int TargetCount = 1,
+    IReadOnlyList<IModel>? ParticipantModels = null)
 {
     /// <summary>
     /// The unit an effect lands on: the explicit <see cref="Target"/> for activated

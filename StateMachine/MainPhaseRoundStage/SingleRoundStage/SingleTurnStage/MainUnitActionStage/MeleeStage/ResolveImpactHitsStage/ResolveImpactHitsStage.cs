@@ -28,11 +28,18 @@ namespace FDG.Stages
     /// (Condition.CountsAsFatiguedInMelee, read on each rule's own bearer), so a Fatigued charger
     /// contributes no dice and a Fatigued defender cancels none.
     ///
-    /// #447: Impact(X) is per model. The charger joins with its living models (<see cref="ChargerParticipant"/>)
+    /// #447: Impact(X) is per model. The charger joins with its models (<see cref="ChargerParticipantInReach"/>)
     /// so per-model copies - a joined hero's own Impact, a per-model grant - fire alongside the unit's, and
-    /// Effect.ChargeImpactHits emits X x the living models carrying each copy; the sink sums them, Brace
+    /// Effect.ChargeImpactHits emits X x the models carrying each copy; the sink sums them, Brace
     /// subtracts from that total. The log line and the dice beat's context show the sum
     /// (<see cref="DescribeDicePool"/>): "Iron Tusk-Beast Riders' Impact rolled 5 dice (5 models x Impact(1))".
+    ///
+    /// #447 D1 (reversed by the owner 2026-11-01): only the charger's living models IN MELEE REACH of the target
+    /// when the charge lands roll - <see cref="MeleeRangeUtilities.AreModelsInMeleeRange"/>, the same 3" (4" vertical)
+    /// cylinder that decides who may strike (<see cref="DetermineInRangeAttackersStage"/>), read here before pile-in.
+    /// A strung-out unit with 2 of 5 carriers in reach rolls 2 dice, and the pool text says so:
+    /// "Riders' Impact rolled 2 dice (2 of 5 models in melee range x Impact(1))"; when every carrier is in reach the
+    /// text keeps its old shape.
     /// </summary>
     public class ResolveImpactHitsStage : ParentStage<ICombatActionContext, ICombatMetadata>
     {
@@ -72,7 +79,8 @@ namespace FDG.Stages
                 // No Impact rule on the charger, a Fatigued charger (its Impact's condition failed), or a
                 // Brace defender cancelled the dice down to zero or below — skip straight to the normal
                 // melee flow. Say so when there WERE dice to cancel, so the missing roll is explained.
-                if (named.Any(n => n.Op is RuleOperation.ChargeImpactHits { DiceCount: > 0 }))
+                if (named.Any(n => n.Op is RuleOperation.ChargeImpactHits { DiceCount: > 0 } or
+                        RuleOperation.ChargeImpactHits { Carriers: > 0 }))
                 {
                     GameContext.Log($"{Possessive(attacker.Name)} Impact rolls no dice ({pool}).");
                 }
@@ -103,16 +111,18 @@ namespace FDG.Stages
         }
 
         /// <summary>
-        /// The participants of the charge-contact evaluation: the charger with its living models
-        /// (<see cref="ChargerParticipant"/>), then the defender as a Subject with its living models and each melee
-        /// weapon (<see cref="DetermineStrikeOrderStage.SubjectWithMeleeWeapons"/>, so weapon-scoped Brace fires).
-        /// Shared with the AI's CombatMath and the Combat Calculator so their dice match the stage's.
+        /// The participants of the charge-contact evaluation: the charger with its living models in melee reach of
+        /// the defender (<see cref="ChargerParticipantInReach"/>, #447 D1), then the defender as a Subject with its
+        /// living models and each melee weapon (<see cref="DetermineStrikeOrderStage.SubjectWithMeleeWeapons"/>, so
+        /// weapon-scoped Brace fires). Shared with the Combat Calculator, which stacks both units in contact before it
+        /// runs this stage, so its dice match the stage's. The AI's CombatMath models no positions and keeps
+        /// <see cref="ChargerParticipant"/> (every living carrier) instead.
         /// </summary>
         public static RuleParticipant[] ChargeContactParticipants(IUnit attacker, IUnit defender)
         {
             RuleParticipant[] defenderSide = DetermineStrikeOrderStage.SubjectWithMeleeWeapons(defender);
             var participants = new RuleParticipant[defenderSide.Length + 1];
-            participants[0] = ChargerParticipant(attacker);
+            participants[0] = ChargerParticipantInReach(attacker, defender);
             Array.Copy(defenderSide, 0, participants, 1, defenderSide.Length);
             return participants;
         }
@@ -121,10 +131,46 @@ namespace FDG.Stages
         /// #447: the charger as the Actor WITH its living models (AnyOwner), so per-model Impact copies fire: a
         /// joined hero's own Impact (the #006 merge relocated it onto the hero's model) and #407 per-model grants.
         /// Unit-attached and granted copies fire through the unit as before; the evaluator's dedup keeps one firing
-        /// per attachment, and Effect.ChargeImpactHits counts the living models carrying each.
+        /// per attachment, and Effect.ChargeImpactHits counts the living models carrying each. Every living model,
+        /// wherever it stands: the shape for callers without positions to read (the AI's CombatMath, #442) and for
+        /// ResolveRavageWoundsStage (#434, a different rule). The live impact stage uses
+        /// <see cref="ChargerParticipantInReach"/>.
         /// </summary>
         public static RuleParticipant ChargerParticipant(IUnit attacker) =>
             RuleParticipant.Actor(attacker, models: HeroStatRules.LivingModels(attacker));
+
+        /// <summary>
+        /// #447 D1 (owner ruling 2026-11-01): the charger as the Actor with only its living models in melee reach of
+        /// <paramref name="defender"/> (<see cref="ModelsInMeleeReach"/>). A per-model Impact copy (a joined hero's)
+        /// fires only when its carrier is among them, and Effect.ChargeImpactHits counts a unit-attached copy's
+        /// carriers among them too (<see cref="RuleInvocation.ParticipantModels"/>).
+        /// </summary>
+        public static RuleParticipant ChargerParticipantInReach(IUnit attacker, IUnit defender) =>
+            RuleParticipant.Actor(attacker, models: ModelsInMeleeReach(attacker, defender));
+
+        /// <summary>
+        /// The living models of <paramref name="attacker"/> within melee range of any living model of
+        /// <paramref name="defender"/> - <see cref="MeleeRangeUtilities.AreModelsInMeleeRange"/>, the one melee
+        /// reach (3" base to base, 4" vertically) that <see cref="DetermineInRangeAttackersStage"/> reads after
+        /// pile-in to pick the models that may strike. Read at charge contact, before pile-in, for #447 D1.
+        /// </summary>
+        public static IReadOnlyList<IModel> ModelsInMeleeReach(IUnit attacker, IUnit defender)
+        {
+            IReadOnlyList<IModel> living = HeroStatRules.LivingModels(attacker);
+            var inReach = new List<IModel>(living.Count);
+            foreach (IModel model in living)
+            {
+                foreach (IModel enemy in defender.Models)
+                {
+                    if (MeleeRangeUtilities.AreModelsInMeleeRange(model, enemy))
+                    {
+                        inReach.Add(model);
+                        break;
+                    }
+                }
+            }
+            return inReach;
+        }
 
         /// <summary>
         /// The impact pool as a sum, from the charge-contact evaluation's named ops (#447): each Impact source as
@@ -132,15 +178,19 @@ namespace FDG.Stages
         /// read like a fresh one's), joined by " + ", then each cancelling rule as " - N Rule" - e.g.
         /// "5 models x Impact(1) + 1 model x Impact(3) - 2 Brace". Ops other than impact dice are ignored.
         /// A rule is named as attached minus its authored value (an army file attaches "Impact(1)"), so the X shown
-        /// is always the per-model one. ASCII only (game text).
+        /// is always the per-model one. #447 D1: a source whose carriers partly stood out of melee reach
+        /// (<see cref="RuleOperation.ChargeImpactHits.Carriers"/> above its Models) reads
+        /// "2 of 5 models in melee range x Impact(1)"; every carrier in reach keeps the plain shape. ASCII only
+        /// (game text).
         /// </summary>
         public static string DescribeDicePool(IEnumerable<(RuleOperation Op, string RuleName)> named)
         {
-            var sources = new List<(string Rule, int PerModel, int Models, int Dice)>();
+            var sources = new List<(string Rule, int PerModel, int Models, int Carriers, int Dice)>();
             var cancels = new List<(string Rule, int Dice)>();
             foreach ((RuleOperation op, string requestedName) in named)
             {
-                if (op is not RuleOperation.ChargeImpactHits impact || impact.DiceCount == 0) continue;
+                if (op is not RuleOperation.ChargeImpactHits impact) continue;
+                if (impact.DiceCount == 0 && impact.LivingCarriers == 0) continue;
                 string ruleName = WithoutAuthoredValue(requestedName);
 
                 if (impact.DiceCount < 0)
@@ -151,28 +201,38 @@ namespace FDG.Stages
                     continue;
                 }
 
-                int perModel = impact.Models > 0 ? impact.DiceCount / impact.Models : impact.DiceCount;
-                int models = impact.Models > 0 ? impact.Models : 0;
+                int perModel = impact.DicePerModel;
+                int models = impact.Models;
+                int carriers = impact.LivingCarriers;
                 int same = sources.FindIndex(x => x.Rule == ruleName && x.PerModel == perModel
-                    && (x.Models > 0) == (models > 0));
+                    && (x.Carriers > 0) == (carriers > 0));
                 if (same >= 0)
                 {
                     sources[same] = (ruleName, perModel, sources[same].Models + models,
-                        sources[same].Dice + impact.DiceCount);
+                        sources[same].Carriers + carriers, sources[same].Dice + impact.DiceCount);
                 }
                 else
                 {
-                    sources.Add((ruleName, perModel, models, impact.DiceCount));
+                    sources.Add((ruleName, perModel, models, carriers, impact.DiceCount));
                 }
             }
 
             var text = new System.Text.StringBuilder();
-            foreach ((string rule, int perModel, int models, int dice) in sources)
+            foreach ((string rule, int perModel, int models, int carriers, int dice) in sources)
             {
                 if (text.Length > 0) text.Append(" + ");
-                text.Append(models > 0
-                    ? $"{models} model{(models == 1 ? "" : "s")} x {rule}({perModel})"
-                    : $"{rule}({dice})");
+                if (carriers <= 0)
+                {
+                    text.Append($"{rule}({dice})");
+                }
+                else if (models == carriers)
+                {
+                    text.Append($"{models} model{(models == 1 ? "" : "s")} x {rule}({perModel})");
+                }
+                else
+                {
+                    text.Append($"{models} of {carriers} models in melee range x {rule}({perModel})");
+                }
             }
 
             foreach ((string rule, int dice) in cancels)

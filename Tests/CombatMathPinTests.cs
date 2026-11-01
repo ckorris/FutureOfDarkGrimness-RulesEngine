@@ -594,6 +594,31 @@ namespace FDG.Tests
                 Is.EqualTo(impactWounds + swingWounds).Within(0.001f));
         }
 
+        // #447 D1 (owner ruling 2026-11-01): the live stage rolls only the carriers in melee reach when the charge
+        // lands. The estimate prices a charge that has NOT happened - the charger stands where it stands, out of
+        // reach - so it models no spread and keeps every living carrier (ChargerParticipant, not
+        // ChargerParticipantInReach): the upper bound, and the expected case for a unit charging in a line. Pinned so
+        // a switch to the stage's in-reach participants (which would read 0 dice here) is a deliberate change.
+        [Test]
+        public void EstimateMelee_ImpactDice_CountEveryCarrier_PositionsAreNotModelled()
+        {
+            var attacker = MakeUnit(2, Blade(), atX: 0f);
+            attacker.GetValue().AttachRuleDefinition(new ResolvedRule("Impact", CoreRuleCatalog.Impact,
+                new RuleArgument[] { new RuleArgument.Int(4) }));
+            attacker.GetValue().Models.First().SetPosition(new Position(-30f, 0f));
+            var defender = MakeUnit(5, null, atX: 1f);
+            Assert.That(ResolveImpactHitsStage.ModelsInMeleeReach(attacker.GetValue(), defender.GetValue()),
+                Has.Count.EqualTo(1), "premise: only one carrier stands in reach before the charge");
+
+            MeleeEstimate estimate = CombatMath.EstimateMelee(_ctx.RuleEvaluator, attacker, defender);
+
+            // Same as EstimateMelee_ImpactHits_AddExpectedWounds: 2 x Impact(4) = 8 dice, the straggler included.
+            float impactWounds = 8f * (5f / 6f) * 0.5f;
+            float swingWounds = 2f * 2f * 0.5f * 0.5f;
+            Assert.That(estimate.AttackerAttack.ExpectedWounds,
+                Is.EqualTo(impactWounds + swingWounds).Within(0.001f));
+        }
+
         // #423: the Parry reduction with the integration test's numbers - 2 hits, 3 carriers, 2 dice, 1/3 of a hit ignored.
         [Test]
         public void EstimateMelee_ParryDefender_ReducesTheChargersWounds()

@@ -192,6 +192,13 @@ namespace FDG.Tests
                 "rolled 3 impact dice on the charge at AP(1) (1 model x 3)");
             yield return Case(new RuleOperation.ChargeImpactHits(-6, Models: 3),
                 "cancelled 6 impact dice from the charge (3 models x 2)");
+            // #447 D1: carriers out of melee reach roll nothing, and the op says how many stood out.
+            yield return Case(new RuleOperation.ChargeImpactHits(2, Models: 2, Carriers: 5, PerModel: 1),
+                "rolled 2 impact dice on the charge (2 of 5 models in melee range x 1)");
+            yield return Case(new RuleOperation.ChargeImpactHits(0, Models: 0, Carriers: 5, PerModel: 2),
+                "rolled 0 impact dice on the charge (0 of 5 models in melee range x 2)");
+            yield return Case(new RuleOperation.ChargeImpactHits(5, Models: 5, Carriers: 5, PerModel: 1),
+                "rolled 5 impact dice on the charge (5 models x 1)");
             // #423 Parry(X): the defender's hit-ignore dice, X per carrying model.
             yield return Case(new RuleOperation.ParryDice(1, new[] { new ModelID(Guid.Empty), new ModelID(Guid.Empty) }),
                 "may roll 1 Parry die per model when hit in melee (2 models)");

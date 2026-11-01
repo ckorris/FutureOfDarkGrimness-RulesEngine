@@ -24,7 +24,10 @@ namespace FDG.Tests
     //     count the native models, model-attached ones (a joined hero's own Impact, a #407 per-model grant) their
     //     carriers, a unit-wide grant every model;
     //   - Brace(X) (#422) subtracts from that total, floored at 0; the Fatigue gate still zeroes it;
-    //   - the log line and the dice beat show the sum ("5 models x Impact(1)").
+    //   - the log line and the dice beat show the sum ("5 models x Impact(1)");
+    //   - D1 (reversed by the owner 2026-11-01): only the carriers in melee reach of the target when the charge lands
+    //     roll (the melee stage's own 3" reach, MeleeRangeUtilities.AreModelsInMeleeRange); the pool text says
+    //     "2 of 5 models in melee range" when they differ from the living carriers, and keeps its shape otherwise.
     [TestFixture]
     public class ImpactPerModelRuleIntegrationTests
     {
@@ -241,6 +244,155 @@ namespace FDG.Tests
             Assert.That(run.Lines.Single(l => l.StartsWith("Rams' Impact rolled")), Does.Contain("(3 models x Heavy Impact(1))"));
         }
 
+        // ---- D1 (owner ruling 2026-11-01): only the carriers in melee reach roll ------------------------------
+
+        [Test]
+        public async Task StrungOut_TwoOfFiveCarriersInReach_RollTwoDice_AndTheLogSaysSo()
+        {
+            DataBinding<UnitData> riders = MakeUnit(5, "Riders");
+            AttachImpact(riders.GetValue(), 1);
+            StringOut(riders, inReach: 2);
+
+            Run run = await RunStage(riders, MakeUnit(10, "Targets"));
+
+            Assert.That(run.Roller.RollCounts.First(), Is.EqualTo(2f), "the three carriers out of reach roll nothing");
+            Assert.That(run.Lines, Has.Member(
+                "Riders' Impact rolled 2 dice (2 of 5 models in melee range x Impact(1)) -> 2 hit(s) on the charge."));
+        }
+
+        [Test]
+        public async Task EveryCarrierInReach_RollsEveryDie_AndTheLogKeepsItsPlainShape()
+        {
+            // Spread out but all within 3" base to base (radius 0.75 each: x = 4 is 2.5" edge to edge).
+            DataBinding<UnitData> riders = MakeUnit(5, "Riders");
+            AttachImpact(riders.GetValue(), 1);
+            int i = 0;
+            foreach (IModel model in riders.GetValue().Models) model.SetPosition(new Position(i++, 0f));
+
+            Run run = await RunStage(riders, MakeUnit(10, "Targets"));
+
+            Assert.That(run.Roller.RollCounts.First(), Is.EqualTo(5f));
+            Assert.That(run.Lines, Has.Member(
+                "Riders' Impact rolled 5 dice (5 models x Impact(1)) -> 5 hit(s) on the charge."),
+                "no 'of N' when the counts agree - the common case's log does not change");
+        }
+
+        [Test]
+        public async Task AJoinedHerosImpact_CountsOnlyWhenTheHeroIsInReach()
+        {
+            DataBinding<UnitData> knights = MakeUnitWithHero("Knights", hostModels: 5, hostImpact: 1, heroImpact: 3);
+            HeroModel(knights).SetPosition(OutOfReach);
+
+            Run run = await RunStage(knights, MakeUnit(10, "Targets"));
+
+            Assert.That(run.Roller.RollCounts.First(), Is.EqualTo(5f), "the hero's Impact(3) stands out of reach");
+            Assert.That(run.Lines, Has.Member(
+                "Knights' Impact rolled 5 dice (5 models x Impact(1)) -> 5 hit(s) on the charge."),
+                "the hero's copy is not a source at all - its carrier brought nothing");
+        }
+
+        [Test]
+        public async Task AJoinedHeroInReach_AddsItsDice_WhileTheHostsStragglersDoNot()
+        {
+            DataBinding<UnitData> knights = MakeUnitWithHero("Knights", hostModels: 5, hostImpact: 1, heroImpact: 3);
+            IModel hero = HeroModel(knights);
+            foreach (IModel straggler in knights.GetValue().Models.Where(m => m.ID != hero.ID).Take(2))
+            {
+                straggler.SetPosition(OutOfReach);
+            }
+
+            Run run = await RunStage(knights, MakeUnit(10, "Targets"));
+
+            Assert.That(run.Roller.RollCounts.First(), Is.EqualTo(6f), "3 host models in reach + the hero's 3");
+            Assert.That(run.Lines, Has.Member("Knights' Impact rolled 6 dice " +
+                "(3 of 5 models in melee range x Impact(1) + 1 model x Impact(3)) -> 6 hit(s) on the charge."));
+        }
+
+        [Test]
+        public async Task Brace_SubtractsFromTheInReachTotal()
+        {
+            DataBinding<UnitData> riders = MakeUnit(5, "Riders");
+            AttachImpact(riders.GetValue(), 2);
+            StringOut(riders, inReach: 3);
+            DataBinding<UnitData> spears = MakeUnit(2, "Spears");
+            AttachBrace(spears.GetValue(), 1);
+
+            Run run = await RunStage(riders, spears);
+
+            Assert.That(run.Roller.RollCounts.First(), Is.EqualTo(4f), "3 in reach x Impact(2) = 6, minus Brace(1) x 2");
+            Assert.That(run.Lines, Has.Member("Riders' Impact rolled 4 dice " +
+                "(3 of 5 models in melee range x Impact(2) - 2 Brace) -> 4 hit(s) on the charge."));
+        }
+
+        [Test]
+        public async Task NoCarrierInReach_RollsNoDice_AndTheLogSaysWhy()
+        {
+            DataBinding<UnitData> riders = MakeUnit(5, "Riders");
+            AttachImpact(riders.GetValue(), 1);
+            StringOut(riders, inReach: 0);
+            DataBinding<UnitData> targets = MakeUnit(10, "Targets");
+
+            Run run = await RunStage(riders, targets);
+
+            Assert.That(run.Roller.RollCounts, Is.Empty);
+            Assert.That(targets.RemainingWounds(), Is.EqualTo(10f));
+            Assert.That(run.Lines, Has.Member("Riders' Impact rolls no dice (0 of 5 models in melee range x Impact(1))."));
+        }
+
+        [Test]
+        public async Task TheDiceBeatsContext_SaysInMeleeRange_WhenCarriersStandOut()
+        {
+            DataBinding<UnitData> riders = MakeUnit(5, "Riders");
+            AttachImpact(riders.GetValue(), 1);
+            StringOut(riders, inReach: 2);
+            var presenter = new RecordingPresenter();
+
+            await RunStage(riders, MakeUnit(10, "Targets"), presenter: presenter);
+
+            DiceRolledBeat beat = presenter.Beats.OfType<DiceRolledBeat>().Single(b => b.Label == "Impact Hits");
+            Assert.That(beat.Total, Is.EqualTo(2f));
+            Assert.That(beat.Context, Is.EqualTo("Riders: 2 of 5 models in melee range x Impact(1)"));
+        }
+
+        [Test]
+        public void ModelsInMeleeReach_IsTheMeleeStagesOwnStrikeReach()
+        {
+            // The same predicate DetermineInRangeAttackersStage reads after pile-in (3" base to base, 4" vertical):
+            // exactly 3" edge to edge is in, a hair more is out, and a model 4.5" up is out at any horizontal distance.
+            DataBinding<UnitData> riders = MakeUnit(4, "Riders");
+            DataBinding<UnitData> targets = MakeUnit(1, "Targets");
+            IModel[] models = riders.GetValue().Models.ToArray();
+            models[0].SetPosition(new Position(4.5f, 0f));        // 3.0" edge to edge
+            models[1].SetPosition(new Position(4.6f, 0f));        // 3.1"
+            models[2].SetPosition(new Position(0f, 4.5f, 0f));    // straight above, 4.5" up
+            models[3].DealWounds(models[3].TotalWounds);          // dead, in reach
+
+            IReadOnlyList<IModel> inReach = ResolveImpactHitsStage.ModelsInMeleeReach(riders.GetValue(), targets.GetValue());
+
+            Assert.That(inReach.Select(m => m.ID), Is.EqualTo(new[] { models[0].ID }));
+            Assert.That(inReach.Select(m => m.ID), Is.EqualTo(MeleeRangeUtilities
+                .GetModelsInMeleeRange(riders.GetValue().ModelBindings, targets.GetValue().ModelBindings)
+                .Select(b => b.GetValue().ID)), "one reach for striking and for Impact");
+        }
+
+        [Test]
+        public void DescribeDicePool_SaysInMeleeRange_WhenTheCarriersExceedTheModelsCounted()
+        {
+            var named = new List<(RuleOperation, string)>
+            {
+                // A unit copy with 2 of 5 carriers in reach, and a resumed game's one-model attachments: one in reach,
+                // one out (a zero-dice op) - merged into one source at the same rule and X.
+                (new RuleOperation.ChargeImpactHits(2, Models: 2, Carriers: 5, PerModel: 1), "Impact(1)"),
+                (new RuleOperation.ChargeImpactHits(1, Models: 1, Carriers: 1, PerModel: 1), "Impact"),
+                (new RuleOperation.ChargeImpactHits(0, Models: 0, Carriers: 1, PerModel: 1), "Impact"),
+                (new RuleOperation.ChargeImpactHits(3, Models: 1, Carriers: 1, PerModel: 3), "Impact(3)"),
+                (new RuleOperation.ChargeImpactHits(-2, Models: 2), "Brace(1)"),
+            };
+
+            Assert.That(ResolveImpactHitsStage.DescribeDicePool(named), Is.EqualTo(
+                "3 of 7 models in melee range x Impact(1) + 1 model x Impact(3) - 2 Brace"));
+        }
+
         // ---- presentation -------------------------------------------------------------------------------------
 
         [Test]
@@ -347,6 +499,18 @@ namespace FDG.Tests
         // ---- helpers ------------------------------------------------------------------------------------------
 
         private sealed record Run(RecordingDiceRoller Roller, List<string> Lines);
+
+        // Targets stand at the origin (radius 0.75); 10" along X is 8.5" edge to edge, well past the 3" reach.
+        private static readonly Position OutOfReach = new Position(10f, 0f);
+
+        // Leaves the first <paramref name="inReach"/> models on the target and strings the rest out of reach.
+        private static void StringOut(DataBinding<UnitData> unit, int inReach)
+        {
+            foreach (IModel model in unit.GetValue().Models.Skip(inReach)) model.SetPosition(OutOfReach);
+        }
+
+        private static IModel HeroModel(DataBinding<UnitData> host) =>
+            host.GetValue().Models.Single(m => m.ID == host.GetValue().JoinedHeroModelId);
 
         private async Task<Run> RunStage(DataBinding<UnitData> attacker, DataBinding<UnitData> defender, int face = 2,
             IPresenter? presenter = null, IRuleResolver? resolver = null)

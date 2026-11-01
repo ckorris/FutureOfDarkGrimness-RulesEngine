@@ -527,18 +527,22 @@ public sealed class RuleEvaluator
         EModelRuleScope modelScope, IHookContext context, List<TaggedOperation> sink, DedupState seen,
         List<(IUnit Unit, Token Grant)>? grantsToConsume, bool trace)
     {
-        CollectFromRules(unit.RuleDefinitions, unit, carryingWeapon: null, seat, context, sink, seen, trace);
+        // #447 D1: every invocation this participant produces carries the models it brought
+        // (RuleInvocation.ParticipantModels), so a carrier-counting effect counts among them.
+        CollectFromRules(unit.RuleDefinitions, unit, carryingWeapon: null, seat, context, sink, seen, trace,
+            participantModels: models);
 
         // Token-granted rules (auras, "gains rule X" buffs): the unit behaves as if it has each rule
         // named by a RuleGrant token. Walked through the same per-rule path as static attachments, so
         // they honour the firing seat/condition and share the dedup (an argument-less rule granted on
         // top of a static copy fires once) and suppression first-pass. Bearer stays the unit, never a
         // weapon — grants live on unit token containers.
-        CollectGrantedRules(unit, seat, context, sink, seen, grantsToConsume, trace);
+        CollectGrantedRules(unit, seat, context, sink, seen, grantsToConsume, trace, models);
 
         if (weapon != null)
         {
-            CollectFromRules(weapon.RuleDefinitions, unit, weapon, seat, context, sink, seen, trace);
+            CollectFromRules(weapon.RuleDefinitions, unit, weapon, seat, context, sink, seen, trace,
+                participantModels: models);
         }
 
         // #006 slice F / #093: per-model rules for the model(s) this hook involves, composed per the
@@ -552,14 +556,14 @@ public sealed class RuleEvaluator
             if (modelScope == EModelRuleScope.AllOwners)
             {
                 CollectFromRules(RulesSharedByAll(models), unit, carryingWeapon: null, seat, context, sink,
-                    seen, trace);
+                    seen, trace, participantModels: models);
             }
             else
             {
                 foreach (IModel model in models)
                 {
                     CollectFromRules(model.RuleDefinitions, unit, carryingWeapon: null, seat, context, sink,
-                        seen, trace);
+                        seen, trace, participantModels: models);
                 }
             }
         }
@@ -608,7 +612,7 @@ public sealed class RuleEvaluator
 
     private void CollectFromRules(IReadOnlyList<ResolvedRule> rules, IUnit unit, IWeapon? carryingWeapon,
         ERuleSeat seat, IHookContext context, List<TaggedOperation> sink, DedupState seen, bool trace,
-        bool placedByOtherUnit = false)
+        bool placedByOtherUnit = false, IReadOnlyList<IModel>? participantModels = null)
     {
         // One scratch list per walk, cleared per firing entry: a fresh List per entry was measurable
         // (see the DedupState pool below for the profile that found it).
@@ -647,7 +651,8 @@ public sealed class RuleEvaluator
                 }
 
                 invocation ??= new RuleInvocation(context, unit, rule.Arguments, DiceRoller: _diceRoller,
-                    Weapon: carryingWeapon, Definition: rule.Definition, Attachment: rule);
+                    Weapon: carryingWeapon, Definition: rule.Definition, Attachment: rule,
+                    ParticipantModels: participantModels);
 
                 if (!entry.Condition.Evaluate(invocation))
                 {
@@ -689,7 +694,7 @@ public sealed class RuleEvaluator
     /// </summary>
     private void CollectGrantedRules(IUnit unit, ERuleSeat seat, IHookContext context,
         List<TaggedOperation> sink, DedupState seen,
-        List<(IUnit Unit, Token Grant)>? grantsToConsume, bool trace)
+        List<(IUnit Unit, Token Grant)>? grantsToConsume, bool trace, IReadOnlyList<IModel>? participantModels = null)
     {
         if (_ruleResolver == null)
         {
@@ -750,13 +755,14 @@ public sealed class RuleEvaluator
 
         if (granted != null)
         {
-            CollectFromRules(granted, unit, carryingWeapon: null, seat, context, sink, seen, trace);
+            CollectFromRules(granted, unit, carryingWeapon: null, seat, context, sink, seen, trace,
+                participantModels: participantModels);
         }
 
         if (grantedByOthers != null)
         {
             CollectFromRules(grantedByOthers, unit, carryingWeapon: null, seat, context, sink, seen, trace,
-                placedByOtherUnit: true);
+                placedByOtherUnit: true, participantModels: participantModels);
         }
     }
 

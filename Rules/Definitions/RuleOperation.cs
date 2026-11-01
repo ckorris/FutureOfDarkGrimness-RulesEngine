@@ -838,10 +838,20 @@ public abstract record RuleOperation
     /// Resolution of <see cref="Effect.ChargeImpactHits"/> (Impact) and, negative, of
     /// <see cref="Effect.CancelImpactDice"/> (Brace). <see cref="Models"/> (#447) is how many models the count
     /// sums over - X per model, so <c>DiceCount / Models</c> is the X - or 0 when the source is not per model.
+    /// #447 D1: <see cref="Carriers"/> is how many living models carry the rule wherever they stand (0 = the same
+    /// as <see cref="Models"/>); when more than <see cref="Models"/>, the rest stood out of melee reach and rolled
+    /// nothing. <see cref="PerModel"/> is the X itself, kept so a zero-dice op (every carrier out of reach) still
+    /// names it; 0 means "derive it from the count".
     /// </summary>
-    public sealed record ChargeImpactHits(int DiceCount, int ArmorPenetration = 0, int Models = 0)
-        : SinkOperation<IImpactSink>
+    public sealed record ChargeImpactHits(int DiceCount, int ArmorPenetration = 0, int Models = 0, int Carriers = 0,
+        int PerModel = 0) : SinkOperation<IImpactSink>
     {
+        /// <summary>The X per model: <see cref="PerModel"/> when given, else the count divided by the models.</summary>
+        public int DicePerModel => PerModel > 0 ? PerModel : Models > 0 ? Math.Abs(DiceCount) / Models : Math.Abs(DiceCount);
+
+        /// <summary>The living carriers wherever they stand: <see cref="Carriers"/>, or <see cref="Models"/> when unset.</summary>
+        public int LivingCarriers => Math.Max(Carriers, Models);
+
         public override void ApplyTo(IImpactSink sink)
         {
             sink.AddDice(DiceCount);
@@ -861,9 +871,16 @@ public abstract record RuleOperation
                 : $"rolled {dice} on the charge{ApSuffix(ArmorPenetration)}{PerModelSuffix()}";
         }
 
-        // " (5 models x 1)": the per-model sum behind the count (#447), or nothing for a source that is not.
-        private string PerModelSuffix() =>
-            Models > 0 ? $" ({Models} model{(Models == 1 ? "" : "s")} x {Math.Abs(DiceCount) / Models})" : string.Empty;
+        // " (5 models x 1)": the per-model sum behind the count (#447), or nothing for a source that is not;
+        // " (2 of 5 models in melee range x 1)" when carriers stood out of reach (#447 D1).
+        private string PerModelSuffix()
+        {
+            int carriers = LivingCarriers;
+            if (carriers <= 0) return string.Empty;
+            return Models == carriers
+                ? $" ({Models} model{(Models == 1 ? "" : "s")} x {DicePerModel})"
+                : $" ({Models} of {carriers} models in melee range x {DicePerModel})";
+        }
     }
 
     /// <summary>

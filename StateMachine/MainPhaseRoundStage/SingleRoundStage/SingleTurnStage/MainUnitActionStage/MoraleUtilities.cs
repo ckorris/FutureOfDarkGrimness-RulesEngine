@@ -453,6 +453,18 @@ namespace FDG.Stages
         /// </summary>
         public static async Task<bool?> ResolveWoundDrivenMorale(IGameContext gameContext, DataBinding<UnitData> unitBinding,
             float remainingWoundsBefore, float countedWounds = 0f, float? shotFromInches = null)
+            => (await ResolveWoundDrivenMoraleDetailed(gameContext, unitBinding, remainingWoundsBefore, countedWounds,
+                shotFromInches))?.Passed;
+
+        /// <summary>
+        /// <see cref="ResolveWoundDrivenMorale"/> returning the test's full <see cref="MoraleTestOutcome"/> (null when
+        /// no test was taken), so a caller's log line can quote the roll the unit actually needed -
+        /// <see cref="MoraleTestOutcome.RollNeeded"/> carries the #421 Hero-lent Quality and every rule modifier,
+        /// where the unit's own Quality may not be the number that was rolled against.
+        /// </summary>
+        public static async Task<MoraleTestOutcome?> ResolveWoundDrivenMoraleDetailed(IGameContext gameContext,
+            DataBinding<UnitData> unitBinding, float remainingWoundsBefore, float countedWounds = 0f,
+            float? shotFromInches = null)
         {
             IUnit unit = unitBinding.GetValue();
             if (!unit.GetIsAlive()) return null;                              // wiped out outright — no test
@@ -463,12 +475,13 @@ namespace FDG.Stages
             // (#197 P7 No Retreat) may rescue it.
             // #435: a wound-driven test is the one shooting triggers (a strafe / Crossing Strike attacks "as if it
             // was shooting" and lands here too) - OPR 3.6 Banner's "triggered by shooting/melee".
-            if ((await TakeMoraleTest(gameContext, unit, ResolveMoraleQuality(gameContext, unit),
-                    failureCausesShakenOrRout: true, shotFromInches: shotFromInches,
-                    cause: EMoraleTestCause.Shooting)).Passed) return true;
+            MoraleTestOutcome outcome = await TakeMoraleTest(gameContext, unit, ResolveMoraleQuality(gameContext, unit),
+                failureCausesShakenOrRout: true, shotFromInches: shotFromInches,
+                cause: EMoraleTestCause.Shooting);
+            if (outcome.Passed) return outcome;
 
             await ApplyShakenWithPresentation(gameContext, unitBinding);
-            return false;
+            return outcome;
         }
 
         /// <summary>

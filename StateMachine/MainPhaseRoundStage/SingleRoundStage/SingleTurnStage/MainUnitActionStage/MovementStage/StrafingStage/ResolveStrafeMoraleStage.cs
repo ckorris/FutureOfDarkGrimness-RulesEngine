@@ -46,15 +46,17 @@ namespace FDG.Stages
             if (counted > 0f)
                 GameContext.Log($"{defender.Name()} counts as having taken {counted:0.##} extra wound(s) for morale.");
 
-            bool? result = await MoraleUtilities.ResolveWoundDrivenMorale(
+            // #421: RollNeeded is the number actually rolled against (a Hero's lent Quality, rule modifiers), as in
+            // ResolveRangedMoraleStage.
+            MoraleUtilities.MoraleTestOutcome? result = await MoraleUtilities.ResolveWoundDrivenMoraleDetailed(
                 GameContext, defender, baseline.RemainingWoundsBefore, counted);
 
-            if (result == true)
+            if (result is { Passed: true } passed)
             {
                 GameContext.Log($"{defender.Name()} is at half strength or less but passed its morale " +
-                    $"test (needed {defender.Quality()}).");
+                    $"test (needed {passed.RollNeeded}).");
             }
-            else if (result == false)
+            else if (result is { Passed: false })
             {
                 GameContext.Log($"{defender.Name()} is at half strength or less, failed its morale test, " +
                     "and is now Shaken.");
@@ -65,7 +67,7 @@ namespace FDG.Stages
                 GameContext.Log(reason);
             }
 
-            await onFinished(new StrafeMoraleResults(result));
+            await onFinished(new StrafeMoraleResults(result?.Passed));
         }
     }
 }

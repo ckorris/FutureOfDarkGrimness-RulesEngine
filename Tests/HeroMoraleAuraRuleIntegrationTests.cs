@@ -269,6 +269,33 @@ namespace FDG.Tests
                 "a Hero-sourced test always shows its source chip, even with no other modifier");
         }
 
+        // The stage's follow-up line used to quote the unit's OWN Quality ("needed 5") right after the test had been
+        // announced at the Hero's 3 (seen in the 3.6 hand-verify game, 2026-11-01); it now quotes the roll the test
+        // actually needed.
+        [Test]
+        public async Task TheShootingStagesPassLine_QuotesTheQualityTheTestWasTakenAt()
+        {
+            DataBinding<UnitData> warriors = Warriors();
+            Hero("Captain", _p1, tough: 9, quality: 3, gap: 5f);
+            DataBinding<UnitData> shooters = MakeUnit(_p2, "Shooters", models: 2, quality: 4, x: -20f, z: 0f);
+
+            var shoot = new CombatActionContext(_ctx, shooters, isMelee: false);
+            shoot.RegisterAttackedDefender(warriors);
+            for (int i = 2; i < 4; i++)
+            {
+                ModelData model = warriors.GetValue().ModelBindings[i].GetValue();
+                model.DealWounds(model.TotalWounds);
+            }
+            var stage = new ResolveRangedMoraleStage(_ctx, new NoOpLayer<ICombatActionContext>());
+            stage.ToFinished.Bind("ToFinished");
+            await stage.Enter(shoot);
+
+            Assert.That(IsShaken(warriors), Is.False, "a 3 passes at the Captain's Quality 3");
+            Assert.That(_log.Entries.Select(e => e.Message), Contains.Item(
+                "Warriors is at half strength or less but passed its morale test (needed 3)."));
+            Assert.That(_log.Entries.Select(e => e.Message), Has.None.Contains("needed 5"));
+        }
+
         [Test]
         public async Task AJoinedHerosLogLine_NamesTheJoinedHero()
         {

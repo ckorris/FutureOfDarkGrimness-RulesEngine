@@ -52,14 +52,17 @@ namespace FDG.Stages
 
             // #432: the distance this defender was shot from rides along for the 3.6 "shot from over 9\"" morale
             // rules (Hive Bond, Hold the Line, Valiant).
-            bool? result = await MoraleUtilities.ResolveWoundDrivenMorale(
+            // #421: the outcome, not just pass/fail - its RollNeeded is the number the die was actually read against (a
+            // nearby Hero's Quality, rule modifiers), where the unit's own Quality could say "needed 5" after a test
+            // the log had just announced at "Quality 3+ (Hero aura: ...)".
+            MoraleUtilities.MoraleTestOutcome? result = await MoraleUtilities.ResolveWoundDrivenMoraleDetailed(
                 GameContext, defenderBinding, attacked.RemainingWoundsAtStart, counted, attacked.ShotFromInches);
 
-            if (result == true)
+            if (result is { Passed: true } passed)
             {
-                GameContext.Log($"{defenderBinding.Name()} is at half strength or less but passed its morale test (needed {defenderBinding.Quality()}).");
+                GameContext.Log($"{defenderBinding.Name()} is at half strength or less but passed its morale test (needed {passed.RollNeeded}).");
             }
-            else if (result == false)
+            else if (result is { Passed: false })
             {
                 GameContext.Log($"{defenderBinding.Name()} is at half strength or less, failed its morale test, and is now Shaken.");
             }

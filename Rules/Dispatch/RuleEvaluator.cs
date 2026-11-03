@@ -298,11 +298,17 @@ public sealed class RuleEvaluator
         var result = new List<TaggedOperation>(tagged.Count);
         foreach (TaggedOperation t in tagged)
         {
-            if (t.Op is RuleOperation.SuppressRule)
+            if (t.Op is RuleOperation.SuppressRule suppressor)
             {
                 // The suppressor is internal machinery a stage never applies. Log the action
-                // ("X ignored Y"), then drop it from the queue handed back.
-                if (log) LogIf(narrate, t);
+                // ("X ignored Y") - only when there WAS a Y to ignore: Rending suppresses Regeneration on every
+                // hit, and narrating it against a defender without Regeneration said something that never
+                // happened (seen in the 3.6 hand-verify games) - then drop it from the queue handed back.
+                if (log && tagged.Any(o => o.Op is not RuleOperation.SuppressRule
+                        && o.Origin.Definition.Name == suppressor.RuleName))
+                {
+                    LogIf(narrate, t);
+                }
                 continue;
             }
 
@@ -402,9 +408,9 @@ public sealed class RuleEvaluator
             if (log)
             {
                 string who = by.Weapon == null
-                    ? $"{by.Bearer.Name}'s {by.Origin.RequestedName}"
-                    : $"{by.Bearer.Name}'s {by.Weapon.Name}'s {by.Origin.RequestedName}";
-                _log?.Log($"{who} ignored {t.Bearer.Name}'s {t.Origin.RequestedName} ({t.Op.Describe()}).");
+                    ? $"{Possessive.Of(by.Bearer.Name)} {by.Origin.RequestedName}"
+                    : $"{Possessive.Of(by.Bearer.Name)} {Possessive.Of(by.Weapon.Name)} {by.Origin.RequestedName}";
+                _log?.Log($"{who} ignored {Possessive.Of(t.Bearer.Name)} {t.Origin.RequestedName} ({t.Op.Describe()}).");
             }
             else if (trace)
             {
@@ -474,7 +480,7 @@ public sealed class RuleEvaluator
             unit.Tokens.RemoveTokensWithPayload(grant.Type, grant.OwnerUnitID, grant.Payload, count: 1);
             if (grant.Payload is TokenPayload.RuleGrant spentGrant)
             {
-                _log?.Log($"{unit.Name}'s {spentGrant.RuleName} grant is spent.");
+                _log?.Log($"{Possessive.Of(unit.Name)} {spentGrant.RuleName} grant is spent.");
             }
         }
     }
@@ -840,8 +846,8 @@ public sealed class RuleEvaluator
         }
 
         string carrier = t.Weapon == null
-            ? $"{t.Bearer.Name}'s {t.Origin.RequestedName}"
-            : $"{t.Bearer.Name}'s {t.Weapon.Name}'s {t.Origin.RequestedName}";
+            ? $"{Possessive.Of(t.Bearer.Name)} {t.Origin.RequestedName}"
+            : $"{Possessive.Of(t.Bearer.Name)} {Possessive.Of(t.Weapon.Name)} {t.Origin.RequestedName}";
         _log?.Log($"{carrier} {t.Op.Describe()}.");
     }
 

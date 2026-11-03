@@ -68,7 +68,7 @@ namespace FDG.Tests
             Run run = await RunStage(unit, MakeUnit(10, "Targets"));
 
             Assert.That(run.Roller.RollCounts.First(), Is.EqualTo(4f), "2 carriers x Impact(2); the third model adds none");
-            Assert.That(run.Lines.Single(l => l.StartsWith("Bikers' Impact rolled")), Does.Contain("(2 models x Impact(2))"));
+            Assert.That(run.Lines.Single(l => l.StartsWith("Bikers' Impact rolled") && l.Contains("->")), Does.Contain("(2 models x Impact(2))"));
         }
 
         [Test]
@@ -95,7 +95,7 @@ namespace FDG.Tests
             Run run = await RunStage(loaded, _store.GetDataBinding<UnitData>(targetRef));
 
             Assert.That(run.Roller.RollCounts.First(), Is.EqualTo(4f));
-            Assert.That(run.Lines.Single(l => l.StartsWith("Bikers' Impact rolled")), Does.Contain("(2 models x Impact(2))"),
+            Assert.That(run.Lines.Single(l => l.StartsWith("Bikers' Impact rolled") && l.Contains("->")), Does.Contain("(2 models x Impact(2))"),
                 "the two one-model attachments read as one source");
         }
 
@@ -420,7 +420,7 @@ namespace FDG.Tests
 
             Run run = await RunStage(knights, MakeUnit(10, "Targets"));
 
-            Assert.That(run.Lines, Has.Some.Contains("Knights's Impact rolled 5 impact dice on the charge (5 models x 1)"),
+            Assert.That(run.Lines, Has.Some.Contains("Knights' Impact rolled 5 impact dice on the charge (5 models x 1)"),
                 "the evaluator still narrates the Impact op");
             Assert.That(run.Lines.Where(l => l.Contains("Ravage")), Is.Empty);
         }
